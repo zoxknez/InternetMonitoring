@@ -1,0 +1,41 @@
+﻿<Project Sdk="Microsoft.NET.Sdk.Worker">
+
+  <PropertyGroup>
+    <!--
+      Windows-specific TFM: the service hosts power-event and named-pipe security APIs
+      that only exist there, and pinning it makes the platform analyzer enforce that
+      rather than leaving it to be discovered at runtime on a machine we do not control.
+    -->
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <UserSecretsId>dotnet-IEM.Service-2d031c70-80ae-4ebf-ba97-fe5ee14396bb</UserSecretsId>
+    <AssemblyName>InternetEvidenceService</AssemblyName>
+    <RootNamespace>IEM.Service</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!--
+      Only the hosting integration is referenced directly. Microsoft.Extensions.Hosting
+      itself arrives through it at a matching version; naming it here as well pinned an
+      older one and produced a downgrade.
+      Named-pipe security types are in the Windows shared framework, so no package for them.
+    -->
+    <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" />
+
+    <!--
+      Desktop power notifications, used only when the process runs as a console app for
+      debugging. As a real service the notifications come through the service control
+      handler instead, so this covers the case where both paths must behave alike.
+    -->
+    <PackageReference Include="Microsoft.Win32.SystemEvents" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\IEM.Core\IEM.Core.csproj" />
+    <ProjectReference Include="..\IEM.Storage\IEM.Storage.csproj" />
+    <ProjectReference Include="..\IEM.Evidence\IEM.Evidence.csproj" />
+    <ProjectReference Include="..\IEM.Windows\IEM.Windows.csproj" />
+  </ItemGroup>
+
+</Project>
+

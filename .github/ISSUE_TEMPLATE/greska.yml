@@ -1,0 +1,76 @@
+name: Greška
+description: Alat je zabeležio, prijavio ili ocenio nešto pogrešno
+labels: [greska]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Pre svega:** ako je greška u tome što je alat nešto pripisao operateru a nije
+        trebalo (ili obrnuto), to je najozbiljnija vrsta greške u ovom projektu. Recite to
+        odmah u naslovu.
+
+        Evidencija sesije sadrži imena vaših mreža i adrese vaše opreme. Šaljite samo ono što
+        ste spremni da objavite.
+
+  - type: textarea
+    id: sta-se-dogodilo
+    attributes:
+      label: Šta se dogodilo
+      description: Šta je alat prijavio ili zapisao.
+    validations:
+      required: true
+
+  - type: textarea
+    id: sta-je-ocekivano
+    attributes:
+      label: Šta je trebalo da se dogodi
+      description: I zašto - ako je moguće, sa onim što ste u tom trenutku znali o vezi.
+    validations:
+      required: true
+
+  - type: input
+    id: verzija
+    attributes:
+      label: Verzija
+      description: Ispisuje je `iem --pomoc`, a stoji i na kraju izveštaja.
+      placeholder: "2.5.0"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: kako
+    attributes:
+      label: Kako je nadzor radio
+      options:
+        - Konzola (iem)
+        - Prozor, bez instaliranog servisa
+        - Prozor, uz instalirani servis
+        - Windows servis
+    validations:
+      required: true
+
+  - type: dropdown
+    id: veza
+    attributes:
+      label: Vrsta veze
+      options:
+        - Ethernet kabl
+        - Wi-Fi
+        - Ne znam
+    validations:
+      required: true
+
+  - type: textarea
+    id: evidencija
+    attributes:
+      label: Iz evidencije
+      description: |
+        Ako možete: red iz `SirovaEvidencija.jsonl` za trenutak o kome je reč, i rezultat
+        provere lanca (`iem --proveri <folder sesije>`). Obrišite šta ne želite da delite.
+      render: text
+
+  - type: textarea
+    id: ostalo
+    attributes:
+      label: Ostalo
+      description: Šta je još radilo na računaru u tom trenutku, ako znate. Veliko preuzimanje u pozadini menja nalaz.

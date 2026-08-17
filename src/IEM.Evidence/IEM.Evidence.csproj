@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\IEM.Storage\IEM.Storage.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="PDFsharp" />
+  </ItemGroup>
+
+  <!--
+    The fonts travel inside the assembly rather than beside it.
+
+    Two reasons, both about the document rather than about convenience. A PDF that resolves
+    its fonts from whatever Windows happens to have installed is a different file on every
+    machine, and this report carries a checksum and a claim that the same build over the
+    same evidence produces the same document. And a missing font is not a cosmetic failure
+    here: our letters are č ć ž š đ, and a substituted face renders them as boxes in the
+    middle of a document someone is sending to an operator.
+
+    Liberation is used because it is licensed to be redistributed and embedded (SIL OFL 1.1,
+    text alongside the files), and because it is metrically compatible with Arial, so the
+    page looks like an ordinary business document rather than something improvised.
+  -->
+  <ItemGroup>
+    <EmbeddedResource Include="Fonts\LiberationSans-Regular.ttf" />
+    <EmbeddedResource Include="Fonts\LiberationSans-Bold.ttf" />
+    <EmbeddedResource Include="Fonts\LiberationMono-Regular.ttf" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+</Project>

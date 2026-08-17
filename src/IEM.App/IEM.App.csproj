@@ -1,0 +1,38 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <AssemblyName>InternetEvidenceMonitor</AssemblyName>
+    <RootNamespace>IEM.App</RootNamespace>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <!--
+      WPF is not trim-compatible, so trimming stays off unconditionally. ReadyToRun is a
+      separate question and is measured before release rather than assumed one way or the
+      other; the reported problems with it are from earlier versions.
+    -->
+    <PublishTrimmed>false</PublishTrimmed>
+    <PublishSingleFile>true</PublishSingleFile>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <SelfContained>true</SelfContained>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\IEM.Core\IEM.Core.csproj" />
+    <ProjectReference Include="..\IEM.Storage\IEM.Storage.csproj" />
+    <ProjectReference Include="..\IEM.Evidence\IEM.Evidence.csproj" />
+    <ProjectReference Include="..\IEM.Legal\IEM.Legal.csproj" />
+    <ProjectReference Include="..\IEM.Windows\IEM.Windows.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="CommunityToolkit.Mvvm" />
+    <PackageReference Include="H.NotifyIcon.Wpf" />
+  </ItemGroup>
+
+</Project>
+

@@ -1,0 +1,43 @@
+name: Predlog
+description: Nešto što alat ne meri, ne prijavljuje ili ne objašnjava
+labels: [predlog]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Pre nego što pišete: `docs/PREOSTALO.md` je tačan popis nezavršenog, sa razlogom zašto
+        nije urađeno. Ako je predlog već tamo, dopunite ga u issue-u umesto da počinjete od nule.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Koji problem korisnika rešava
+      description: |
+        Ne funkcija, nego situacija. „Operater je odbio prigovor jer ..." ili „ne mogu da
+        dokažem da ..." je početak od kog se najbolje odlučuje.
+    validations:
+      required: true
+
+  - type: textarea
+    id: predlog
+    attributes:
+      label: Šta predlažete
+    validations:
+      required: true
+
+  - type: textarea
+    id: dokaz
+    attributes:
+      label: Šta bi to dokazivalo, a šta ne
+      description: |
+        Za svaku novu merenu veličinu potrebno je znati i njenu granicu. Alat ne sme da tvrdi
+        više nego što je izmerio, pa je ovo polje najvažnije u prijavi.
+    validations:
+      required: true
+
+  - type: textarea
+    id: propis
+    attributes:
+      label: Propis ili metodologija, ako postoji
+      description: |
+        Pravilnik, ZEK, RATEL, FCC/Ofcom/BEREC metodologija - šta se na to poziva. Nije obavezno.

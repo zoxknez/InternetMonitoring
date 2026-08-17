@@ -1,0 +1,27 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!--
+      Windows-only on purpose. Everything here touches native Windows APIs; keeping it in
+      its own assembly is what lets IEM.Core stay platform-neutral and testable without a
+      network or a specific operating system.
+    -->
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <RootNamespace>IEM.Windows</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\IEM.Core\IEM.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!--
+      A maintained wrapper over the Native Wifi API. The alternative is several hundred
+      lines of P/Invoke with manual memory management around WlanEnumInterfaces and
+      WlanGetAvailableNetworkList - and a leak there would accumulate over a two-day run.
+    -->
+    <PackageReference Include="ManagedNativeWifi" />
+  </ItemGroup>
+
+</Project>
+

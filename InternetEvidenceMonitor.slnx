@@ -1,0 +1,15 @@
+﻿<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/IEM.App/IEM.App.csproj" />
+    <Project Path="src/IEM.Cli/IEM.Cli.csproj" />
+    <Project Path="src/IEM.Core/IEM.Core.csproj" />
+    <Project Path="src/IEM.Evidence/IEM.Evidence.csproj" />
+    <Project Path="src/IEM.Service/IEM.Service.csproj" />
+    <Project Path="src/IEM.Storage/IEM.Storage.csproj" />
+    <Project Path="src/IEM.Windows/IEM.Windows.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/IEM.App.Tests/IEM.App.Tests.csproj" />
+    <Project Path="tests/IEM.Core.Tests/IEM.Core.Tests.csproj" />
+  </Folder>
+</Solution>

@@ -1,0 +1,22 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\IEM.Core\IEM.Core.csproj" />
+    <ProjectReference Include="..\IEM.Storage\IEM.Storage.csproj" />
+    <ProjectReference Include="..\IEM.Evidence\IEM.Evidence.csproj" />
+    <ProjectReference Include="..\IEM.Legal\IEM.Legal.csproj" />
+    <ProjectReference Include="..\IEM.Windows\IEM.Windows.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+
+    <!-- The name the help text and the README use, so what people type is what exists. -->
+    <AssemblyName>iem</AssemblyName>
+
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+</Project>

@@ -1,0 +1,39 @@
+# Deliberately modest.
+#
+# The build already runs with TreatWarningsAsErrors and EnforceCodeStyleInBuild, so every rule
+# written here becomes a build failure for whoever clones the repository next. That is the
+# right setting for the rules that keep the evidence honest and the wrong one for arguments
+# about brace placement, so what follows is formatting a person cannot see and the handful of
+# analyzer rules this codebase genuinely relies on.
+
+root = true
+
+[*]
+charset = utf-8
+end_of_line = crlf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 4
+
+[*.{yml,yaml,json}]
+indent_size = 2
+
+[*.md]
+# Two trailing spaces are a line break in markdown; stripping them silently rewraps text.
+trim_trailing_whitespace = false
+
+[*.{csproj,props,targets,slnx,xaml}]
+indent_size = 2
+
+[*.cs]
+# File-scoped namespaces, as used throughout.
+csharp_style_namespace_declarations = file_scoped:suggestion
+
+# `using` at the top of the file, System first - the order every file here already follows.
+dotnet_sort_system_directives_first = true
+dotnet_separate_import_directive_groups = false
+
+# Documentation comments on public members are how this codebase explains *why* rather than
+# what. Not enforced as an error, because a private helper does not owe anyone a paragraph.
+dotnet_diagnostic.CS1591.severity = none

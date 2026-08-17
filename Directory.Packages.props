@@ -1,0 +1,51 @@
+<Project>
+
+  <!--
+    Every package version, in one file.
+
+    Central management exists here for a specific reason rather than as tidiness. This
+    application produces evidence someone will hand to their operator and possibly to RATEL,
+    and part of what makes that evidence checkable is being able to say exactly what was
+    built. A version floating across builds means two people running "the same" version can
+    get different behaviour, and neither can prove which one produced a given report.
+
+    That was not hypothetical: Microsoft.Data.Sqlite was pinned to "*", so the storage layer
+    underneath the raw evidence chain was whatever NuGet resolved on the day.
+  -->
+
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+
+    <!--
+      Restore fails rather than silently resolving something new when the lock file does not
+      match. In release builds this is what makes the version list in the report true.
+    -->
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageVersion Include="CommunityToolkit.Mvvm" Version="8.4.0" />
+    <PackageVersion Include="H.NotifyIcon.Wpf" Version="2.3.0" />
+    <PackageVersion Include="ManagedNativeWifi" Version="3.0.2" />
+    <PackageVersion Include="Microsoft.Data.Sqlite" Version="10.0.11" />
+    <PackageVersion Include="Microsoft.Extensions.Hosting.WindowsServices" Version="10.0.11" />
+    <PackageVersion Include="Microsoft.Win32.SystemEvents" Version="10.0.0" />
+
+    <!--
+      PDF rendering. Chosen over the alternatives for two reasons that have nothing to do
+      with its API: it is MIT, and it is entirely managed. A renderer carrying native Skia
+      binaries would ship a separate payload for win-x64 and win-arm64 inside a build whose
+      whole point is that someone with a broken connection can run one file without
+      installing anything first.
+    -->
+    <PackageVersion Include="PDFsharp" Version="6.2.4" />
+  </ItemGroup>
+
+  <ItemGroup Label="Test">
+    <PackageVersion Include="coverlet.collector" Version="6.0.4" />
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageVersion Include="xunit" Version="2.9.3" />
+    <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.4" />
+  </ItemGroup>
+
+</Project>

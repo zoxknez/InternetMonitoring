@@ -1,0 +1,574 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!--
+        One light theme, committed to. A theme switcher would be a nice-to-have; a report
+        that looks like the screen that produced it is not optional, and the exported HTML
+        and PDF are printable documents on a white page.
+
+        The controls below are templated rather than left to their defaults. That is not
+        decoration: WPF's stock ComboBox, ScrollBar and ProgressBar still render in the
+        Aero style of 2009, and three of those on a screen are enough to make an application
+        someone is trusting with legal evidence look abandoned.
+    -->
+
+    <!-- ============================ Colours ============================ -->
+
+    <Color x:Key="SurfaceColor">#FFFFFF</Color>
+    <Color x:Key="PageColor">#EFF1F5</Color>
+    <Color x:Key="SunkenColor">#F5F6F9</Color>
+    <Color x:Key="BorderColor">#DFE3EA</Color>
+    <Color x:Key="HairlineColor">#ECEEF2</Color>
+    <Color x:Key="TextColor">#15171C</Color>
+    <Color x:Key="MutedColor">#5A6070</Color>
+    <Color x:Key="FaintColor">#8A90A0</Color>
+
+    <Color x:Key="OkColor">#2E9E5B</Color>
+    <Color x:Key="WarnColor">#E0A800</Color>
+    <Color x:Key="BadColor">#C0392B</Color>
+    <Color x:Key="AccentColor">#1F6FB8</Color>
+    <Color x:Key="AccentDeepColor">#16558E</Color>
+
+    <SolidColorBrush x:Key="Surface" Color="{StaticResource SurfaceColor}" />
+    <SolidColorBrush x:Key="Page" Color="{StaticResource PageColor}" />
+    <SolidColorBrush x:Key="Sunken" Color="{StaticResource SunkenColor}" />
+    <SolidColorBrush x:Key="Border" Color="{StaticResource BorderColor}" />
+    <SolidColorBrush x:Key="Hairline" Color="{StaticResource HairlineColor}" />
+    <SolidColorBrush x:Key="Text" Color="{StaticResource TextColor}" />
+    <SolidColorBrush x:Key="Muted" Color="{StaticResource MutedColor}" />
+    <SolidColorBrush x:Key="Faint" Color="{StaticResource FaintColor}" />
+    <SolidColorBrush x:Key="Ok" Color="{StaticResource OkColor}" />
+    <SolidColorBrush x:Key="Warn" Color="{StaticResource WarnColor}" />
+    <SolidColorBrush x:Key="Bad" Color="{StaticResource BadColor}" />
+    <SolidColorBrush x:Key="Accent" Color="{StaticResource AccentColor}" />
+    <SolidColorBrush x:Key="AccentDeep" Color="{StaticResource AccentDeepColor}" />
+
+    <SolidColorBrush x:Key="OkSoft" Color="#E8F6EE" />
+    <SolidColorBrush x:Key="WarnSoft" Color="#FCF4E1" />
+    <SolidColorBrush x:Key="BadSoft" Color="#FCEBE9" />
+    <SolidColorBrush x:Key="AccentSoft" Color="#E9F1FA" />
+
+    <!-- The header band. Dark on purpose: it separates chrome from evidence at a glance. -->
+    <LinearGradientBrush x:Key="HeaderFill" StartPoint="0,0" EndPoint="1,0">
+        <GradientStop Color="#161D29" Offset="0" />
+        <GradientStop Color="#222E42" Offset="0.55" />
+        <GradientStop Color="#1B2534" Offset="1" />
+    </LinearGradientBrush>
+
+    <!--
+        The rule under a section heading. Strong at the left where the heading starts and
+        fading out across the card, so it reads as an underline belonging to the title
+        rather than as a border cutting the card in half.
+    -->
+    <LinearGradientBrush x:Key="SectionRule" StartPoint="0,0" EndPoint="1,0">
+        <GradientStop Color="#1F6FB8" Offset="0" />
+        <GradientStop Color="#4A90D9" Offset="0.35" />
+        <GradientStop Color="#00DFE3EA" Offset="1" />
+    </LinearGradientBrush>
+
+    <LinearGradientBrush x:Key="IconBadgeFill" StartPoint="0,0" EndPoint="1,1">
+        <GradientStop Color="#E9F1FA" Offset="0" />
+        <GradientStop Color="#D8E7F7" Offset="1" />
+    </LinearGradientBrush>
+
+    <!-- ============================ Type ============================ -->
+
+    <Style TargetType="TextBlock" x:Key="Display">
+        <Setter Property="FontSize" Value="20" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Foreground" Value="White" />
+    </Style>
+
+    <Style TargetType="TextBlock" x:Key="Heading">
+        <Setter Property="FontSize" Value="16" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Foreground" Value="{StaticResource Text}" />
+        <Setter Property="Margin" Value="0,0,0,10" />
+    </Style>
+
+    <Style TargetType="TextBlock" x:Key="Subheading">
+        <Setter Property="FontSize" Value="13" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Foreground" Value="{StaticResource Text}" />
+    </Style>
+
+    <!--
+        Section labels are set in small caps with letter spacing. It reads as a label rather
+        than as a short sentence, which lets the figure beside it carry the weight.
+    -->
+    <Style TargetType="TextBlock" x:Key="Label">
+        <Setter Property="FontSize" Value="10.5" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Foreground" Value="{StaticResource Faint}" />
+        <Setter Property="TextOptions.TextFormattingMode" Value="Ideal" />
+    </Style>
+
+    <Style TargetType="TextBlock" x:Key="Value">
+        <Setter Property="FontSize" Value="22" />
+        <Setter Property="FontWeight" Value="Bold" />
+        <Setter Property="Foreground" Value="{StaticResource Text}" />
+    </Style>
+
+    <Style TargetType="TextBlock" x:Key="ValueSmall">
+        <Setter Property="FontSize" Value="15" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Foreground" Value="{StaticResource Text}" />
+    </Style>
+
+    <Style TargetType="TextBlock" x:Key="Hint">
+        <Setter Property="FontSize" Value="11.5" />
+        <Setter Property="Foreground" Value="{StaticResource Faint}" />
+        <Setter Property="TextWrapping" Value="Wrap" />
+    </Style>
+
+    <Style TargetType="TextBlock" x:Key="Body">
+        <Setter Property="FontSize" Value="13" />
+        <Setter Property="Foreground" Value="{StaticResource Muted}" />
+        <Setter Property="TextWrapping" Value="Wrap" />
+        <Setter Property="LineHeight" Value="19" />
+    </Style>
+
+    <!-- ============================ Surfaces ============================ -->
+
+    <Style TargetType="Border" x:Key="Card">
+        <Setter Property="Background" Value="{StaticResource Surface}" />
+        <Setter Property="BorderBrush" Value="{StaticResource Border}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="10" />
+        <Setter Property="Padding" Value="18,16" />
+        <Setter Property="Effect">
+            <Setter.Value>
+                <!-- Barely there. Enough to lift the card off the page, not enough to notice. -->
+                <DropShadowEffect Color="#25324A" BlurRadius="14" ShadowDepth="2"
+                                  Direction="270" Opacity="0.06" />
+            </Setter.Value>
+        </Setter>
+
+        <Style.Triggers>
+            <!--
+                Cards fade in once, when the window opens. Only opacity is animated: a
+                transform set through a Style is one object shared by every card, and
+                animating a shared Freezable is how you get an exception on a machine you
+                do not own.
+            -->
+            <EventTrigger RoutedEvent="FrameworkElement.Loaded">
+                <BeginStoryboard>
+                    <Storyboard>
+                        <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                                         From="0" To="1" Duration="0:0:0.34" />
+                    </Storyboard>
+                </BeginStoryboard>
+            </EventTrigger>
+
+            <!-- Lifts under the pointer. Nothing moves; only the shadow and the edge. -->
+            <Trigger Property="IsMouseOver" Value="True">
+                <Setter Property="BorderBrush" Value="#C6D4E6" />
+                <Setter Property="Effect">
+                    <Setter.Value>
+                        <DropShadowEffect Color="#25324A" BlurRadius="22" ShadowDepth="4"
+                                          Direction="270" Opacity="0.13" />
+                    </Setter.Value>
+                </Setter>
+            </Trigger>
+        </Style.Triggers>
+    </Style>
+
+    <!--
+        A section heading: an icon in a tinted disc, the title beside it, and a rule under
+        both that runs the width of the card. The title alone, set small against the left
+        edge of a card, read as a stray line of text rather than as the head of a panel.
+    -->
+    <Style TargetType="TextBlock" x:Key="SectionTitle">
+        <Setter Property="FontSize" Value="16" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Foreground" Value="{StaticResource Text}" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+        <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+    </Style>
+
+    <Style TargetType="Border" x:Key="IconBadge">
+        <Setter Property="Background" Value="{StaticResource IconBadgeFill}" />
+        <Setter Property="CornerRadius" Value="9" />
+        <Setter Property="Width" Value="34" />
+        <Setter Property="Height" Value="34" />
+        <Setter Property="Margin" Value="0,0,11,0" />
+    </Style>
+
+    <!--
+        The marker at the head of a list row. Rows of bare text spread down a tall card look
+        like they are floating; a badge gives each row an anchor at the left edge and enough
+        visual weight that the space around it reads as spacing rather than as a gap.
+    -->
+    <Style TargetType="Border" x:Key="RowBadge">
+        <Setter Property="Background" Value="{StaticResource AccentSoft}" />
+        <Setter Property="CornerRadius" Value="6" />
+        <Setter Property="Width" Value="24" />
+        <Setter Property="Height" Value="24" />
+        <Setter Property="VerticalAlignment" Value="Top" />
+        <Setter Property="Margin" Value="0,1,11,0" />
+    </Style>
+
+    <Style TargetType="TextBlock" x:Key="BadgeNumber">
+        <Setter Property="FontSize" Value="11.5" />
+        <Setter Property="FontWeight" Value="Bold" />
+        <Setter Property="Foreground" Value="{StaticResource Accent}" />
+        <Setter Property="HorizontalAlignment" Value="Center" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+
+    <Style TargetType="TextBlock" x:Key="RowTitle">
+        <Setter Property="FontSize" Value="13.5" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Foreground" Value="{StaticResource Text}" />
+        <Setter Property="TextWrapping" Value="Wrap" />
+    </Style>
+
+    <Style TargetType="TextBlock" x:Key="RowText">
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="Foreground" Value="{StaticResource Muted}" />
+        <Setter Property="TextWrapping" Value="Wrap" />
+        <Setter Property="LineHeight" Value="17.5" />
+        <Setter Property="Margin" Value="0,3,0,0" />
+    </Style>
+
+    <!--
+        Title and explanation as one running paragraph rather than stacked.
+        A short bold title on a line of its own ends after two words and leaves the rest of
+        the row blank, and the explanation starts again underneath it - two ragged left edges
+        and a hole between them. Run together, the text reaches both margins and the bold
+        opening still reads as the heading it is.
+    -->
+    <Style TargetType="TextBlock" x:Key="RowFlow">
+        <Setter Property="FontSize" Value="12.5" />
+        <Setter Property="Foreground" Value="{StaticResource Muted}" />
+        <Setter Property="TextWrapping" Value="Wrap" />
+        <Setter Property="LineHeight" Value="18.5" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+
+    <!--
+        The standing disclaimer. It was set in the faintest grey in the palette at eleven
+        pixels, on a grey strip - which is how you say something you do not want read. It is
+        a legal boundary on what the evidence proves, so it is set to be read.
+    -->
+    <Style TargetType="TextBlock" x:Key="FooterNote">
+        <Setter Property="FontSize" Value="12.5" />
+        <Setter Property="Foreground" Value="{StaticResource Muted}" />
+        <Setter Property="TextWrapping" Value="Wrap" />
+        <Setter Property="LineHeight" Value="18" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+
+    <Style TargetType="Path" x:Key="Glyph">
+        <Setter Property="Stroke" Value="{StaticResource Accent}" />
+        <Setter Property="StrokeThickness" Value="1.5" />
+        <Setter Property="StrokeEndLineCap" Value="Round" />
+        <Setter Property="StrokeStartLineCap" Value="Round" />
+        <Setter Property="StrokeLineJoin" Value="Round" />
+        <Setter Property="Fill" Value="{x:Null}" />
+        <Setter Property="Stretch" Value="Uniform" />
+        <Setter Property="Width" Value="17" />
+        <Setter Property="Height" Value="17" />
+        <Setter Property="HorizontalAlignment" Value="Center" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+
+    <!-- The live indicator breathes while a test is running and sits still when it is not,
+         so the window says at a glance whether anything is being recorded. -->
+    <Style TargetType="Ellipse" x:Key="LiveDot">
+        <Style.Triggers>
+            <DataTrigger Binding="{Binding IsRunning}" Value="True">
+                <DataTrigger.EnterActions>
+                    <BeginStoryboard x:Name="Pulse">
+                        <Storyboard>
+                            <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                                             From="1" To="0.28" Duration="0:0:1.1"
+                                             AutoReverse="True" RepeatBehavior="Forever" />
+                        </Storyboard>
+                    </BeginStoryboard>
+                </DataTrigger.EnterActions>
+                <DataTrigger.ExitActions>
+                    <StopStoryboard BeginStoryboardName="Pulse" />
+                </DataTrigger.ExitActions>
+            </DataTrigger>
+        </Style.Triggers>
+    </Style>
+
+    <Style TargetType="Border" x:Key="Banner" BasedOn="{StaticResource Card}">
+        <Setter Property="Padding" Value="16,13" />
+        <Setter Property="Effect" Value="{x:Null}" />
+    </Style>
+
+    <!-- A hairline between rows of a figure list. -->
+    <Style TargetType="Border" x:Key="RowRule">
+        <Setter Property="BorderBrush" Value="{StaticResource Hairline}" />
+        <Setter Property="BorderThickness" Value="0,1,0,0" />
+    </Style>
+
+    <!-- ============================ Buttons ============================ -->
+
+    <Style TargetType="Button" x:Key="Primary">
+        <Setter Property="Background" Value="{StaticResource Accent}" />
+        <Setter Property="Foreground" Value="White" />
+        <Setter Property="FontSize" Value="14" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Padding" Value="24,13" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="HorizontalContentAlignment" Value="Center" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="Chrome" Background="{TemplateBinding Background}"
+                            CornerRadius="8" Padding="{TemplateBinding Padding}">
+                        <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                          VerticalAlignment="Center" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Chrome" Property="Background" Value="{StaticResource AccentDeep}" />
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter TargetName="Chrome" Property="Opacity" Value="0.35" />
+                            <Setter Property="Cursor" Value="Arrow" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style TargetType="Button" x:Key="Secondary" BasedOn="{StaticResource Primary}">
+        <Setter Property="Background" Value="{StaticResource Surface}" />
+        <Setter Property="Foreground" Value="{StaticResource Text}" />
+        <Setter Property="FontSize" Value="12.5" />
+        <Setter Property="FontWeight" Value="Normal" />
+        <Setter Property="Padding" Value="15,9" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="Chrome" Background="{TemplateBinding Background}"
+                            BorderBrush="{StaticResource Border}" BorderThickness="1"
+                            CornerRadius="7" Padding="{TemplateBinding Padding}">
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Chrome" Property="Background" Value="{StaticResource AccentSoft}" />
+                            <Setter TargetName="Chrome" Property="BorderBrush" Value="{StaticResource Accent}" />
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter TargetName="Chrome" Property="Opacity" Value="0.4" />
+                            <Setter Property="Cursor" Value="Arrow" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- Stopping a running test is destructive, and the button says so before it is clicked. -->
+    <Style TargetType="Button" x:Key="Danger" BasedOn="{StaticResource Secondary}">
+        <Setter Property="Foreground" Value="{StaticResource Bad}" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="Chrome" Background="{TemplateBinding Background}"
+                            BorderBrush="#EBC4BF" BorderThickness="1"
+                            CornerRadius="7" Padding="{TemplateBinding Padding}">
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Chrome" Property="Background" Value="{StaticResource BadSoft}" />
+                            <Setter TargetName="Chrome" Property="BorderBrush" Value="{StaticResource Bad}" />
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter TargetName="Chrome" Property="Opacity" Value="0.4" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- ============================ ComboBox ============================ -->
+
+    <Style TargetType="ToggleButton" x:Key="ComboChrome">
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ToggleButton">
+                    <Border x:Name="Chrome" Background="{StaticResource Surface}"
+                            BorderBrush="{StaticResource Border}" BorderThickness="1"
+                            CornerRadius="7" />
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Chrome" Property="BorderBrush" Value="{StaticResource Accent}" />
+                        </Trigger>
+                        <Trigger Property="IsChecked" Value="True">
+                            <Setter TargetName="Chrome" Property="BorderBrush" Value="{StaticResource Accent}" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style TargetType="ComboBoxItem" x:Key="ComboItem">
+        <Setter Property="Padding" Value="12,9" />
+        <Setter Property="Foreground" Value="{StaticResource Text}" />
+        <Setter Property="FontSize" Value="13" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ComboBoxItem">
+                    <Border x:Name="Chrome" Background="Transparent" CornerRadius="5"
+                            Padding="{TemplateBinding Padding}" Margin="4,1">
+                        <ContentPresenter />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsHighlighted" Value="True">
+                            <Setter TargetName="Chrome" Property="Background" Value="{StaticResource AccentSoft}" />
+                        </Trigger>
+                        <Trigger Property="IsSelected" Value="True">
+                            <Setter TargetName="Chrome" Property="Background" Value="{StaticResource AccentSoft}" />
+                            <Setter Property="FontWeight" Value="SemiBold" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style TargetType="ComboBox" x:Key="Field">
+        <Setter Property="FontSize" Value="13.5" />
+        <Setter Property="Foreground" Value="{StaticResource Text}" />
+        <Setter Property="Height" Value="42" />
+        <Setter Property="ItemContainerStyle" Value="{StaticResource ComboItem}" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ComboBox">
+                    <Grid>
+                        <ToggleButton Style="{StaticResource ComboChrome}" Focusable="False"
+                                      IsChecked="{Binding IsDropDownOpen, Mode=TwoWay,
+                                                  RelativeSource={RelativeSource TemplatedParent}}" />
+
+                        <!--
+                            The selected item is drawn with the list's own ItemTemplate.
+                            SelectionBoxItemTemplate is the obvious binding and is empty when
+                            the list uses DisplayMemberPath, which puts the record's ToString
+                            in the field - "DurationChoice { Label = 48 sati, ... }" sitting
+                            in the control the user is meant to choose a duration from.
+                        -->
+                        <ContentPresenter Margin="14,0,38,0" VerticalAlignment="Center"
+                                          Content="{TemplateBinding SelectionBoxItem}"
+                                          ContentTemplate="{TemplateBinding ItemTemplate}"
+                                          IsHitTestVisible="False" />
+
+                        <Path x:Name="Arrow" Data="M 0 0 L 5 5 L 10 0" Stroke="{StaticResource Muted}"
+                              StrokeThickness="1.6" StrokeEndLineCap="Round" StrokeStartLineCap="Round"
+                              HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,15,0" />
+
+                        <Popup IsOpen="{TemplateBinding IsDropDownOpen}" Placement="Bottom"
+                               AllowsTransparency="True" PopupAnimation="Fade" Focusable="False">
+                            <Border Background="{StaticResource Surface}" BorderBrush="{StaticResource Border}"
+                                    BorderThickness="1" CornerRadius="8" Padding="0,4" Margin="0,4,0,0"
+                                    MinWidth="{TemplateBinding ActualWidth}">
+                                <Border.Effect>
+                                    <DropShadowEffect Color="#25324A" BlurRadius="18" ShadowDepth="3"
+                                                      Direction="270" Opacity="0.16" />
+                                </Border.Effect>
+                                <ItemsPresenter />
+                            </Border>
+                        </Popup>
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Arrow" Property="Stroke" Value="{StaticResource Accent}" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- ============================ Progress ============================ -->
+
+    <Style TargetType="ProgressBar" x:Key="Thin">
+        <Setter Property="Height" Value="5" />
+        <Setter Property="Foreground" Value="{StaticResource Accent}" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ProgressBar">
+                    <Border Background="{StaticResource Sunken}" CornerRadius="3" ClipToBounds="True">
+                        <Grid>
+                            <Rectangle x:Name="PART_Track" />
+                            <Rectangle x:Name="PART_Indicator" HorizontalAlignment="Left"
+                                       Fill="{TemplateBinding Foreground}" RadiusX="3" RadiusY="3" />
+                        </Grid>
+                    </Border>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- ============================ Scrollbar ============================ -->
+
+    <Style TargetType="Thumb" x:Key="ScrollThumb">
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Thumb">
+                    <Border x:Name="Chrome" Background="#C3C8D2" CornerRadius="4" Margin="3,0" />
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Chrome" Property="Background" Value="#9AA1AE" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style TargetType="ScrollBar">
+        <Setter Property="Width" Value="11" />
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ScrollBar">
+                    <Grid Background="{TemplateBinding Background}">
+                        <Track x:Name="PART_Track" IsDirectionReversed="True">
+                            <Track.Thumb>
+                                <Thumb Style="{StaticResource ScrollThumb}" />
+                            </Track.Thumb>
+                            <!-- No stepper buttons and no page-track buttons: they exist only
+                                 to be misclicked, and they are what dates the stock bar. -->
+                            <Track.IncreaseRepeatButton>
+                                <RepeatButton Command="ScrollBar.PageDownCommand" Opacity="0"
+                                              Focusable="False" IsTabStop="False" />
+                            </Track.IncreaseRepeatButton>
+                            <Track.DecreaseRepeatButton>
+                                <RepeatButton Command="ScrollBar.PageUpCommand" Opacity="0"
+                                              Focusable="False" IsTabStop="False" />
+                            </Track.DecreaseRepeatButton>
+                        </Track>
+                    </Grid>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- ============================ Tooltip ============================ -->
+
+    <Style TargetType="ToolTip">
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ToolTip">
+                    <Border Background="#1A2230" CornerRadius="6" Padding="10,7" MaxWidth="320">
+                        <ContentPresenter TextBlock.Foreground="White" TextBlock.FontSize="12" />
+                    </Border>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+</ResourceDictionary>

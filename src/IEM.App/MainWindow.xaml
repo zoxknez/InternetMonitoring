@@ -1,0 +1,882 @@
+<Window x:Class="IEM.App.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:controls="clr-namespace:IEM.App.Controls"
+        xmlns:tb="clr-namespace:H.NotifyIcon;assembly=H.NotifyIcon.Wpf"
+        Title="Internet Monitoring"
+        Width="1180" Height="840" MinWidth="940" MinHeight="620"
+        Background="{StaticResource Page}"
+        FontFamily="Segoe UI"
+        Foreground="{StaticResource Text}"
+        TextOptions.TextFormattingMode="Ideal"
+        TextOptions.TextRenderingMode="ClearType"
+        WindowStartupLocation="CenterScreen">
+
+    <!--
+        A dashboard sized to the window, with two rules that the previous attempts broke.
+        Nothing scrolls, and nothing is clipped.
+        Those pull against each other: a fixed height with more content than fits does not
+        scroll, it cuts - which is how "Nenadzirano" lost its last line and the footer lost
+        its second. So every block that has to fit is laid out with UniformGrid, which
+        divides the space it is given exactly, and the text inside it is short enough to sit
+        in the resulting cell. Nothing here carries a MinHeight that could push the footer
+        off the bottom edge.
+    -->
+
+    <Window.Resources>
+        <controls:BoolToVisibilityConverter x:Key="BoolToVisible" />
+        <controls:PresentToVisibilityConverter x:Key="PresentToVisible" />
+
+        <!-- Label and its explanation on the left, figure hard right, centred in a cell the
+             panel sizes. Six of these divide the card's height exactly. -->
+        <DataTemplate x:Key="MetricRow">
+            <Border BorderBrush="{StaticResource Hairline}" BorderThickness="0,0,0,1">
+                <Grid VerticalAlignment="Center" Margin="0,0,0,1">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <!-- Name and explanation run together, same as every other list in the
+                         window. Stacked, the short ones ended after two words and left the
+                         middle of the row blank. -->
+                    <TextBlock VerticalAlignment="Center" TextWrapping="Wrap" LineHeight="16"
+                               FontSize="11.5" Foreground="{StaticResource Muted}" Margin="0,0,10,0">
+                        <Run Text="{Binding Label, Mode=OneWay}" FontWeight="SemiBold"
+                             Foreground="{StaticResource Text}" />
+                        <Run Text=" · " Foreground="{StaticResource Faint}" />
+                        <Run Text="{Binding Hint, Mode=OneWay}" />
+                    </TextBlock>
+
+                    <TextBlock Grid.Column="1" Text="{Binding Value}" FontSize="19" FontWeight="Bold"
+                               Foreground="{StaticResource Text}" VerticalAlignment="Center"
+                               Margin="10,0,0,0" />
+                </Grid>
+            </Border>
+        </DataTemplate>
+    </Window.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <tb:TaskbarIcon x:Name="Tray"
+                        ToolTipText="Internet Monitoring"
+                        TrayLeftMouseUp="OnTrayClicked">
+            <tb:TaskbarIcon.ContextMenu>
+                <ContextMenu>
+                    <MenuItem Header="Prikaži prozor" Click="OnShowWindow" />
+                    <Separator />
+                    <MenuItem Header="Otvori folder sa dokazima" Click="OnOpenFolder" />
+                    <Separator />
+                    <MenuItem Header="Izađi" Click="OnExit" />
+                </ContextMenu>
+            </tb:TaskbarIcon.ContextMenu>
+        </tb:TaskbarIcon>
+
+        <!-- ===================== Header ===================== -->
+        <Border Background="{StaticResource HeaderFill}" Padding="0,13">
+            <Grid MaxWidth="1300" Margin="22,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <!-- Name and explanation on one line, not stacked. Stacked, the title sat in
+                     the top-left corner with the description under it and the rest of a
+                     1100px band empty; run together they carry the width. -->
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                    <Border Background="#2C3A52" CornerRadius="8" Width="32" Height="32"
+                            Margin="0,0,11,0" BorderBrush="#3E5070" BorderThickness="1">
+                        <Path Style="{StaticResource Glyph}" Stroke="#8FB6E4" Width="16" Height="16"
+                              Data="M 1,6 C 5,1.5 13,1.5 17,6 M 4,9.5 C 7,6.5 11,6.5 14,9.5 M 7,13 C 8,11.8 10,11.8 11,13 M 9,15.6 L 9,15.7" />
+                    </Border>
+
+                    <TextBlock Style="{StaticResource Display}" FontSize="17"
+                               VerticalAlignment="Center" Text="Internet Monitoring" />
+
+                    <!-- Both hidden once a test is running: the line of session facts that
+                         replaces them says what is being measured, which by then is what the
+                         reader wants, and sharing the band left both of them truncated. -->
+                    <Rectangle Width="1" Height="19" Fill="#3E5070" Margin="14,0,14,0"
+                               VerticalAlignment="Center"
+                               Visibility="{Binding IsRunning, Converter={StaticResource BoolToVisible},
+                                            ConverterParameter=Invert}" />
+
+                    <TextBlock Text="{Binding HostDescription}" FontSize="11.5" Foreground="#9DAAC2"
+                               VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                               MaxWidth="580"
+                               Visibility="{Binding IsRunning, Converter={StaticResource BoolToVisible},
+                                            ConverterParameter=Invert}" />
+                </StackPanel>
+
+                <TextBlock Grid.Column="1" Text="{Binding FactsLine}" FontSize="10.5"
+                           Foreground="#8E9BB3" VerticalAlignment="Center" TextAlignment="Right"
+                           TextTrimming="CharacterEllipsis" Margin="20,0,16,0" />
+
+                <Border Grid.Column="2" x:Name="StatusBadge" Background="#1F2B3C" CornerRadius="20"
+                        Padding="13,7" VerticalAlignment="Center" BorderThickness="1"
+                        BorderBrush="#33415A">
+                    <StackPanel Orientation="Horizontal">
+                        <Ellipse x:Name="StatusDot" Style="{StaticResource LiveDot}"
+                                 Width="9" Height="9" Fill="{StaticResource Faint}"
+                                 VerticalAlignment="Center" Margin="0,0,8,0" />
+                        <TextBlock Text="{Binding StatusPill}" FontSize="10.5" FontWeight="SemiBold"
+                                   Foreground="#D6DEEC" VerticalAlignment="Center" />
+                    </StackPanel>
+                </Border>
+            </Grid>
+        </Border>
+
+        <Grid Grid.Row="1" MaxWidth="1300" Margin="22,14,22,14">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <!-- ===================== Fault ===================== -->
+            <Border Style="{StaticResource Banner}" Background="{StaticResource BadSoft}"
+                    BorderBrush="{StaticResource Bad}" Margin="0,0,0,10" Padding="14,9"
+                    Visibility="{Binding Fault, Converter={StaticResource PresentToVisible}}">
+                <TextBlock Style="{StaticResource Body}" Foreground="{StaticResource Text}"
+                           FontSize="12.5" Text="{Binding Fault}" />
+            </Border>
+
+            <!--
+                Lost in the rewrite that turned this window into a dashboard, and worth more
+                than the row it costs: someone building a speed claim on Wi-Fi needs to hear
+                it in the first minute, not after two days of recording. The row is Auto, so
+                on a wired link it takes no height at all.
+            -->
+            <Border Grid.Row="1" Style="{StaticResource Banner}" Background="{StaticResource WarnSoft}"
+                    BorderBrush="{StaticResource Warn}" Margin="0,0,0,10" Padding="14,9"
+                    Visibility="{Binding ShowWirelessWarning, Converter={StaticResource BoolToVisible}}">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+
+                    <Border Background="#F7E9C4" CornerRadius="6" Width="24" Height="24"
+                            Margin="0,0,11,0" VerticalAlignment="Center">
+                        <Path Style="{StaticResource Glyph}" Stroke="#A07A00" Width="13" Height="13"
+                              StrokeThickness="2" Data="M 9,3 L 9,10.4 M 9,13.6 L 9,13.7" />
+                    </Border>
+
+                    <TextBlock Grid.Column="1" Style="{StaticResource RowFlow}" VerticalAlignment="Center">
+                        <Run Text="Nadzirete bežičnu vezu" FontWeight="SemiBold"
+                             Foreground="{StaticResource Text}" />
+                        <Run Text=" · " Foreground="{StaticResource Faint}" />
+                        <Run Text="Evidencija prekida preko Wi-Fi-a je punovažna, ali se ugovorena brzina po propisu ne može dokazivati bežično - za to je potrebno merenje preko Ethernet kabla povezanog direktno na modem." />
+                    </TextBlock>
+                </Grid>
+            </Border>
+
+            <!-- ===================== Idle ===================== -->
+            <!-- Three columns of near-equal content rather than two of unequal, which left
+                 the shorter one with a band of blank card under it. -->
+            <UniformGrid Grid.Row="4" Columns="3"
+                         Visibility="{Binding IsRunning, Converter={StaticResource BoolToVisible},
+                                      ConverterParameter=Invert}">
+
+                <Border Style="{StaticResource Card}" Padding="22,18" Margin="0,0,7,0">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+
+                        <StackPanel>
+                            <StackPanel Orientation="Horizontal">
+                                <Border Style="{StaticResource IconBadge}">
+                                    <Path Style="{StaticResource Glyph}"
+                                          Data="M 9,1.6 A 7.4,7.4 0 1 1 8.99,1.6 M 9,4.8 L 9,9 L 12.4,11" />
+                                </Border>
+                                <TextBlock Style="{StaticResource SectionTitle}" Text="Priprema testa" />
+                            </StackPanel>
+                            <Rectangle Height="2" Fill="{StaticResource SectionRule}" Margin="0,12,0,14"
+                                       RadiusX="1" RadiusY="1" />
+                        </StackPanel>
+
+                        <Grid Grid.Row="1">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                            </Grid.RowDefinitions>
+
+                            <TextBlock Style="{StaticResource Body}" FontSize="13" LineHeight="21"
+                                       Text="Izaberite koliko dugo nadzor treba da traje. Za prigovor operateru uobičajeno je 48 sati - to je rok u kom je operater dužan da otkloni smetnju." />
+
+                            <!-- What a running test actually means for the machine. Without it
+                                 this card was a paragraph and a button with a hole between them. -->
+                            <ItemsControl Grid.Row="1" Margin="0,16,0,12">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <UniformGrid Columns="1" />
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+
+                                <Border BorderBrush="{StaticResource Hairline}" BorderThickness="0,0,0,1">
+                                    <Grid VerticalAlignment="Center" Margin="0,0,0,8">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <Border Style="{StaticResource RowBadge}">
+                                            <Path Style="{StaticResource Glyph}" Width="13" Height="13"
+                                                  StrokeThickness="2" Data="M 4.5,9.2 L 7.6,12.2 L 13.5,5.8" />
+                                        </Border>
+                                        <TextBlock Grid.Column="1" Style="{StaticResource RowFlow}">
+                                            <Run Text="Radi u pozadini" FontWeight="SemiBold" Foreground="{StaticResource Text}" />
+                                            <Run Text=" · " Foreground="{StaticResource Faint}" />
+                                            <Run Text="Prozor možete zatvoriti. Nadzor se nastavlja kao Windows servis." />
+                                        </TextBlock>
+                                    </Grid>
+                                </Border>
+                                <Border BorderBrush="{StaticResource Hairline}" BorderThickness="0,0,0,1">
+                                    <Grid VerticalAlignment="Center" Margin="0,0,0,8">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <Border Style="{StaticResource RowBadge}">
+                                            <Path Style="{StaticResource Glyph}" Width="13" Height="13"
+                                                  StrokeThickness="2" Data="M 4.5,9.2 L 7.6,12.2 L 13.5,5.8" />
+                                        </Border>
+                                        <TextBlock Grid.Column="1" Style="{StaticResource RowFlow}">
+                                            <Run Text="Preživljava restart" FontWeight="SemiBold" Foreground="{StaticResource Text}" />
+                                            <Run Text=" · " Foreground="{StaticResource Faint}" />
+                                            <Run Text="Posle restarta računara sesija se nastavlja tamo gde je stala." />
+                                        </TextBlock>
+                                    </Grid>
+                                </Border>
+                                <Border>
+                                    <Grid VerticalAlignment="Center" Margin="0,0,0,8">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <Border Style="{StaticResource RowBadge}">
+                                            <Path Style="{StaticResource Glyph}" Width="13" Height="13"
+                                                  StrokeThickness="2" Data="M 4.5,9.2 L 7.6,12.2 L 13.5,5.8" />
+                                        </Border>
+                                        <TextBlock Grid.Column="1" Style="{StaticResource RowFlow}">
+                                            <Run Text="Ne troši vaš saobraćaj" FontWeight="SemiBold" Foreground="{StaticResource Text}" />
+                                            <Run Text=" · " Foreground="{StaticResource Faint}" />
+                                            <Run Text="Provere su sitne. Merenje brzine je posebna komanda i ne pokreće se samo." />
+                                        </TextBlock>
+                                    </Grid>
+                                </Border>
+                            </ItemsControl>
+                        </Grid>
+
+                        <StackPanel Grid.Row="2">
+                            <TextBlock Style="{StaticResource Label}" Text="TRAJANJE NADZORA"
+                                       Margin="0,0,0,6" />
+                            <ComboBox Style="{StaticResource Field}"
+                                      ItemsSource="{Binding Durations}"
+                                      SelectedItem="{Binding SelectedDuration}"
+                                      AutomationProperties.AutomationId="DurationField"
+                                      Margin="0,0,0,8">
+                                <ComboBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="*" />
+                                            </Grid.ColumnDefinitions>
+
+                                            <TextBlock Text="{Binding Label}" FontWeight="SemiBold"
+                                                       VerticalAlignment="Center" />
+                                            <TextBlock Grid.Column="1" Text="{Binding Note}"
+                                                       FontSize="11.5" Foreground="{StaticResource Faint}"
+                                                       VerticalAlignment="Center" TextAlignment="Right"
+                                                       TextTrimming="CharacterEllipsis" Margin="12,0,0,0" />
+                                        </Grid>
+                                    </DataTemplate>
+                                </ComboBox.ItemTemplate>
+                            </ComboBox>
+
+                            <!-- An interval is not what somebody needs before committing a machine
+                                 for two days; the day and hour they get the evidence back is. -->
+                            <TextBlock Style="{StaticResource Hint}" Text="{Binding EndsAtText}"
+                                       Margin="2,0,0,14" />
+
+                            <Button Style="{StaticResource Primary}" Content="POKRENI NADZOR"
+                                    Padding="20,13" Command="{Binding StartCommand}"
+                                    AutomationProperties.AutomationId="StartButton" />
+                            <TextBlock Style="{StaticResource Hint}" Margin="0,10,0,0"
+                                       TextAlignment="Center"
+                                       Text="Snimanje počinje odmah i traje dok test ne istekne ili ga ne zaustavite." />
+
+                            <Rectangle Height="1" Fill="{StaticResource Hairline}" Margin="0,16,0,12" />
+
+                            <TextBlock Style="{StaticResource Label}" Text="MERENJE BRZINE PO ZAKAZU"
+                                       Margin="0,0,0,6" />
+                            <TextBlock Style="{StaticResource Hint}" Margin="0,0,0,8"
+                                       Text="Ako brzina pada u određeno doba dana, zakažite merenje za to vreme. Broj je koliko daleko je merenje." />
+                            <StackPanel Orientation="Horizontal">
+                                <TextBox Text="{Binding SpeedScheduleAmount}" Width="44" Padding="4,3"
+                                         FontSize="11.5" VerticalAlignment="Center" MaxLength="5" />
+                                <ComboBox ItemsSource="{Binding SpeedScheduleUnits}"
+                                          SelectedItem="{Binding SelectedSpeedScheduleUnit}"
+                                          Width="64" Margin="4,0,0,0" FontSize="11.5"
+                                          VerticalAlignment="Center" />
+                                <Button Style="{StaticResource Secondary}" Content="Zakaži"
+                                        Padding="12,4" FontSize="11.5" Margin="4,0,0,0"
+                                        Command="{Binding ScheduleSpeedCommand}"
+                                        IsEnabled="{Binding CanScheduleSpeed}" />
+                                <Button Style="{StaticResource Secondary}" Content="Izmeri odmah"
+                                        Padding="10,4" FontSize="11.5" Margin="4,0,0,0"
+                                        Command="{Binding MeasureNowCommand}"
+                                        IsEnabled="{Binding CanScheduleSpeed}"
+                                        ToolTip="Meri brzinu sada: sačeka da veza utihne, pa zapiše izmereno uz sesiju." />
+                            </StackPanel>
+
+                            <!-- Without the contracted rate a measurement can be recorded but
+                                 never judged, so every figure taken here was filed as unusable
+                                 and the verdict had to be fetched from the console. -->
+                            <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                <TextBlock Text="Ugovoreno" FontSize="11.5" VerticalAlignment="Center"
+                                           Foreground="{StaticResource Muted}" Margin="1,0,6,0" />
+                                <TextBox Text="{Binding ContractedRateText}" Width="72" Padding="4,3"
+                                         FontSize="11.5" VerticalAlignment="Center" MaxLength="12"
+                                         AutomationProperties.AutomationId="ContractedRateBox"
+                                         ToolTip="Ugovorena brzina u Mbit/s, kako piše u ugovoru: 100 ili 100/20 (preuzimanje/slanje). Bez nje se merenje zapisuje, ali se ne ocenjuje." />
+                                <TextBlock Text="Mbit/s  (npr. 100/20)" FontSize="11.5" VerticalAlignment="Center"
+                                           Foreground="{StaticResource Faint}" Margin="6,0,0,0" />
+                            </StackPanel>
+                            <TextBlock Text="{Binding SpeedStatus}" FontSize="11.5" Margin="1,6,0,0"
+                                       Foreground="{StaticResource Muted}" TextWrapping="Wrap" />
+                        </StackPanel>
+                    </Grid>
+                </Border>
+
+                <Border Style="{StaticResource Card}" Padding="22,18" Margin="4,0,4,0">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+
+                        <StackPanel>
+                            <StackPanel Orientation="Horizontal">
+                                <Border Style="{StaticResource IconBadge}">
+                                    <Path Style="{StaticResource Glyph}"
+                                          Data="M 3.4,1.4 L 10.6,1.4 L 14.6,5.4 L 14.6,16.6 L 3.4,16.6 Z M 10.6,1.4 L 10.6,5.4 L 14.6,5.4 M 6.2,9.6 L 11.8,9.6 M 6.2,12.6 L 11.8,12.6" />
+                                </Border>
+                                <TextBlock Style="{StaticResource SectionTitle}" Text="Šta dobijate na kraju" />
+                            </StackPanel>
+                            <Rectangle Height="2" Fill="{StaticResource SectionRule}" Margin="0,12,0,4"
+                                       RadiusX="1" RadiusY="1" />
+                        </StackPanel>
+
+                        <!-- The five entries divide the card's height between them. Stacked
+                             from the top they bunched up and left the lower third blank. -->
+                        <ItemsControl Grid.Row="1">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <UniformGrid Columns="1" />
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+
+                            <Border BorderBrush="{StaticResource Hairline}" BorderThickness="0,0,0,1">
+                                <Grid VerticalAlignment="Center" Margin="0,0,0,8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Border Style="{StaticResource RowBadge}">
+                                        <TextBlock Style="{StaticResource BadgeNumber}" Text="1" />
+                                    </Border>
+                                    <TextBlock Grid.Column="1" Style="{StaticResource RowFlow}">
+                                        <Run Text="Izvestaj.pdf" FontWeight="SemiBold" Foreground="{StaticResource Text}" />
+                                        <Run Text=" · " Foreground="{StaticResource Faint}" />
+                                        <Run Text="Verzija za štampu i prilaganje uz prigovor. Fontovi su ugrađeni, pa naša slova izgledaju isto na svakoj mašini." />
+                                    </TextBlock>
+                                </Grid>
+                            </Border>
+                            <Border BorderBrush="{StaticResource Hairline}" BorderThickness="0,0,0,1">
+                                <Grid VerticalAlignment="Center" Margin="0,0,0,8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Border Style="{StaticResource RowBadge}">
+                                        <TextBlock Style="{StaticResource BadgeNumber}" Text="2" />
+                                    </Border>
+                                    <TextBlock Grid.Column="1" Style="{StaticResource RowFlow}">
+                                        <Run Text="Izvestaj.html" FontWeight="SemiBold" Foreground="{StaticResource Text}" />
+                                        <Run Text=" · " Foreground="{StaticResource Faint}" />
+                                        <Run Text="Isti izveštaj za čitanje na ekranu, sa grafikonima. Otvara se u svakom pregledaču, i bez interneta." />
+                                    </TextBlock>
+                                </Grid>
+                            </Border>
+                            <Border BorderBrush="{StaticResource Hairline}" BorderThickness="0,0,0,1">
+                                <Grid VerticalAlignment="Center" Margin="0,0,0,8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Border Style="{StaticResource RowBadge}">
+                                        <TextBlock Style="{StaticResource BadgeNumber}" Text="3" />
+                                    </Border>
+                                    <TextBlock Grid.Column="1" Style="{StaticResource RowFlow}">
+                                        <Run Text="Prekidi.csv, Merenja.csv" FontWeight="SemiBold" Foreground="{StaticResource Text}" />
+                                        <Run Text=" · " Foreground="{StaticResource Faint}" />
+                                        <Run Text="Tabele prekida i merenja za Excel, sa donjom i gornjom granicom trajanja svakog prekida." />
+                                    </TextBlock>
+                                </Grid>
+                            </Border>
+                            <Border BorderBrush="{StaticResource Hairline}" BorderThickness="0,0,0,1">
+                                <Grid VerticalAlignment="Center" Margin="0,0,0,8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Border Style="{StaticResource RowBadge}">
+                                        <TextBlock Style="{StaticResource BadgeNumber}" Text="4" />
+                                    </Border>
+                                    <TextBlock Grid.Column="1" Style="{StaticResource RowFlow}">
+                                        <Run Text="SirovaEvidencija.jsonl" FontWeight="SemiBold" Foreground="{StaticResource Text}" />
+                                        <Run Text=" · " Foreground="{StaticResource Faint}" />
+                                        <Run Text="Sam dokaz, sa lancem otisaka. Izmena bilo kog reda narušava sve otiske posle njega." />
+                                    </TextBlock>
+                                </Grid>
+                            </Border>
+                            <Border>
+                                <Grid VerticalAlignment="Center" Margin="0,0,0,8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Border Style="{StaticResource RowBadge}">
+                                        <TextBlock Style="{StaticResource BadgeNumber}" Text="5" />
+                                    </Border>
+                                    <TextBlock Grid.Column="1" Style="{StaticResource RowFlow}">
+                                        <Run Text="SHA256SUMS.txt" FontWeight="SemiBold" Foreground="{StaticResource Text}" />
+                                        <Run Text=" · " Foreground="{StaticResource Faint}" />
+                                        <Run Text="Otisci svih fajlova u paketu. Proveru može ponoviti bilo ko, običnim alatima." />
+                                    </TextBlock>
+                                </Grid>
+                            </Border>
+                        </ItemsControl>
+                    </Grid>
+                </Border>
+
+                <Border Style="{StaticResource Card}" Padding="22,18" Margin="7,0,0,0">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+
+                        <StackPanel>
+                            <StackPanel Orientation="Horizontal">
+                                <Border Style="{StaticResource IconBadge}">
+                                    <Path Style="{StaticResource Glyph}"
+                                          Data="M 9,1.5 L 15.5,4.3 V 9 C 15.5,13.2 9,16.5 9,16.5 C 9,16.5 2.5,13.2 2.5,9 V 4.3 Z M 6.2,9 L 8.2,11 L 11.9,7.2" />
+                                </Border>
+                                <TextBlock Style="{StaticResource SectionTitle}" Text="Po čemu se razlikuje" />
+                            </StackPanel>
+                            <Rectangle Height="2" Fill="{StaticResource SectionRule}" Margin="0,12,0,4"
+                                       RadiusX="1" RadiusY="1" />
+                        </StackPanel>
+
+                        <ItemsControl Grid.Row="1">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <UniformGrid Columns="1" />
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+
+                            <Border BorderBrush="{StaticResource Hairline}" BorderThickness="0,0,0,1">
+                                <Grid VerticalAlignment="Center" Margin="0,0,0,8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Border Style="{StaticResource RowBadge}">
+                                        <Path Style="{StaticResource Glyph}" Width="13" Height="13"
+                                              StrokeThickness="2" Data="M 4.5,9.2 L 7.6,12.2 L 13.5,5.8" />
+                                    </Border>
+                                    <TextBlock Grid.Column="1" Style="{StaticResource RowFlow}">
+                                        <Run Text="Razlikuje ko je kriv" FontWeight="SemiBold" Foreground="{StaticResource Text}" />
+                                        <Run Text=" · " Foreground="{StaticResource Faint}" />
+                                        <Run Text="Razdvaja kvar na vašem računaru, na Wi-Fi vezi, na ruteru i iza njega. Prigovor se podnosi samo za ono poslednje." />
+                                    </TextBlock>
+                                </Grid>
+                            </Border>
+                            <Border BorderBrush="{StaticResource Hairline}" BorderThickness="0,0,0,1">
+                                <Grid VerticalAlignment="Center" Margin="0,0,0,8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Border Style="{StaticResource RowBadge}">
+                                        <Path Style="{StaticResource Glyph}" Width="13" Height="13"
+                                              StrokeThickness="2" Data="M 4.5,9.2 L 7.6,12.2 L 13.5,5.8" />
+                                    </Border>
+                                    <TextBlock Grid.Column="1" Style="{StaticResource RowFlow}">
+                                        <Run Text="Ne izmišlja prekide" FontWeight="SemiBold" Foreground="{StaticResource Text}" />
+                                        <Run Text=" · " Foreground="{StaticResource Faint}" />
+                                        <Run Text="Ako ping padne a TCP i TLS prolaze, to je filtriran ping, ne prekid. Mnoge mreže namerno blokiraju ping." />
+                                    </TextBlock>
+                                </Grid>
+                            </Border>
+                            <Border BorderBrush="{StaticResource Hairline}" BorderThickness="0,0,0,1">
+                                <Grid VerticalAlignment="Center" Margin="0,0,0,8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Border Style="{StaticResource RowBadge}">
+                                        <Path Style="{StaticResource Glyph}" Width="13" Height="13"
+                                              StrokeThickness="2" Data="M 4.5,9.2 L 7.6,12.2 L 13.5,5.8" />
+                                    </Border>
+                                    <TextBlock Grid.Column="1" Style="{StaticResource RowFlow}">
+                                        <Run Text="Ne broji spavanje računara" FontWeight="SemiBold" Foreground="{StaticResource Text}" />
+                                        <Run Text=" · " Foreground="{StaticResource Faint}" />
+                                        <Run Text="Dok je računar spavao ništa nije mereno, pa se ne računa ni kao prekid ni kao ispravan rad." />
+                                    </TextBlock>
+                                </Grid>
+                            </Border>
+                            <Border>
+                                <Grid VerticalAlignment="Center" Margin="0,0,0,8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Border Style="{StaticResource RowBadge}">
+                                        <Path Style="{StaticResource Glyph}" Width="13" Height="13"
+                                              StrokeThickness="2" Data="M 4.5,9.2 L 7.6,12.2 L 13.5,5.8" />
+                                    </Border>
+                                    <TextBlock Grid.Column="1" Style="{StaticResource RowFlow}">
+                                        <Run Text="Ne izmišlja preciznost" FontWeight="SemiBold" Foreground="{StaticResource Text}" />
+                                        <Run Text=" · " Foreground="{StaticResource Faint}" />
+                                        <Run Text="Svaki prekid nosi donju granicu koja se ne može osporiti, gornju, i procenu između njih." />
+                                    </TextBlock>
+                                </Grid>
+                            </Border>
+                        </ItemsControl>
+                    </Grid>
+                </Border>
+            </UniformGrid>
+
+            <!-- ===================== Running ===================== -->
+            <!-- Not a UniformGrid: the state name and the two clocks need room, a latency
+                 reading does not. Equal shares left the short tiles a sixth empty. -->
+            <Grid Grid.Row="2" Height="92" Margin="0,0,0,10"
+                  Visibility="{Binding IsRunning, Converter={StaticResource BoolToVisible}}">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="1.2*" />
+                    <ColumnDefinition Width="0.82*" />
+                    <ColumnDefinition Width="0.82*" />
+                    <ColumnDefinition Width="1.16*" />
+                </Grid.ColumnDefinitions>
+
+                <!-- The badge carries the state's colour and fills the left of the tile, which
+                     a short word like "Ispravno" left empty on its own. It is also the fastest
+                     read in the window: shape and colour before any text. -->
+                <Border x:Name="StatusCard" Style="{StaticResource Card}" Padding="14,0" Margin="0,0,5,0">
+                    <Grid VerticalAlignment="Center">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+
+                        <Border x:Name="StateIcon" Width="42" Height="42" CornerRadius="11"
+                                Background="{StaticResource OkSoft}" Margin="0,0,13,0"
+                                VerticalAlignment="Center">
+                            <Path x:Name="StateGlyph" Style="{StaticResource Glyph}"
+                                  Width="20" Height="20" StrokeThickness="2.2"
+                                  Stroke="{StaticResource Ok}"
+                                  Data="M 5,10.4 L 8.6,14 L 15,6.6" />
+                        </Border>
+
+                        <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                            <TextBlock Style="{StaticResource Label}" Text="STANJE VEZE" />
+                            <TextBlock x:Name="StateText" FontSize="19" FontWeight="Bold"
+                                       Text="{Binding StateLabel}" Margin="0,2,0,2"
+                                       TextWrapping="Wrap" MaxHeight="46"
+                                       TextTrimming="CharacterEllipsis" />
+                            <TextBlock Style="{StaticResource Hint}" Text="{Binding StateExplanation}"
+                                       TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"
+                                       ToolTip="{Binding StateExplanation}" />
+                        </StackPanel>
+                    </Grid>
+                </Border>
+
+                <Border Grid.Column="1" Style="{StaticResource Card}" Padding="16,0" Margin="5,0,5,0">
+                    <StackPanel VerticalAlignment="Center">
+                        <TextBlock Style="{StaticResource Label}" Text="KAŠNJENJE" />
+                        <TextBlock Style="{StaticResource Value}" FontSize="25"
+                                   Text="{Binding LatencyText}" Margin="0,3,0,2" />
+                        <TextBlock Style="{StaticResource Hint}" Text="poslednji uzorak" />
+                    </StackPanel>
+                </Border>
+
+                <Border Grid.Column="2" Style="{StaticResource Card}" Padding="16,0" Margin="5,0,5,0">
+                    <StackPanel VerticalAlignment="Center">
+                        <TextBlock Style="{StaticResource Label}" Text="GUBITAK PAKETA" />
+                        <TextBlock Style="{StaticResource Value}" FontSize="25"
+                                   Text="{Binding LossText}" Margin="0,3,0,2" />
+                        <TextBlock Style="{StaticResource Hint}" Text="poslednji uzorak" />
+                    </StackPanel>
+                </Border>
+
+                <!-- Elapsed and remaining share the tile, one at each edge, with the bar
+                     across the bottom. One figure alone left the box two thirds empty. -->
+                <Border Grid.Column="3" Style="{StaticResource Card}" Padding="16,0" Margin="5,0,0,0">
+                    <Grid VerticalAlignment="Center">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+
+                        <TextBlock Style="{StaticResource Label}" Text="PROTEKLO" />
+                        <TextBlock Grid.Column="1" Style="{StaticResource Label}" Text="PREOSTALO" />
+
+                        <TextBlock Grid.Row="1" Style="{StaticResource Value}" FontSize="25"
+                                   Text="{Binding ElapsedText}" Margin="0,3,0,0" />
+                        <TextBlock Grid.Row="1" Grid.Column="1" FontSize="13" FontWeight="SemiBold"
+                                   Foreground="{StaticResource Muted}" VerticalAlignment="Bottom"
+                                   Margin="8,0,0,3" Text="{Binding RemainingValue}" />
+
+                        <ProgressBar Grid.Row="2" Grid.ColumnSpan="2" Style="{StaticResource Thin}"
+                                     Margin="0,7,0,0" Minimum="0" Maximum="100"
+                                     Value="{Binding ProgressPercent, Mode=OneWay}"
+                                     Visibility="{Binding HasProgress,
+                                                  Converter={StaticResource BoolToVisible}}" />
+                    </Grid>
+                </Border>
+            </Grid>
+
+            <Grid Grid.Row="3" MinHeight="86" Margin="0,4,0,10"
+                  Visibility="{Binding IsRunning, Converter={StaticResource BoolToVisible}}">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="10" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <Border x:Name="VerdictCard" Style="{StaticResource Banner}" Padding="16,0">
+                    <Grid VerticalAlignment="Center">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+
+                        <TextBlock x:Name="VerdictHeadline" FontSize="16.5" FontWeight="SemiBold"
+                                   VerticalAlignment="Center" MaxWidth="260" TextWrapping="Wrap"
+                                   Text="{Binding Verdict.Headline}" />
+
+                        <TextBlock Grid.Column="1" Style="{StaticResource Body}"
+                                   Foreground="{StaticResource Muted}" FontSize="13.5" LineHeight="19"
+                                   VerticalAlignment="Center" Margin="18,0,0,0"
+                                   Text="{Binding Verdict.Detail}" />
+                    </Grid>
+                </Border>
+
+                <Border Grid.Column="2" Style="{StaticResource Card}" Padding="11,10">
+                    <StackPanel VerticalAlignment="Center">
+                        <Button Style="{StaticResource Danger}" Content="Zaustavi nadzor"
+                                Padding="14,7" Margin="0,0,0,6"
+                                Command="{Binding StopCommand}"
+                                AutomationProperties.AutomationId="StopButton" />
+                        <StackPanel Orientation="Horizontal">
+                            <Button Style="{StaticResource Secondary}" Content="Folder"
+                                    Padding="13,7" Command="{Binding OpenFolderCommand}" Margin="0,0,6,0"
+                                    ToolTip="Otvara folder sa dokazima." />
+                            <Button Style="{StaticResource Secondary}" Content="Izveštaj"
+                                    Padding="13,7" Command="{Binding OpenReportCommand}" Margin="0,0,6,0"
+                                    AutomationProperties.AutomationId="ReportButton"
+                                    ToolTip="Otvara Izvestaj.pdf, ili Izvestaj.html ako PDF još nije napravljen." />
+                            <Button Style="{StaticResource Secondary}" Content="Prigovor"
+                                    Padding="13,7" Command="{Binding PrepareComplaintCommand}" Margin="0,0,6,0"
+                                    ToolTip="Priprema prigovor operateru sa izračunatim rokovima. Odbija da ga napravi ako u evidenciji nema prekida koji se mogu pripisati operateru." />
+                            <Button Style="{StaticResource Secondary}" Content="Prijava RATEL"
+                                    Padding="13,7" Command="{Binding PrepareRegulatorCommand}"
+                                    ToolTip="Priprema prijavu RATEL-u kada je operateru istekao rok za odgovor ili je prigovor odbijen. Pre toga odbija, jer se prijava podneta ranije ne razmatra." />
+                        </StackPanel>
+
+                        <StackPanel Orientation="Horizontal" Margin="0,7,0,0">
+                            <Button Style="{StaticResource Secondary}" Content="Prigovor poslat"
+                                    Padding="9,4" FontSize="11.5" Margin="0,0,6,0"
+                                    Command="{Binding MarkSubmittedTodayCommand}"
+                                    ToolTip="Beleži današnji dan kao dan podnošenja prigovora u dnevnik predmeta." />
+                            <Button Style="{StaticResource Secondary}" Content="Odgovor: odbijen"
+                                    Padding="9,4" FontSize="11.5" Margin="0,0,6,0"
+                                    Command="{Binding MarkRefusedTodayCommand}"
+                                    ToolTip="Beleži da je operater danas odgovorio i odbio prigovor." />
+                            <Button Style="{StaticResource Secondary}" Content="Odgovor: usvojen"
+                                    Padding="9,4" FontSize="11.5"
+                                    Command="{Binding MarkUpheldTodayCommand}"
+                                    ToolTip="Beleži da je operater danas odgovorio i usvojio prigovor." />
+                        </StackPanel>
+
+                        <TextBlock Text="{Binding CaseText}" FontSize="11.5" Margin="1,7,0,0"
+                                   Foreground="{StaticResource Muted}" TextWrapping="Wrap" />
+
+                        <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                            <TextBox Text="{Binding SpeedScheduleAmount}" Width="44" Padding="4,3"
+                                     FontSize="11.5" VerticalAlignment="Center" MaxLength="5"
+                                     ToolTip="Za koliko vremena da se pokrene merenje brzine. Samo broj: 90 znači za 90 minuta." />
+                            <ComboBox ItemsSource="{Binding SpeedScheduleUnits}"
+                                      SelectedItem="{Binding SelectedSpeedScheduleUnit}"
+                                      Width="64" Margin="4,0,0,0" FontSize="11.5"
+                                      VerticalAlignment="Center" />
+                            <Button Style="{StaticResource Secondary}" Content="Zakaži merenje brzine"
+                                    Padding="9,4" FontSize="11.5" Margin="4,0,0,0"
+                                    Command="{Binding ScheduleSpeedCommand}"
+                                    IsEnabled="{Binding CanScheduleSpeed}"
+                                    ToolTip="Pokreće merenje brzine posle unešenog vremena, sačeka da veza utihne, pa zapiše izmereno uz sesiju. Prozor mora ostati otvoren." />
+                            <Button Style="{StaticResource Secondary}" Content="Izmeri odmah"
+                                    Padding="9,4" FontSize="11.5" Margin="4,0,0,0"
+                                    Command="{Binding MeasureNowCommand}"
+                                    IsEnabled="{Binding CanScheduleSpeed}"
+                                    ToolTip="Meri brzinu sada: sačeka da veza utihne, pa zapiše izmereno uz sesiju." />
+                            <TextBlock Text="Ugovoreno" FontSize="11.5" VerticalAlignment="Center"
+                                       Foreground="{StaticResource Muted}" Margin="10,0,6,0" />
+                            <TextBox Text="{Binding ContractedRateText}" Width="72" Padding="4,3"
+                                     FontSize="11.5" VerticalAlignment="Center" MaxLength="12"
+                                     ToolTip="Ugovorena brzina u Mbit/s, kako piše u ugovoru: 100 ili 100/20 (preuzimanje/slanje). Bez nje se merenje zapisuje, ali se ne ocenjuje." />
+                        </StackPanel>
+
+                        <TextBlock Text="{Binding SpeedStatus}" FontSize="11.5" Margin="1,6,0,0"
+                                   Foreground="{StaticResource Muted}" TextWrapping="Wrap" />
+                    </StackPanel>
+                </Border>
+            </Grid>
+
+            <Grid Grid.Row="4"
+                  Visibility="{Binding IsRunning, Converter={StaticResource BoolToVisible}}">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="1.62*" />
+                    <ColumnDefinition Width="10" />
+                    <ColumnDefinition Width="1*" />
+                </Grid.ColumnDefinitions>
+
+                <Border Style="{StaticResource Card}" Padding="16,13">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+
+                        <TextBlock Style="{StaticResource Label}" Text="KAŠNJENJE KROZ VREME"
+                                   Margin="0,0,0,7" />
+                        <controls:LatencyChart Grid.Row="1"
+                                               Points="{Binding Latency}"
+                                               Capacity="{Binding TimelineCapacity}" />
+
+                        <TextBlock Grid.Row="2" Style="{StaticResource Label}" Text="TRAKA PREKIDA"
+                                   Margin="0,14,0,7" />
+                        <controls:TimelineStrip Grid.Row="3" Height="36"
+                                                Slices="{Binding Timeline}"
+                                                Capacity="{Binding TimelineCapacity}" />
+
+                        <StackPanel Grid.Row="4" Orientation="Horizontal" Margin="0,9,0,0">
+                            <Ellipse Width="8" Height="8" Fill="{StaticResource Ok}" VerticalAlignment="Center" />
+                            <TextBlock Style="{StaticResource Hint}" Text="ispravno" Margin="5,0,14,0" />
+                            <Ellipse Width="8" Height="8" Fill="{StaticResource Warn}" VerticalAlignment="Center" />
+                            <TextBlock Style="{StaticResource Hint}" Text="pogoršano" Margin="5,0,14,0" />
+                            <Ellipse Width="8" Height="8" Fill="{StaticResource Bad}" VerticalAlignment="Center" />
+                            <TextBlock Style="{StaticResource Hint}" Text="prekid" Margin="5,0,14,0" />
+                            <Ellipse Width="8" Height="8" Fill="#9A9AA2" VerticalAlignment="Center" />
+                            <TextBlock Style="{StaticResource Hint}" Text="nije mereno" Margin="5,0,14,0" />
+                            <Ellipse Width="8" Height="8" Fill="#DDE1E8" VerticalAlignment="Center" />
+                            <TextBlock Style="{StaticResource Hint}" Text="preostalo po planu" Margin="5,0,0,0" />
+                        </StackPanel>
+                    </Grid>
+                </Border>
+
+                <!-- UniformGrid, so six rows divide the card's height exactly however tall it
+                     ends up. Sized any other way the last row was cut in half. -->
+                <Border Grid.Column="2" Style="{StaticResource Card}" Padding="16,13">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+
+                        <TextBlock Style="{StaticResource Label}" Text="MERENJA" Margin="0,0,0,4" />
+
+                        <ItemsControl Grid.Row="1" ItemsSource="{Binding Metrics}"
+                                      ItemTemplate="{StaticResource MetricRow}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <UniformGrid Columns="1" />
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                        </ItemsControl>
+
+                        <!-- The five families of check as the last cycle left them. These counts
+                             were already in the snapshot and never shown, so the state on screen
+                             was a conclusion with its reasoning hidden. -->
+                        <StackPanel Grid.Row="2" Margin="0,12,0,0">
+                            <TextBlock Style="{StaticResource Label}" Text="PROVERE U POSLEDNJEM CIKLUSU"
+                                       Margin="0,0,0,8" />
+                            <ItemsControl ItemsSource="{Binding Probes}">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <UniformGrid Rows="1" />
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border Background="{StaticResource Sunken}" CornerRadius="6"
+                                                Padding="0,7" Margin="0,0,5,0"
+                                                ToolTip="{Binding Detail}">
+                                            <StackPanel HorizontalAlignment="Center">
+                                                <Ellipse Width="9" Height="9" Fill="{Binding Colour}"
+                                                         HorizontalAlignment="Center" />
+                                                <TextBlock Text="{Binding Name}" FontSize="10.5"
+                                                           FontWeight="SemiBold" Margin="0,4,0,0"
+                                                           HorizontalAlignment="Center"
+                                                           Foreground="{StaticResource Text}" />
+                                                <TextBlock Text="{Binding Detail}" FontSize="9.5"
+                                                           Foreground="{StaticResource Faint}"
+                                                           HorizontalAlignment="Center" />
+                                            </StackPanel>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </Grid>
+                </Border>
+            </Grid>
+        </Grid>
+
+        <Border Grid.Row="2" Background="{StaticResource Sunken}" BorderBrush="{StaticResource Border}"
+                BorderThickness="0,1,0,0" Padding="22,11">
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" MaxWidth="1120">
+                <Border Background="{StaticResource IconBadgeFill}" CornerRadius="10"
+                        Width="20" Height="20" Margin="0,0,10,0" VerticalAlignment="Center">
+                    <Path Style="{StaticResource Glyph}" Width="11" Height="11" StrokeThickness="1.7"
+                          Data="M 9,2 A 7,7 0 1 1 8.99,2 M 9,8.2 L 9,13 M 9,5.3 L 9,5.4" />
+                </Border>
+                <TextBlock Style="{StaticResource FooterNote}"
+                           Text="Ovo je tehnička evidencija prekida, a ne merenje ovlašćene treće strane. Ugovorena brzina se dokazuje merenjem preko Ethernet kabla direktno na modem, uz rezultate RATEL NetTest aplikacije." />
+            </StackPanel>
+        </Border>
+    </Grid>
+</Window>

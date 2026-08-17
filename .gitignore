@@ -1,0 +1,34 @@
+# Izlaz gradnje
+bin/
+obj/
+publish/
+TestResults/
+*.binlog
+
+# Objavljene arhive i objavljeni folderi. Namerno izvan git-a: tri stotine megabajta po
+# izdanju nemaju šta da traže u istoriji koda. Gotove arhive idu u GitHub Releases.
+artifacts/
+
+# Radna okruženja
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Zapisi i privremeni fajlovi
+*.log
+*.tmp
+
+# Snimljene sesije, ako se slučajno naprave u kopiji repozitorijuma. Sadrže imena vaših mreža
+# i adrese vaše opreme, i ne pripadaju ni jednom commit-u.
+Sesija_*/
+InternetEvidence/
+Dokazi_Sesija_*.zip
+MerenjeBrzine.json
+merenje.json
+merenje-u-toku.json
+zahtev.json
+DnevnikSlucaja.json

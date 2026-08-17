@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Bezbednosni propust
+    url: https://github.com/zoxknez/InternetMonitoring/security/advisories/new
+    about: Privatna prijava, vidi je samo vlasnik repozitorijuma. Ne otvarajte javni issue sa opisom iskorišćavanja.
+  - name: Šta je nedovršeno i zašto
+    url: https://github.com/zoxknez/InternetMonitoring/blob/main/docs/PREOSTALO.md
+    about: Popis nezavršenog, sa razlogom. Pogledajte pre nego što prijavite da nešto ne postoji.

@@ -1,0 +1,28 @@
+# Line endings are normalised in the repository and checked out native, so a clone on Windows
+# builds the same as a clone anywhere else. Without this the hash-chain tests would be at the
+# mercy of whatever the contributor's editor happened to write.
+* text=auto
+
+*.cs        text diff=csharp
+*.csproj    text
+*.props     text
+*.slnx      text
+*.xaml      text
+*.md        text
+*.json      text
+*.yml       text
+*.editorconfig text
+
+# Scripts that Windows runs. CRLF explicitly, because PowerShell in some hosts still trips
+# over a lone LF in a here-string.
+*.ps1       text eol=crlf
+*.cmd       text eol=crlf
+*.bat       text eol=crlf
+
+# Binary, so git neither diffs nor mangles them.
+*.png       binary
+*.pdf       binary
+*.zip       binary
+*.ttf       binary
+*.ico       binary
+*.db        binary

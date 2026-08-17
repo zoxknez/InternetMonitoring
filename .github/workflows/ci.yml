@@ -1,0 +1,40 @@
+# Builds and tests every push and pull request.
+#
+# Windows, because the application is Windows-only: the service, the named-pipe security and
+# the Native Wi-Fi layer have no counterpart elsewhere. The test suite itself needs neither a
+# network nor a radio - that is the point of keeping the fault catalogue in IEM.Core - so it
+# runs unchanged on a hosted runner.
+name: build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Postavi .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      # Locked mode, so a dependency that moved under us fails here rather than in somebody's
+      # evidence package. The report claims the build is reproducible; this is that claim.
+      - name: Zakljucane zavisnosti
+        run: dotnet restore InternetEvidenceMonitor.slnx -p:VerifyLockedDependencies=true --nologo
+
+      - name: Gradnja
+        run: dotnet build InternetEvidenceMonitor.slnx -c Release --no-restore --nologo
+
+      - name: Testovi
+        run: dotnet test InternetEvidenceMonitor.slnx -c Release --no-build --nologo

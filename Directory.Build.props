@@ -1,0 +1,46 @@
+<Project>
+
+  <PropertyGroup>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <InvariantGlobalization>false</InvariantGlobalization>
+    <Product>Internet Monitoring</Product>
+    <Company>Internet Monitoring</Company>
+    <Version>2.5.0</Version>
+    <NeutralLanguage>sr-Latn-RS</NeutralLanguage>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <ContinuousIntegrationBuild>true</ContinuousIntegrationBuild>
+  </PropertyGroup>
+
+  <!--
+    Locked restore is an explicit verification step rather than a condition on every release
+    build, and that is forced by how publishing works: a self-contained publish pulls in
+    Microsoft.NET.ILLink.Tasks, which an ordinary build does not reference. One lock file
+    cannot satisfy both shapes, so making every Release build locked meant Release built
+    fine and publish failed - which is the worse of the two to discover, since it only
+    surfaces when you try to ship.
+
+    So: versions are pinned centrally in Directory.Packages.props, the resolved graph is
+    recorded in committed lock files, and the publish script verifies the lock is intact
+    before it builds anything. That is the guarantee the report claims, without a build
+    property that breaks the one operation the release depends on.
+  -->
+  <PropertyGroup Condition="'$(VerifyLockedDependencies)' == 'true'">
+    <RestoreLockedMode>true</RestoreLockedMode>
+  </PropertyGroup>
+
+  <!--
+    win-arm64 is carried from day one so no x64-only assumptions creep into P/Invoke.
+    PublishTrimmed stays false everywhere: WPF is not trim-compatible.
+  -->
+  <PropertyGroup>
+    <RuntimeIdentifiers>win-x64;win-arm64</RuntimeIdentifiers>
+    <PublishTrimmed>false</PublishTrimmed>
+  </PropertyGroup>
+
+</Project>
