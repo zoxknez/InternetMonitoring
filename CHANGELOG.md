@@ -10,6 +10,28 @@ izveštaj pravi.
 
 ---
 
+## 2.6.0 - 17.08.2026.
+
+Format zapisa 3, pravila nepromenjena.
+
+### O programu
+
+Prozor je dobio dugme **O programu** u zaglavlju (i istu stavku u meniju ikone u sistemskoj
+traci): verzija, licenca, autor, i tri mesta za greške i predloge - GitHub, Discord i mejl. Uz
+to i upozorenje šta folder sesije sadrži, jer se to mora znati **pre** nego što se evidencija
+pošalje nekome.
+
+Isti tekst ispisuje i `iem --pomoc`. Sve dolazi iz `AppInfo`, jedne klase, pa se prozor,
+konzola i README ne mogu raziđi - istekli Discord poziv na jednom mestu a ne na drugima gori
+je od nijednog.
+
+- Dijalog je pokriven testovima koji ga stvarno otvore i pročitaju šta je na njemu: verzija,
+  licenca, autor, sva tri kanala, i upozorenje o sadržaju sesije.
+- Usput nađeno i ispravljeno: `StaticResource` na atributima korenskog elementa prozora traži
+  resurs pre nego što se rečnik tog prozora spoji, pa je dijalog padao pri pravljenju - a
+  pošto se to dešavalo unutar rukovaoca klika, dugme naprosto **nije radilo ništa**. Sada je
+  `DynamicResource` i prozor sam spaja temu, pa stoji i bez `Application` oko sebe.
+
 ## 2.5.0 - 17.08.2026.
 
 Format zapisa **3**. Pravila: klasifikacija 2.2.0, pripisivanje 2.0, pouzdanost 1.1.

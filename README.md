@@ -1,4 +1,4 @@
-# Internet Monitoring 2.5
+# Internet Monitoring 2.6
 
 [![build](https://github.com/zoxknez/InternetMonitoring/actions/workflows/ci.yml/badge.svg)](https://github.com/zoxknez/InternetMonitoring/actions/workflows/ci.yml)
 [![licenca: MIT](https://img.shields.io/badge/licenca-MIT-blue.svg)](LICENSE)
@@ -11,7 +11,7 @@ za prigovor operateru.
 Sve radi lokalno. Nema naloga, nema servera, nema slanja podataka bilo gde. Nadzor radi
 i kada interneta nema - to mu je i svrha.
 
-> **Stanje: v2.5.** Merni engine, klasifikacija kvarova, konzolni pokretač, trajno
+> **Stanje: v2.6.** Merni engine, klasifikacija kvarova, konzolni pokretač, trajno
 > skladištenje sa hash-lancem, izveštaji u HTML-u i PDF-u, Windows servis, grafički
 > interfejs, bežični sloj i pravni modul rade. Merenje brzine meri **oba smera i kašnjenje
 > pod opterećenjem**, stoji u redu dok je veza zauzeta, i ulazi u izveštaj sa ocenom
@@ -387,7 +387,7 @@ sam projekat ne vredi. Posledica se vidi odmah - Windows SmartScreen upozorava n
 izdavača, pa se preuzeti ZIP prvo odblokira:
 
 ```bash
-Unblock-File .\InternetMonitoring-2.5.0-win-x64.zip
+Unblock-File .\InternetMonitoring-2.6.0-win-x64.zip
 ```
 
 Ako se namena ikad promeni, polazna tačka je Azure Artifact Signing.
@@ -463,3 +463,44 @@ Ako nešto menjate ili prijavljujete:
 Jedno pravilo stoji iznad ostalih: **alat sme da tvrdi samo ono što je izmerio.** Izveštaj iz
 ovog programa neko će poslati svom operateru; sve u kodu služi tome da taj dokument preživi
 čitanje nekoga ko u njemu traži grešku.
+
+---
+
+## O aplikaciji
+
+| | |
+|---|---|
+| **Verzija** | 2.6.0 |
+| **Autor** | **o0o0o0o** ([GitHub](https://github.com/zoxknez)) |
+| **Licenca** | [MIT](LICENSE) |
+| **Platforma** | Windows 10/11, x64 i ARM64. Ne traži instaliran .NET - objavljene arhive nose svoj runtime. |
+| **Šta radi** | Beleži prekide i kvalitet internet veze i pravi dokumentaciju upotrebljivu za prigovor operateru. |
+| **Šta ne radi** | Ne šalje podatke nigde, ne traži nalog, ne koristi server. Snimljeno ostaje u folderu sesije, a vi odlučujete kome ćete ga poslati. |
+
+Ista ova informacija stoji i u samom programu - dugme **O programu** u zaglavlju prozora, i u
+meniju ikone u sistemskoj traci - kao i u konzoli (`iem --pomoc`). Tekst i linkovi dolaze sa
+jednog mesta u kodu (`AppInfo`), pa ne mogu da se raziđu između prozora, konzole i README-a.
+
+![O programu](docs/ui-o-programu.png)
+
+### Greške, predlozi, pitanja
+
+Tri mesta, po nameni:
+
+| Gde | Za šta |
+|---|---|
+| [GitHub Issues](https://github.com/zoxknez/InternetMonitoring/issues) | **Najbolje.** Greške i predlozi ostaju zapisani i vidi se šta je od njih urađeno. Postoje šabloni koji pitaju ono što je potrebno da bi prijava bila upotrebljiva. |
+| [Discord](https://discord.gg/ZZbtCs942) | Pitanja, razgovor, pomoć oko pokretanja i tumačenja izveštaja. |
+| [zoxknez@hotmail.com](mailto:zoxknez@hotmail.com) | Ako vam GitHub i Discord ne odgovaraju, ili je stvar privatna. |
+
+Za bezbednosne propuste postoji poseban put, opisan u [SECURITY.md](SECURITY.md) - privatna
+prijava, ne javni issue.
+
+**Pre nego što pošaljete evidenciju:** folder sesije sadrži imena vaših mreža (SSID), adrese
+vaše opreme (BSSID, MAC, ruter) i vremena kada ste bili na mreži. Pošaljite samo ono što ste
+spremni da objavite - za većinu prijava dovoljni su verzija, opis i par redova iz
+`SirovaEvidencija.jsonl`.
+
+### Ostali projekti autora
+
+[mojportfolio.vercel.app](https://mojportfolio.vercel.app)

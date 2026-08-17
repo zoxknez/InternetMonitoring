@@ -1,0 +1,132 @@
+﻿<Window x:Class="IEM.App.AboutWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="O programu"
+        Width="620" SizeToContent="Height"
+        ResizeMode="NoResize"
+        ShowInTaskbar="False"
+        Background="{DynamicResource Page}"
+        FontFamily="Segoe UI"
+        Foreground="{DynamicResource Text}"
+        TextOptions.TextFormattingMode="Ideal"
+        TextOptions.TextRenderingMode="ClearType"
+        WindowStartupLocation="CenterOwner">
+
+    <!--
+        Sized to its content rather than to a number, because the text here is the point and
+        a fixed height would either cut the last line or leave a band of empty dialog under
+        it. Nothing in it scrolls.
+    -->
+
+    <!--
+        The theme is merged here as well as in App.xaml, so this dialog stands on its own: it
+        parses and shows without an Application around it. That is what lets a test open it
+        for real and read what it put on screen - and a test that had to stand up a WPF
+        Application to do so would set Application.Current for the whole process and break
+        every other test in the assembly.
+
+        The two brushes on the Window tag above are DynamicResource for a reason worth knowing:
+        attributes on the root element are assigned before this dictionary is merged, so a
+        StaticResource there is looked up in a scope that does not have the theme yet. It threw
+        "Cannot find resource named 'Page'" - and because the throw happened inside the click
+        handler, the button simply did nothing when pressed. A dialog that fails silently is
+        the worst of the three possible outcomes.
+    -->
+    <Window.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="Themes/Theme.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </Window.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- The same header band as the main window, so the dialog reads as part of the
+             application rather than as a system message box. -->
+        <Border Background="{StaticResource HeaderFill}" Padding="22,16">
+            <StackPanel Orientation="Horizontal">
+                <Border Background="#2C3A52" CornerRadius="9" Width="38" Height="38"
+                        Margin="0,0,13,0" BorderBrush="#3E5070" BorderThickness="1">
+                    <Path Style="{StaticResource Glyph}" Stroke="#8FB6E4" Width="19" Height="19"
+                          Data="M 1,6 C 5,1.5 13,1.5 17,6 M 4,9.5 C 7,6.5 11,6.5 14,9.5 M 7,13 C 8,11.8 10,11.8 11,13 M 9,15.6 L 9,15.7" />
+                </Border>
+
+                <StackPanel VerticalAlignment="Center">
+                    <TextBlock x:Name="TitleText" Style="{StaticResource Display}" FontSize="18"
+                               Text="Internet Monitoring" />
+                    <TextBlock x:Name="VersionText" FontSize="11.5" Foreground="#9DAAC2"
+                               Margin="0,2,0,0" Text="verzija" />
+                </StackPanel>
+            </StackPanel>
+        </Border>
+
+        <StackPanel Grid.Row="1" Margin="22,18,22,4">
+            <TextBlock x:Name="SummaryText" TextWrapping="Wrap" FontSize="13" LineHeight="19"
+                       Foreground="{StaticResource Text}" />
+
+            <TextBlock x:Name="PrivacyText" TextWrapping="Wrap" Style="{StaticResource Hint}"
+                       Margin="0,9,0,0" />
+
+            <Rectangle Height="1" Fill="{StaticResource Hairline}" Margin="0,16,0,14" />
+
+            <TextBlock Style="{StaticResource Label}" Text="GREŠKE I PREDLOZI" Margin="0,0,0,6" />
+
+            <TextBlock x:Name="FeedbackText" TextWrapping="Wrap" FontSize="12.5" LineHeight="18"
+                       Foreground="{StaticResource Muted}" />
+
+            <!-- Said here rather than left for the person to work out: a session folder
+                 carries the names of their networks and the addresses of their equipment. -->
+            <Border Background="{StaticResource Sunken}" BorderBrush="{StaticResource Border}"
+                    BorderThickness="1" CornerRadius="6" Padding="11,9" Margin="0,10,0,0">
+                <TextBlock x:Name="CautionText" TextWrapping="Wrap" FontSize="11.5" LineHeight="17"
+                           Foreground="{StaticResource Muted}" />
+            </Border>
+
+            <ItemsControl x:Name="LinkList" Margin="0,14,0,0">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                        <Grid Margin="0,0,0,7">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="170" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+
+                            <TextBlock Text="{Binding Label}" FontSize="12" FontWeight="SemiBold"
+                                       Foreground="{StaticResource Text}" VerticalAlignment="Center" />
+
+                            <TextBlock Grid.Column="1" FontSize="12" VerticalAlignment="Center"
+                                       TextTrimming="CharacterEllipsis">
+                                <Hyperlink NavigateUri="{Binding Target}" RequestNavigate="OnNavigate"
+                                           Foreground="{StaticResource Accent}">
+                                    <Run Text="{Binding Shown, Mode=OneWay}" />
+                                </Hyperlink>
+                            </TextBlock>
+                        </Grid>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </StackPanel>
+
+        <Border Grid.Row="2" Background="{StaticResource Sunken}" BorderBrush="{StaticResource Border}"
+                BorderThickness="0,1,0,0" Padding="22,12" Margin="0,14,0,0">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <TextBlock x:Name="LicenseText" VerticalAlignment="Center" FontSize="11.5"
+                           Foreground="{StaticResource Faint}" TextWrapping="Wrap" Margin="0,0,14,0" />
+
+                <Button Grid.Column="1" Style="{StaticResource Secondary}" Content="Zatvori"
+                        Padding="18,7" IsDefault="True" IsCancel="True" Click="OnClose" />
+            </Grid>
+        </Border>
+    </Grid>
+</Window>

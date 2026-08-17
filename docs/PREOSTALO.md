@@ -1,8 +1,9 @@
 # Šta je preostalo
 
-Stanje na dan **17.08.2026. (podne)**, verzija **2.5.0**, ime aplikacije **Internet Monitoring**,
-**492 testa prolaze** (472 u jezgru, 20 u prozoru), nula upozorenja pri gradnji, zaključane
-zavisnosti prolaze, servis instaliran i proveren na tekućoj verziji.
+Stanje na dan **17.08.2026. (posle podne)**, verzija **2.6.0**, ime aplikacije
+**Internet Monitoring**, **502 testa prolaze** (478 u jezgru, 24 u prozoru), nula upozorenja
+pri gradnji, zaključane zavisnosti prolaze. Projekat je objavljen kao open source
+(MIT, GitHub Actions CI zelen).
 
 Ovaj dokument je popis nezavršenog, a ne plan. Pisan je da bi se sutra znalo šta nije urađeno
 i **zašto**, jer je to podatak koji se najbrže gubi. Sve što je ranije bilo ovde, a urađeno je
@@ -67,7 +68,13 @@ ovde je razlog zašto apsolutni brojevi neće biti isti.
 Wi-Fi sloj, kanal za status i prozor su 17.08. dobili šavove i testove (vidi dole). Ostaje
 samo ono što se po prirodi ne testira kodom: **kako prozor izgleda.** Raspored, poravnanja i
 da li se tekst negde preseca proveravaju se snimkom prozora, kao i do sada. Šta prozor
-**odlučuje** je od 17.08. pokriveno testovima.
+**odlučuje** je od 17.08. pokriveno testovima - a dijalog „O programu" se u testu i stvarno
+otvara, pa se čita šta je na njemu.
+
+Jedna pouka odatle vredi zapisati, jer se ponavlja u WPF-u: greška u rukovaocu klika **ne
+prijavljuje se nigde** ako je uhvati opšti rukovalac na nivou aplikacije. Dugme naprosto ne
+radi ništa. Ako se ikad pojavi dugme koje „ne reaguje", prvo mesto za pogledati je da li mu
+konstrukcija prozora pada - a najlakši način je test koji taj prozor otvori.
 
 ## 5. Distribucija
 
@@ -162,6 +169,11 @@ bez pokretanja celog WPF-a; sada se izvrše na mestu.
   nalogom (konzola, druga instalacija) dobijao prvu instancu i zatim odbijanje na svaku
   sledeću - upozorenje na svake dve sekunde i kanal sa jednim slušaocem umesto četiri.
   Sada se pravo dodeljuje i nalogu pod kojim proces stvarno radi.
+- **Dugme „O programu" nije radilo ništa, bez ijedne prijavljene greške.** `StaticResource` na
+  atributima korenskog elementa prozora traži resurs pre nego što se rečnik tog prozora spoji,
+  pa je konstrukcija dijaloga padala - a pošto se to dešavalo unutar rukovaoca klika, opšti
+  rukovalac je grešku pojeo i dugme je izgledalo mrtvo. Sada je `DynamicResource`, prozor sam
+  spaja temu i stoji bez `Application` oko sebe, a test ga otvara i čita.
 - **Zaključani spisak paketa bio je vezan za jednu zakrpu SDK-a.** `IEM.App.csproj` je
   deklarisao `SelfContained`, pa je SDK dodavao `Microsoft.NET.ILLink.Tasks` u
   `packages.lock.json` u svojoj verziji - i svaka mašina sa drugom zakrpom SDK-a padala je na

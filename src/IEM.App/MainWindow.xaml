@@ -72,6 +72,8 @@
                     <Separator />
                     <MenuItem Header="Otvori folder sa dokazima" Click="OnOpenFolder" />
                     <Separator />
+                    <MenuItem Header="O programu" Click="OnAbout" />
+                    <Separator />
                     <MenuItem Header="Izađi" Click="OnExit" />
                 </ContextMenu>
             </tb:TaskbarIcon.ContextMenu>
@@ -118,17 +120,27 @@
                            Foreground="#8E9BB3" VerticalAlignment="Center" TextAlignment="Right"
                            TextTrimming="CharacterEllipsis" Margin="20,0,16,0" />
 
-                <Border Grid.Column="2" x:Name="StatusBadge" Background="#1F2B3C" CornerRadius="20"
-                        Padding="13,7" VerticalAlignment="Center" BorderThickness="1"
-                        BorderBrush="#33415A">
-                    <StackPanel Orientation="Horizontal">
-                        <Ellipse x:Name="StatusDot" Style="{StaticResource LiveDot}"
-                                 Width="9" Height="9" Fill="{StaticResource Faint}"
-                                 VerticalAlignment="Center" Margin="0,0,8,0" />
-                        <TextBlock Text="{Binding StatusPill}" FontSize="10.5" FontWeight="SemiBold"
-                                   Foreground="#D6DEEC" VerticalAlignment="Center" />
-                    </StackPanel>
-                </Border>
+                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                    <!-- In the header rather than in a menu the window does not have. Somebody
+                         who wants to report a bug should not have to look for the address. -->
+                    <Button Style="{StaticResource Secondary}" Content="O programu"
+                            Padding="11,5" FontSize="11" Margin="0,0,10,0"
+                            Click="OnAbout"
+                            AutomationProperties.AutomationId="AboutButton"
+                            ToolTip="Verzija, licenca i gde poslati greške i predloge." />
+
+                    <Border x:Name="StatusBadge" Background="#1F2B3C" CornerRadius="20"
+                            Padding="13,7" VerticalAlignment="Center" BorderThickness="1"
+                            BorderBrush="#33415A">
+                        <StackPanel Orientation="Horizontal">
+                            <Ellipse x:Name="StatusDot" Style="{StaticResource LiveDot}"
+                                     Width="9" Height="9" Fill="{StaticResource Faint}"
+                                     VerticalAlignment="Center" Margin="0,0,8,0" />
+                            <TextBlock Text="{Binding StatusPill}" FontSize="10.5" FontWeight="SemiBold"
+                                       Foreground="#D6DEEC" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
             </Grid>
         </Border>
 

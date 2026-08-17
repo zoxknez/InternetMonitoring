@@ -196,6 +196,29 @@ public partial class MainWindow : Window
 
     private void OnOpenFolder(object sender, RoutedEventArgs e) => _shell?.OpenFolderCommand.Execute(null);
 
+    /// <summary>
+    /// Version, licence, and where to send a bug.
+    /// <para>
+    /// Owned by this window when there is one to own it - the same handler serves the tray
+    /// menu, where the main window may be hidden and cannot be an owner. A second click while
+    /// it is already up brings the existing one forward rather than opening a second.
+    /// </para>
+    /// </summary>
+    private void OnAbout(object sender, RoutedEventArgs e)
+    {
+        if (_about is not null)
+        {
+            _about.Activate();
+            return;
+        }
+
+        _about = new AboutWindow { Owner = _closed || !IsVisible ? null : this };
+        _about.Closed += (_, _) => _about = null;
+        _about.Show();
+    }
+
+    private AboutWindow? _about;
+
     private void OnExit(object sender, RoutedEventArgs e)
     {
         _reallyExit = true;

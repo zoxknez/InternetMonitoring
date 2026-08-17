@@ -561,6 +561,17 @@ public static class CommandLine
 
             Napomena: merenje brzine za prigovor operateru vazi samo preko Ethernet kabla
             povezanog direktno na modem. Nadzor prekida radi i preko Wi-Fi mreže.
+
+            O programu:
+              {AppInfo.Summary}
+              Slobodan softver, {AppInfo.LicenseName} licenca, autor {AppInfo.Author}.
+
+              Izvorni kod i prijava grešaka:  {AppInfo.ProjectUrl}
+              Discord:                        {AppInfo.DiscordUrl}
+              Portfolio autora:               {AppInfo.PortfolioUrl}
+              Mejl:                           {AppInfo.Email}
+
+              {AppInfo.ReportingCaution}
             """);
     }
 
