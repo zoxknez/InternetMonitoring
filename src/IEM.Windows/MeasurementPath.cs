@@ -19,23 +19,26 @@ namespace IEM.Windows;
 public static class MeasurementPath
 {
     /// <summary>
-    /// True when traffic to the measurement host leaves through this adapter, false when it
-    /// demonstrably leaves through another, null when it could not be established.
+    /// What the route table says about traffic to the measurement host: whether every
+    /// resolvable address leaves through this adapter, some of them do, none of them do, or
+    /// nothing could be established.
     /// </summary>
-    public static bool? LeavesThroughAdapter(string? interfaceId, string? url = null)
+    public static MeasurementRoute Resolve(string? interfaceId, string? url = null)
     {
         try
         {
             var host = new Uri(url ?? ThroughputOptions.Default.DownloadUrl).Host;
             var addresses = Dns.GetHostAddresses(host);
 
-            return SpeedPath.LeavesThroughAdapter(new RouteResolver(), addresses, interfaceId);
+            return SpeedPath.ResolveRoutes(new RouteResolver(), addresses, interfaceId);
         }
         catch (Exception ex) when (ex is SocketException or UriFormatException or ArgumentException)
         {
             // Name resolution failing here says nothing about the routing, and the transfer
             // that follows will fail loudly on its own if the host is genuinely unreachable.
-            return null;
+            // Unchecked rather than a verdict: the measurement will carry PathUnverified and
+            // say so, which is the honest outcome of a check that could not run.
+            return MeasurementRoute.Unchecked;
         }
     }
 }

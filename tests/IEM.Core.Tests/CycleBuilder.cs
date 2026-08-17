@@ -118,6 +118,20 @@ internal sealed class CycleBuilder
         return this;
     }
 
+    /// <summary>
+    /// The radio's state could not be read at all.
+    /// <para>
+    /// A third case, and the one that matters: the machine has no wireless API worth the
+    /// name, the driver refused the query, or the adapter vanished between reads. It is
+    /// neither on nor off, and a verdict built on it would be built on nothing.
+    /// </para>
+    /// </summary>
+    public CycleBuilder RadioStateUnreadable()
+    {
+        _link = _link with { Wireless = _link.Wireless! with { RadioOn = null } };
+        return this;
+    }
+
     public CycleBuilder WeakSignal()
     {
         _link = _link with { Wireless = _link.Wireless! with { MeasuredRssiDbm = -82, SignalQualityPercent = 22 } };

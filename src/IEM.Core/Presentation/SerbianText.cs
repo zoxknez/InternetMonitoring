@@ -42,7 +42,7 @@ public static class SerbianText
         NetworkState.DnsGlobalFailure => "Nijedan DNS server ne odgovara",
         NetworkState.IcmpFiltered => "Ping je filtriran (nije prekid)",
         NetworkState.CaptivePortalSuspected => "Sumnja na portal za prijavu na mrežu",
-        NetworkState.PacketLoss => "Gubitak paketa",
+        NetworkState.PacketLoss => "Deo meta ne odgovara",
         NetworkState.HighLatency => "Visoko kašnjenje",
         NetworkState.HighJitter => "Velika varijacija kašnjenja",
         _ => state.ToString(),
@@ -69,8 +69,8 @@ public static class SerbianText
         NetworkState.CpeUpstreamUnreachable =>
             "Veza računara sa ruterom je ispravna, ali iza rutera ništa nije dostupno. " +
             "Problem je izolovan na putanju iza rutera. Merenje je rađeno sa vašeg računara, " +
-            "pa ne pokazuje šta se dešava unutar mreže operatera - ali isključuje vašu " +
-            "lokalnu mrežu kao uzrok.",
+            "pa snažno smanjuje verovatnoću uzroka između računara i rutera - ali ne isključuje " +
+            "WAN stranu samog rutera ni njegov firmver.",
         NetworkState.CpeReboot =>
             "Ruter se restartovao tokom prekida. Ovo je kvar ili ponašanje rutera, ne operatera.",
         NetworkState.InternetDown =>
@@ -86,7 +86,11 @@ public static class SerbianText
             "Ovo NIJE prekid i ne ulazi u prigovor.",
         NetworkState.CaptivePortalSuspected =>
             "Mreža vraća neočekivan odgovor, što liči na portal za prijavu (hotel, javni Wi-Fi).",
-        NetworkState.PacketLoss => "Deo paketa se gubi. Veza radi, ali nestabilno.",
+        NetworkState.PacketLoss =>
+            "Deo nezavisnih meta na internetu ne odgovara na ping, a ostale odgovaraju. Ovo NIJE " +
+            "merenje gubitka paketa: ka svakoj meti ide po jedan ping, pa jedna meta koja iz " +
+            "principa ne odgovara na ping daje isti nalaz kao i nestabilna veza. Ako se ponavlja " +
+            "uvek ista meta, uzrok je po pravilu politika te mete; ako se menjaju, veza je nestabilna.",
         NetworkState.HighLatency => "Odziv je sporiji nego što bi trebalo.",
         NetworkState.HighJitter => "Kašnjenje jako varira, što kvari pozive i video.",
         _ => string.Empty,
@@ -97,7 +101,10 @@ public static class SerbianText
         FaultAttribution.None => "Nije kvar",
         FaultAttribution.LocalDevice => "Vaš računar",
         FaultAttribution.Router => "Vaš ruter",
-        FaultAttribution.Upstream => "Operater",
+        // Not "Operater". A measurement taken on the customer's machine can isolate a fault
+        // to beyond their own equipment; it cannot establish whose equipment beyond it is at
+        // fault, and the router's own WAN side is the first thing on that list.
+        FaultAttribution.Upstream => "Izolovano iza rutera",
         _ => "Nije utvrđeno",
     };
 

@@ -263,7 +263,7 @@ public sealed class ShellViewModelTests : IDisposable
         // built on Wi-Fi is the single most common reason a complaint is dismissed.
         Assert.True(shell.ShowWirelessWarning);
 
-        var incidents = shell.Metrics.Single(m => m.Label == "Prekida kod operatera");
+        var incidents = shell.Metrics.Single(m => m.Label == "Prekida iza rutera");
         Assert.Equal("2", incidents.Value);
         Assert.Contains("3", incidents.Hint, StringComparison.Ordinal);
     }

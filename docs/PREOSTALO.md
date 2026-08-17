@@ -1,7 +1,7 @@
 # Šta je preostalo
 
-Stanje na dan **17.08.2026. (posle podne)**, verzija **2.6.0**, ime aplikacije
-**Internet Monitoring**, **502 testa prolaze** (478 u jezgru, 24 u prozoru), nula upozorenja
+Stanje na dan **17.08.2026. (uveče)**, verzija **2.7.0**, ime aplikacije
+**Internet Monitoring**, **545 testova prolazi** (521 u jezgru, 24 u prozoru), nula upozorenja
 pri gradnji, zaključane zavisnosti prolaze. Projekat je objavljen kao open source
 (MIT, GitHub Actions CI zelen).
 
@@ -13,6 +13,32 @@ Redosled je po važnosti.
 
 ---
 
+## 0. Šta 2.7.0 svesno nije uradila
+
+Izdanje 2.7.0 je svelo tvrdnje na ono što je izmereno. Tri stvari su pri tome **namerno**
+ostavljene za 3.0.0, i vredi znati zašto:
+
+**Stvarni TCP put merenja.** Tabela ruta kaže šta bi operativni sistem izabrao, ne šta je
+soket zaista uradio. Zato se ni najbolje stanje ne zove „potvrđena putanja" nego „tabela ruta
+je saglasna sa izabranim adapterom". Za pravo `ActualMeasurementPathConfirmed` treba
+`SocketsHttpHandler.ConnectCallback` sa zapisanim `LocalEndpoint`/`RemoteEndpoint` i adresnom
+familijom - posao za sebe, jer se zapisuje u nalaz i menja format.
+
+**Pravi gubitak paketa.** Stanje koje se ranije zvalo „gubitak paketa" broji nedostupne mete
+(tri destinacije, po jedna proba). Pravo merenje traži više proba ka **istoj** meti i model
+zdravlja pojedinačne mete, da se meta koja iz principa ne odgovara na ping ne meša sa vezom
+koja gubi pakete.
+
+**Potpis i vremenski žig.** Lanac dokazuje unutrašnju doslednost. Ko ima pravo upisa u folder
+sesije može da preračuna i lanac i kontrolne zbirove, pa dokaz porekla traži potpis (CNG/DPAPI)
+i RFC 3161 žig treće strane. Do tada svaki izveštaj to izričito piše.
+
+**Serija merenja brzine.** „Uobičajeno dostupna brzina" po propisu znači 80 % ugovorene u 90 %
+vremena - uslov o vremenu. Jedno merenje se sada svrstava u neutralan pojas i kaže šta bi bilo
+potrebno za zaključak; longitudinalni model dolazi u 3.0.0.
+
+---
+
 ## 1. Fizički Wi-Fi testovi - i dalje jedini deo koji zahteva ljudske ruke
 
 Nepromenjeno u odnosu na 16.08., jer se ništa od ovoga ne može uraditi iz koda: traži se da
@@ -21,10 +47,10 @@ neko fizički dira ruter i dongl. Spisak je u `docs/TEST-WIFI.md`, a ostaju:
 | Test | Radnja | Očekivani nalaz |
 |---|---|---|
 | 3 - roaming | šetanje tokom nadzora (2,4/5 GHz isti SSID) | `WifiRoaming`, bez prekida |
-| 4 - **najvažniji** | ugasiti bežični radio na ruteru 2-3 min | `WifiRadioDown` (SSID nestao iz skeniranja) |
+| 4 - **najvažniji** | ugasiti bežični radio na ruteru 2-3 min | `WifiRadioDown` (SSID nestao iz skeniranja, **a radio računara pročitan kao uključen**) |
 | 6a | izvuci dongl tokom nadzora | `AdapterDown` (lokalni kvar) |
 | 6b | restartovati ruter tokom nadzora | `CpeReboot` (uptime unazad) |
-| 6c | izvuci WAN kabl sa rutera | `CpeUpstreamUnreachable` - jedini nalaz koji tereti operatera |
+| 6c | izvuci WAN kabl sa rutera | `CpeUpstreamUnreachable` - jedini nalaz izolovan iza rutera |
 
 Posle svakog: `dotnet run --project src/IEM.Cli -- --proveri <folder sesije>` - lanac mora
 ostati ispravan.
@@ -94,6 +120,40 @@ instalirani SDK. Zaključani spisak je time postao vezan za jednu zakrpu SDK-a, 
 mašina sa malo novijim SDK-om (uključujući CI) padala na proveri, na paketu koji ovde niko nije
 tražio. Kako se objavljuje odlučuje `build\publish.ps1` preko komandne linije, kao i za servis
 i konzolu, pa je iz projekta uklonjeno.
+
+---
+
+## Potvrđeno zatvoreno u 2.7.0 (uveče 17.08.)
+
+**Putanja merenja brzine** · `SpeedPath` je vraćao potvrdu na prvom poklapanju rute, pa je host
+sa IPv4 preko Etherneta i IPv6 preko VPN-a prolazio kao ispravan; tri pozivna mesta su uz to
+radila `?? true`. Sada četiri stanja, samo jedno nosi prigovor · **provereno uživo**: merenje
+prijavljeno na Wi-Fi adapteru (port 144 Mbit/s) izmerilo je 445 Mbit/s jer je saobraćaj išao
+kablom - zabeleženo kao `OtherRouteOnly`, nevažeće, uz objašnjenje i izlazni kod 1.
+
+**Wi-Fi radio** · `RadioOn != false` je „nismo uspeli da pročitamo" pretvarao u „radio je
+uključen" i prijavljivao kvar pristupne tačke. Sada `== true`.
+
+**Mete bez odgovora** · procenat iz tri različite destinacije sa po jednom probom više se ne
+zove gubitak paketa; poruka navodi koje mete ćute i izričito kaže da to nije merenje gubitka.
+
+**Pripisivanje** · nigde više „kod operatera" ni „vaša oprema je isključena kao uzrok"; prikaz
+kaže „izolovano iza rutera" i navodi šta nije isključeno (WAN strana rutera, firmver, PPPoE,
+NAT). U lancu i bazi ništa nije promenjeno, model pripisivanja podignut na 2.1.
+
+**Tvrdnje o lancu** · „dokazano da paket nije menjan" → „lanac je unutrašnje dosledan", uz
+obaveznu ogradu o odsustvu potpisa **uz svaki** takav nalaz, ne stranu dalje.
+
+**Pravni rokovi** · 15/15 dana je bio stari član 113, koji je važio samo dok se ne donese akt
+iz čl. 140 - a donet je. Sada registar pravila sa uporištem po pravilu, citatima i datumom
+provere; za nov predmet 30 / 8 / 60 / 90 dana · **provereno uživo**: predmet sa prigovorom
+podnetim 25.07.2026. citira ZZP 88/2021, a isti predmet sa 10.08.2026. citira ZZP 35/2026 -
+isti rok od osam dana, drugi propis · predmet iz starije verzije ne postaje stari režim, nego
+se označi kao rekonstruisan.
+
+**Tri invarianta su testovi** · nepoznato ne postaje potvrđeno (uključujući skener izvora koji
+traži `?? true` i `RadioOn != false`), stari predmet ne menja značenje, prikaz ne tvrdi više
+nego sirovi zapis.
 
 ---
 

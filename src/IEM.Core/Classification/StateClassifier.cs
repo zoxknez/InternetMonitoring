@@ -56,10 +56,16 @@ public sealed class StateClassifier(ClassifierOptions? options = null)
         // The radio check is not optional. Switching Wi-Fi off makes every network vanish
         // from the scan, and without this the tool would read that as the router having
         // failed - blaming an outage on equipment when the customer pressed a key.
+        //
+        // It has to be RadioOn == true, not != false. Null means the radio could not be
+        // read at all, and treating that as "the radio is on" turns "I could not check"
+        // into a stated finding of equipment failure - on the single most consequential
+        // judgement this tool makes. Unknown falls through to the adapter verdict, which
+        // claims only what the adapter itself reported.
         var wireless = cycle.Link.Wireless;
         if (cycle.Link.Medium == LinkMedium.Wireless &&
             wireless?.SsidVisibleInScan == false &&
-            wireless.RadioOn != false)
+            wireless.RadioOn == true)
         {
             return new SampleVerdict(
                 NetworkState.WifiRadioDown,
@@ -181,12 +187,20 @@ public sealed class StateClassifier(ClassifierOptions? options = null)
                 $"All {cycle.ExternalIcmp.Attempted} ICMP targets failed while TCP/TLS/HTTP succeeded.");
         }
 
+        // Said as what it is: some of the independent destinations did not answer. Not as a
+        // loss percentage, which is what it used to be - three different destinations with one
+        // probe each, so a single resolver that filters ICMP by policy produced "33,3% gubitka
+        // paketa" in a complaint. The targets are named because which ones went quiet is the
+        // whole of the finding.
         if (cycle.ExternalIcmp.SomeFailed)
         {
+            var silent = cycle.UnansweredExternalIcmpTargets;
+
             return new SampleVerdict(
                 NetworkState.PacketLoss,
-                $"{cycle.ExternalIcmp.Failed} of {cycle.ExternalIcmp.Attempted} external ICMP targets failed " +
-                $"({cycle.ExternalIcmp.LossPercent:F1}% loss).");
+                $"{cycle.ExternalIcmp.Failed} of {cycle.ExternalIcmp.Attempted} independent external targets " +
+                $"did not answer ICMP ({string.Join(", ", silent)}). One probe per target: this counts " +
+                "unreachable destinations, not lost packets.");
         }
 
         if (context.Jitter is { } jitter && jitter >= _options.HighJitterThreshold)

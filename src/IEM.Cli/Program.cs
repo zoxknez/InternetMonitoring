@@ -41,13 +41,19 @@ if (settings.ReportDirectory is { } directoryToReport)
 
 if (settings.ComplaintDirectory is { } directoryToComplainAbout)
 {
-    return ComplaintCommand.Run(directoryToComplainAbout, settings.OperatorName, settings.OutputRoot) ? 0 : 1;
+    return ComplaintCommand.Run(
+        directoryToComplainAbout,
+        settings.OperatorName,
+        settings.OutputRoot,
+        settings.IncidentNumber) ? 0 : 1;
 }
 
 if (settings.ShowCase ||
     settings.ComplaintSubmitted is not null ||
     settings.OperatorResponded is not null ||
     settings.OperatorUpheld is not null ||
+    settings.RegulatorFiled is not null ||
+    settings.InvoiceDue is not null ||
     settings.RegulatorDirectory is not null)
 {
     return CaseCommand.Run(settings);

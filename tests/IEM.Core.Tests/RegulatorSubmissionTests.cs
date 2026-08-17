@@ -78,7 +78,9 @@ public sealed class RegulatorSubmissionTests
     {
         var complaint = Case(submitted: new DateOnly(2026, 3, 10));
 
-        var text = RegulatorSubmission.Build(complaint, Session(), new DateOnly(2026, 3, 20), out var obstacle);
+        // Four days in. A consumer's answer is owed within eight, so the operator still has
+        // half the period left.
+        var text = RegulatorSubmission.Build(complaint, Session(), new DateOnly(2026, 3, 14), out var obstacle);
 
         Assert.Null(text);
         Assert.Equal(RegulatorSubmission.Obstacle.OperatorStillHasTime, obstacle);
@@ -185,7 +187,11 @@ public sealed class RegulatorSubmissionTests
         var letter = ComplaintLetter.ToOperator(Case(), Session(), new DateOnly(2026, 3, 10));
 
         Assert.Contains("ruter je uredno odgovarao", letter, StringComparison.Ordinal);
-        Assert.Contains("isključuje moju opremu", letter, StringComparison.Ordinal);
+
+        // The letter claims the local network, not "my equipment" - the router's WAN side is
+        // equipment too, and it is precisely what this measurement cannot see.
+        Assert.Contains("isključuje moju lokalnu mrežu", letter, StringComparison.Ordinal);
+        Assert.DoesNotContain("isključuje moju opremu", letter, StringComparison.Ordinal);
         Assert.Contains("lancem otisaka", letter, StringComparison.Ordinal);
     }
 

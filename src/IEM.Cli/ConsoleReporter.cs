@@ -233,8 +233,8 @@ public sealed class ConsoleReporter
         Console.WriteLine($"  Dostupnost bez lokalnih kvarova: {SerbianText.Percent(stats.UpstreamAvailabilityPercent)}");
         Console.WriteLine();
         Console.WriteLine($"  Prekida ukupno:         {stats.Incidents.Count}");
-        Console.WriteLine($"  Od toga kod operatera:  {stats.UpstreamIncidentCount}");
-        Console.WriteLine($"  Nedostupnost operatera: {SerbianText.Duration(stats.UpstreamDowntime)}");
+        Console.WriteLine($"  Izolovano iza rutera:   {stats.UpstreamIncidentCount}");
+        Console.WriteLine($"  Nedostupnost iza rutera: {SerbianText.Duration(stats.UpstreamDowntime)}");
         Console.WriteLine($"  Lokalna nedostupnost:   {SerbianText.Duration(stats.LocalDowntime)}");
 
         if (stats.UpstreamIncidentCount > 0)
@@ -266,8 +266,12 @@ public sealed class ConsoleReporter
 
         if (stats.UpstreamIncidentCount > 0)
         {
+            // Says what was measured rather than who is to blame: the router answered
+            // throughout, the outside world did not. That is the finding, and it is one an
+            // operator has to answer to without being able to point at the customer's router.
             Write(ConsoleColor.Red,
-                $"  Potvrđeni prekidi na strani operatera: {stats.UpstreamIncidentCount}. Imate osnov za prigovor.");
+                $"  Prekida izolovanih iza vaše opreme: {stats.UpstreamIncidentCount}. Tokom njih je " +
+                "ruter odgovarao, a spoljne mete nisu. Imate osnov za prigovor.");
             return;
         }
 
@@ -278,7 +282,14 @@ public sealed class ConsoleReporter
             return;
         }
 
-        Write(ConsoleColor.Green, "  Veza je bila stabilna. Nema osnova za prigovor.");
+        // Says what this session found, not what the connection is like. A clean three-hour
+        // run is not evidence that the line is sound - the outages somebody is complaining
+        // about happen when the monitor is not running, which is the whole reason to run it
+        // for days rather than an afternoon.
+        Write(ConsoleColor.Green,
+            $"  Tokom ovog nadzora ({SerbianText.Duration(stats.MonitoredTime)}) nije zabeležen nijedan prekid. " +
+            "To ne dokazuje da ih nema u drugim periodima - ako se smetnja javlja povremeno, " +
+            "pustite nadzor duže.");
     }
 
     private static void Write(DateTimeOffset when, ConsoleColor color, string message) =>

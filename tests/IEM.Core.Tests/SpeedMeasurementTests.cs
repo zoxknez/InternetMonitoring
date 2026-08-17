@@ -12,8 +12,16 @@ namespace IEM.Core.Tests;
 /// </summary>
 public sealed class SpeedMeasurementTests
 {
+    /// <summary>
+    /// A measurement whose path was checked and came back agreeing. Stated rather than left
+    /// to a default, because the default is now "nobody checked" - which costs a measurement
+    /// its standing, and should.
+    /// </summary>
     private static SpeedMeasurementConditions Wired(double measured, double? contracted = 100) =>
-        new(LinkMedium.Ethernet, 1_000_000_000, contracted, measured);
+        new(LinkMedium.Ethernet, 1_000_000_000, contracted, measured)
+        {
+            RouteState = MeasurementRouteState.AllResolvedRoutesMatch,
+        };
 
     // ---- What makes a measurement usable at all -------------------------------
 
@@ -82,9 +90,35 @@ public sealed class SpeedMeasurementTests
     [Fact]
     public void A_measurement_through_a_vpn_or_two_adapters_is_not_usable()
     {
-        var validity = SpeedMeasurementValidity.Of(Wired(60) with { SinglePath = false });
+        var validity = SpeedMeasurementValidity.Of(
+            Wired(60) with { RouteState = MeasurementRouteState.MixedRoutes });
 
         Assert.Contains(SpeedMeasurementDefect.PathAmbiguous, validity.Defects);
+    }
+
+    [Fact]
+    public void A_measurement_that_left_entirely_through_another_adapter_is_not_usable()
+    {
+        var validity = SpeedMeasurementValidity.Of(
+            Wired(60) with { RouteState = MeasurementRouteState.OtherRouteOnly });
+
+        Assert.False(validity.IsValidForComplaint);
+        Assert.Contains(SpeedMeasurementDefect.PathElsewhere, validity.Defects);
+    }
+
+    /// <summary>
+    /// The one that used to pass. Conditions built without anybody consulting the route table
+    /// recorded "one path, no VPN" and went into a complaint as a verified measurement of a
+    /// link nobody had established it travelled over.
+    /// </summary>
+    [Fact]
+    public void A_measurement_whose_path_was_never_checked_is_not_usable()
+    {
+        var validity = SpeedMeasurementValidity.Of(
+            new SpeedMeasurementConditions(LinkMedium.Ethernet, 1_000_000_000, 100, 60));
+
+        Assert.False(validity.IsValidForComplaint);
+        Assert.Contains(SpeedMeasurementDefect.PathUnverified, validity.Defects);
     }
 
     [Fact]
@@ -122,8 +156,33 @@ public sealed class SpeedMeasurementTests
         Assert.Contains("osnov za prigovor", SpeedBand.BelowMinimum.Explain(), StringComparison.Ordinal);
         Assert.Contains("preko kabla", SpeedBand.BelowMinimum.Explain(), StringComparison.Ordinal);
 
-        Assert.Contains("Nema osnova", SpeedBand.NormallyAvailable.Explain(), StringComparison.Ordinal);
-        Assert.Contains("Nema osnova", SpeedBand.AtAdvertised.Explain(), StringComparison.Ordinal);
+        // And a good figure does not conclude the other way either. "Nema osnova za prigovor
+        // po brzini" was a verdict on the service drawn from one sample, in the operator's
+        // favour - the same substitution this release removes, pointed the other direction.
+        foreach (var band in new[] { SpeedBand.NormallyAvailable, SpeedBand.AtAdvertised })
+        {
+            Assert.DoesNotContain("Nema osnova", band.Explain(), StringComparison.Ordinal);
+            Assert.Contains("ne znači da je usluga uredna", band.Explain(), StringComparison.Ordinal);
+        }
+    }
+
+    /// <summary>
+    /// P0-7. "Uobičajeno dostupna brzina" is defined by the Pravilnik as at least 80 % of the
+    /// contracted rate held over 90 % of the measurement time. One measurement cannot satisfy
+    /// a condition about a share of time, however good the number is - so the label says where
+    /// the figure falls and the explanation says what it would take to conclude.
+    /// </summary>
+    [Fact]
+    public void No_single_measurement_is_labelled_with_the_regulators_conclusion()
+    {
+        foreach (var band in Enum.GetValues<SpeedBand>())
+        {
+            Assert.DoesNotContain("uobičajeno dostupna", band.Label(), StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("uobičajeno dostupna", band.UploadLabel(), StringComparison.OrdinalIgnoreCase);
+
+            Assert.Contains("90 % vremena", band.Explain(), StringComparison.Ordinal);
+            Assert.Contains("serija merenja", band.Explain(), StringComparison.Ordinal);
+        }
     }
 
     /// <summary>

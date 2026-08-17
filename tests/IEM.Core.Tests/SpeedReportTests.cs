@@ -209,7 +209,7 @@ public sealed class SpeedReportTests : IDisposable
 
         Assert.Contains("i sam računar koristio vezu", html, StringComparison.Ordinal);
         Assert.Contains("25 MB/s", html, StringComparison.Ordinal);
-        Assert.Contains("ne može bez rezerve pripisati operateru", html, StringComparison.Ordinal);
+        Assert.Contains("ne može bez rezerve pripisati samoj vezi", html, StringComparison.Ordinal);
     }
 
     [Fact]

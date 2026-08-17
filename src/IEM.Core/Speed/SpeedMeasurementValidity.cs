@@ -31,8 +31,22 @@ public enum SpeedMeasurementDefect
     /// <summary>The connection was not working properly while the measurement ran.</summary>
     ConnectionDegraded,
 
-    /// <summary>Traffic was leaving through more than one adapter, or through a VPN.</summary>
+    /// <summary>Some of the measurement's traffic was leaving through another adapter or a VPN.</summary>
     PathAmbiguous,
+
+    /// <summary>Every route that could be resolved left through an adapter other than this one.</summary>
+    PathElsewhere,
+
+    /// <summary>
+    /// Where the traffic went could not be established at all.
+    /// <para>
+    /// Separate from <see cref="PathAmbiguous"/> on purpose. An ambiguous path is a finding
+    /// about the machine; an unverified one is the absence of a finding, and the two need
+    /// different advice. Both stop the measurement from supporting a complaint, because a
+    /// figure whose path nobody could check is a figure about an unknown link.
+    /// </para>
+    /// </summary>
+    PathUnverified,
 
     /// <summary>The contracted speed was never entered, so there is nothing to compare against.</summary>
     ContractUnknown,
@@ -52,8 +66,16 @@ public sealed record SpeedMeasurementConditions(
     /// <summary>Nothing was failing while the measurement ran.</summary>
     public bool ConnectionHealthy { get; init; } = true;
 
-    /// <summary>Every probe left through the same adapter, with no VPN in the way.</summary>
-    public bool SinglePath { get; init; } = true;
+    /// <summary>
+    /// What the route table said about the measurement's own traffic.
+    /// <para>
+    /// Defaults to <see cref="MeasurementRouteState.Unknown"/>, which costs the measurement
+    /// its standing until somebody checks. That is the point: it used to default to "one
+    /// path, no VPN", so every caller that never looked recorded a verified path it had
+    /// never verified.
+    /// </para>
+    /// </summary>
+    public MeasurementRouteState RouteState { get; init; } = MeasurementRouteState.Unknown;
 
     /// <summary>
     /// What the customer is paying for in the sending direction, when the contract states it
@@ -91,9 +113,18 @@ public sealed record SpeedMeasurementValidity(
     /// and how far below the usual level it sits.
     /// </para>
     /// <para>
-    /// The floor and the usual level are not inventions: Pravilnik o parametrima kvaliteta
-    /// ("Sl. glasnik RS" 23/2023) sets the minimum speed at 70 % of the contracted maximum
-    /// and the normally available speed at 80 % of it over 90 % of measurement time.
+    /// The floor and the usual level are not inventions: the Pravilnik o parametrima kvaliteta
+    /// sets the minimum speed at 70 % of the contracted maximum and the normally available
+    /// speed at 80 % of it <em>over 90 % of measurement time</em>. That last condition is why
+    /// a single measurement can only place a figure in a band and never conclude that the
+    /// service is normally available - a conclusion about a share of time needs a series.
+    /// </para>
+    /// <para>
+    /// The shares are the same under both the current pravilnik ("Sl. glasnik RS" 82/2024,
+    /// applied from three months after it entered force on 19 October 2024) and the one it
+    /// replaced (23/2023), so they are stated once here. Which of the two a given measurement
+    /// is judged under is decided by its date, in <c>LegalSources.QualityPravilnikOn</c>,
+    /// because a report on an old measurement has to cite the rules that governed it.
     /// </para>
     /// </summary>
     public const double MinimumShare = 0.70;
@@ -133,9 +164,25 @@ public sealed record SpeedMeasurementValidity(
             defects.Add(SpeedMeasurementDefect.ConnectionDegraded);
         }
 
-        if (!conditions.SinglePath)
+        // Only a route table that agrees on every candidate lets the measurement stand. The
+        // other three states are each their own defect rather than one shared "path problem",
+        // because "we could not check" and "it went out of the VPN" are answered differently.
+        switch (conditions.RouteState)
         {
-            defects.Add(SpeedMeasurementDefect.PathAmbiguous);
+            case MeasurementRouteState.MixedRoutes:
+                defects.Add(SpeedMeasurementDefect.PathAmbiguous);
+                break;
+
+            case MeasurementRouteState.OtherRouteOnly:
+                defects.Add(SpeedMeasurementDefect.PathElsewhere);
+                break;
+
+            case MeasurementRouteState.Unknown:
+                defects.Add(SpeedMeasurementDefect.PathUnverified);
+                break;
+
+            default:
+                break;
         }
 
         return new SpeedMeasurementValidity(defects.Count == 0, defects);

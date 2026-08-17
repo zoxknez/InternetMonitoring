@@ -39,8 +39,14 @@ public static class EvidenceModelVersion
     /// 2.2 stops counting a success measured before the trouble began, which is what kept
     /// short outages being reclassified as harmless filtering.
     /// </para>
+    /// <para>
+    /// 2.3 requires the wireless radio to be positively known to be on before a vanished
+    /// SSID is read as the access point having stopped broadcasting. Until then an unread
+    /// radio counted as one that was on, so a machine whose wireless API could not be
+    /// queried reported equipment failure it had never established.
+    /// </para>
     /// </summary>
-    public const string ClassifierVersion = "2.2.0";
+    public const string ClassifierVersion = "2.3.0";
 
     /// <summary>
     /// Rules mapping a state to a <see cref="FaultDomain"/>.
@@ -48,8 +54,16 @@ public static class EvidenceModelVersion
     /// 2.0 replaces the binary "operator or not" with how far along the path the fault was
     /// isolated, and stops treating <c>InternetDown</c> as proven against the operator.
     /// </para>
+    /// <para>
+    /// 2.1 changes no value and no rule - only what they are called. The model had said for a
+    /// release that a measurement from inside the house cannot name the operator, while the
+    /// wording built on it still read "Prekida kod operatera" and "Vaša oprema je isključena
+    /// kao uzrok". Both overstate: the router's own WAN side, its firmware, a dropped PPPoE
+    /// session and an exhausted NAT table are not excluded by anything measured here. Reports
+    /// written by 2.0 carry the stronger wording over identical findings.
+    /// </para>
     /// </summary>
-    public const string AttributionModelVersion = "2.0";
+    public const string AttributionModelVersion = "2.1";
 
     /// <summary>
     /// Rules turning an incident's evidence into a support and coverage band.

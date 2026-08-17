@@ -1,3 +1,4 @@
+using IEM.Core.Presentation;
 using IEM.Storage;
 using IEM.Storage.Evidence;
 
@@ -43,13 +44,14 @@ public static class VerifyCommand
             Console.WriteLine();
             Console.WriteLine($"  Završni otisak: {verification.HeadHash}");
             Console.WriteLine();
-            Console.WriteLine("  Ovim je dokazano da paket nije menjan nakon snimanja. Nije dokazano");
-            Console.WriteLine("  ko ga je i kada napravio - za to je potreban vremenski žig treće strane.");
+            ConsoleText.WriteWrapped(ChainText.Consistent);
+            Console.WriteLine();
+            ConsoleText.WriteWrapped(ChainText.NotProofOfOrigin);
             Console.WriteLine();
             return true;
         }
 
-        WriteLine(ConsoleColor.Red, "  NARUŠEN - paket je menjan nakon snimanja.");
+        WriteLine(ConsoleColor.Red, "  NARUŠEN - neki zapis je izmenjen posle snimanja.");
         Console.WriteLine();
         Console.WriteLine($"  Prvi narušen red: {verification.FirstBrokenLine}");
         Console.WriteLine($"  Razlog:           {TranslateReason(verification.Reason)}");

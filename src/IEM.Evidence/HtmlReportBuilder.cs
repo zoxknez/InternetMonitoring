@@ -146,8 +146,8 @@ public static class HtmlReportBuilder
             SerbianText.Percent(session.UpstreamAvailabilityPercent).Replace(" ", "&nbsp;", StringComparison.Ordinal),
             "računa se samo ono što nije vaša oprema");
         Card("Prekida ukupno", session.Incidents.Count.ToString(CultureInfo.InvariantCulture),
-            $"od toga {session.UpstreamIncidents.Count()} kod operatera");
-        Card("Nedostupnost operatera", SerbianText.Duration(session.UpstreamDowntime),
+            $"od toga {session.UpstreamIncidents.Count()} izolovano iza rutera");
+        Card("Nedostupnost iza rutera", SerbianText.Duration(session.UpstreamDowntime),
             $"najduži {SerbianText.Duration(session.LongestUpstreamOutage)}");
         Card("Lokalna nedostupnost", SerbianText.Duration(session.LocalDowntime),
             "vaš računar, Wi-Fi ili ruter");
@@ -341,7 +341,7 @@ public static class HtmlReportBuilder
             {
                 flags.Add(
                     $"tokom prekida je i sam računar koristio vezu (do {SerbianText.Rate(localPeak)}), " +
-                    "pa se ovaj prekid ne može bez rezerve pripisati operateru");
+                    "pa se ovaj prekid ne može bez rezerve pripisati samoj vezi");
             }
 
             var cls = incident.Attribution == FaultAttribution.Upstream ? " class=\"upstream\"" : string.Empty;
@@ -499,8 +499,12 @@ public static class HtmlReportBuilder
         builder.Append("<h2>Integritet zapisa</h2>");
 
         builder.Append(valid
-            ? "<p class=\"ok\">Lanac otisaka je neprekinut - paket nije menjan nakon snimanja.</p>"
-            : "<p class=\"bad-text\">Lanac otisaka je narušen - paket je menjan nakon snimanja.</p>");
+            ? $"<p class=\"ok\">{Escape(ChainText.Consistent)}</p>"
+            : $"<p class=\"bad-text\">{Escape(ChainText.Broken)}</p>");
+
+        // Beside the finding, not a page away. A reader who takes the first sentence for
+        // proof of origin has been misled by the layout even when the caveat exists somewhere.
+        builder.Append($"<p class=\"note\">{Escape(ChainText.NotProofOfOrigin)}</p>");
 
         if (headHash is not null)
         {
@@ -604,6 +608,7 @@ public static class HtmlReportBuilder
             <table class="facts">
               <tr><th>Preneseno</th><td>{(transferred / 1_000_000d).ToString("0.#", SerbianText.Culture)} MB za {SerbianText.Duration(speed.Duration)} po smeru</td></tr>
               <tr><th>Način merenja</th><td>{medium}, tri paralelne veze po smeru, veza mirna pre početka</td></tr>
+              <tr><th>Putanja merenja</th><td>{Escape(speed.RouteState.Label())}</td></tr>
             </table>
             """);
 
@@ -686,8 +691,7 @@ public static class HtmlReportBuilder
             <ul class="limits">
               <li>Ovo je tehnička evidencija prekida, a ne merenje ovlašćene treće strane niti zapis
                   potpisan od strane operatera.</li>
-              <li>Dokazano je da paket nije menjan nakon snimanja. Nije dokazano ko ga je i kada napravio -
-                  za to je potreban vremenski žig treće strane.</li>
+              <li>{Escape(ChainText.NotProofOfOrigin)}</li>
               <li>{Escape(speedItem)}</li>
               <li>Uz prigovor zbog kvaliteta internet usluge RATEL navodi i rezultate merenja aplikacijom
                   RATEL NetTest, po proceduri od tri dana sa po dva merenja pre i posle podne.</li>

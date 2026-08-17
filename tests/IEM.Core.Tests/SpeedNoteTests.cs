@@ -44,6 +44,7 @@ public sealed class SpeedNoteTests : IDisposable
         {
             ContractedUploadMbps = 20,
             MeasuredUploadMbps = 18.2,
+            RouteState = MeasurementRouteState.AllResolvedRoutesMatch,
         };
 
     private static SpeedMeasurementNote Build(

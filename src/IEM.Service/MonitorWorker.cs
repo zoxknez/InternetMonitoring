@@ -528,7 +528,7 @@ public sealed class MonitorWorker(
 
         logger.LogInformation(
             "Sesija {SessionId} je završena. Dostupnost {Availability:F4} %, prekida {Incidents} " +
-            "(kod operatera {Upstream}). Integritet: {Integrity}.",
+            "(izolovano iza rutera {Upstream}). Integritet: {Integrity}.",
             plan.SessionId,
             engine.Statistics.AvailabilityPercent,
             engine.Statistics.IncidentCount,

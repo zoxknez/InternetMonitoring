@@ -43,7 +43,7 @@ public static class ComplaintLetter
 
         AppendSubscriber(builder, complaint);
         AppendFindings(builder, complaint, session);
-        AppendRequest(builder, session);
+        AppendRequest(builder, complaint, today);
         AppendAttachments(builder, session);
 
         builder.AppendLine("Potpis: ____________________");
@@ -107,8 +107,8 @@ public static class ComplaintLetter
 
             builder.AppendLine(Wrap(
                 "Tokom svakog od tih prekida moj ruter je uredno odgovarao, a nijedna meta van " +
-                "lokalne mreže nije bila dostupna. To isključuje moju opremu i moju lokalnu " +
-                "mrežu kao uzrok."));
+                "lokalne mreže nije bila dostupna. To isključuje moju lokalnu mrežu i putanju " +
+                "između računara i rutera kao uzrok."));
 
             builder.AppendLine();
             builder.AppendLine("Najduži prekidi:");
@@ -147,13 +147,32 @@ public static class ComplaintLetter
         }
     }
 
-    private static void AppendRequest(StringBuilder builder, SessionSnapshot session)
+    /// <summary>
+    /// The request, with the period the answer is owed in stated rather than gestured at.
+    /// <para>
+    /// "U zakonskom roku" asks the operator to look it up, and an operator who answers late
+    /// can hardly be shown to have done so by a letter that never said when. The period comes
+    /// from the rule that applies to this subscriber, so a consumer's letter says eight days
+    /// and a company's says thirty - and both name the source.
+    /// </para>
+    /// </summary>
+    private static void AppendRequest(StringBuilder builder, ComplaintCase complaint, DateOnly today)
     {
+        var rule = LegalRegistry.On(today).RuleFor(
+            ComplaintStep.OperatorResponseDue,
+            complaint.CustomerType,
+            complaint.ServiceKind,
+            complaint.ComplaintKind);
+
+        var deadline = rule is null
+            ? "u zakonskom roku"
+            : $"u roku od {rule.Value} dana, kako propisuje {string.Join("; ", rule.CitationsOn(today))}";
+
         builder.AppendLine("ZAHTEV");
         builder.AppendLine();
         builder.AppendLine(Wrap(
             "Tražim da utvrdite uzrok navedenih prekida i otklonite ga, kao i da mi dostavite " +
-            "pisani odgovor na ovaj prigovor u zakonskom roku."));
+            $"pisani odgovor na ovaj prigovor {deadline}."));
 
         builder.AppendLine();
         builder.AppendLine(Wrap(

@@ -116,13 +116,12 @@ public static class SpeedCommand
         // Asked here rather than before the queue, for the same reason the adapter itself is
         // inspected late: after ten minutes of waiting for a quiet link, the routing that
         // matters is the one at the moment of measuring.
-        var singlePath = MeasurementPath.LeavesThroughAdapter(link.InterfaceId);
+        var route = MeasurementPath.Resolve(link.InterfaceId);
 
-        if (singlePath == false)
+        if (route.State != MeasurementRouteState.AllResolvedRoutesMatch)
         {
-            WriteWarning("  Saobraćaj ka serveru za merenje ne izlazi kroz navedeni adapter, nego kroz");
-            WriteWarning("  drugi (VPN ili druga mrežna karta). Merenje se izvršava, ali se ne može");
-            WriteWarning("  pripisati ovoj vezi.");
+            WriteWarning($"  Putanja merenja: {route.Describe()}.");
+            WriteWarning("  Merenje se izvršava i biće zapisano, ali se ne može pripisati ovoj vezi.");
             Console.WriteLine();
         }
 
@@ -161,9 +160,10 @@ public static class SpeedCommand
             LinkWasIdle = true,
             ConnectionHealthy = true,
 
-            // Checked rather than assumed. Unknown counts as single, which is what this
-            // said unconditionally before there was any check at all.
-            SinglePath = singlePath ?? true,
+            // Checked rather than assumed, and an unresolved check stays unresolved. It used
+            // to fall back to "one path" - which is what this claimed unconditionally before
+            // there was any check at all, dressed up as a verified finding.
+            RouteState = route.State,
             ContractedUploadMbps = contractedUploadMbps,
             MeasuredUploadMbps = result.UploadMbps,
         };

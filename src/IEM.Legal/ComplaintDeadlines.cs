@@ -3,7 +3,7 @@ namespace IEM.Legal;
 /// <summary>A step in the complaint procedure that has a date attached to it.</summary>
 public enum ComplaintStep
 {
-    /// <summary>The fault happened, or the disputed bill arrived.</summary>
+    /// <summary>The fault happened, or the disputed bill fell due.</summary>
     Event,
 
     /// <summary>The complaint has to reach the operator by this date.</summary>
@@ -19,97 +19,73 @@ public enum ComplaintStep
     OperatorResponded,
 
     /// <summary>
-    /// The last date the matter can be taken to the regulator.
+    /// The last date a request for out-of-court settlement can reach the Regulator.
     /// <para>
-    /// The step people miss. The complaint gets filed, the operator answers with a refusal
-    /// or says nothing at all, and the customer waits - and by the time they think of going
+    /// The step people miss. The complaint gets filed, the operator answers with a refusal or
+    /// says nothing at all, and the customer waits - and by the time they think of going
     /// further, the window has closed.
     /// </para>
     /// </summary>
-    RegulatorDue,
+    RegulatorDisputeDue,
+
+    /// <summary>
+    /// When the Regulator's decision is due, once the proceeding has been started.
+    /// <para>
+    /// Not a deadline for the subscriber: nothing of theirs is lost by it passing. It is
+    /// stated so they know what to expect, and so a proceeding that has gone quiet past it is
+    /// something they can ask about.
+    /// </para>
+    /// </summary>
+    RegulatorDecisionTarget,
 }
 
 /// <param name="Step">Which step this is.</param>
-/// <param name="Date">When it happened, or when it must happen by.</param>
+/// <param name="Date">
+/// When it happened, or when it must happen by - and null when the rules could not settle it.
+/// A missing date is a finding in its own right and must not be filled in with a guess.
+/// </param>
 /// <param name="IsDeadline">True for a date to meet, false for something already done.</param>
-public sealed record ComplaintMilestone(ComplaintStep Step, DateOnly Date, bool IsDeadline)
+public sealed record ComplaintMilestone(ComplaintStep Step, DateOnly? Date, bool IsDeadline)
 {
+    /// <summary>The rule this date came from, where it came from one.</summary>
+    public AppliedRule? Rule { get; init; }
+
+    public LegalContextState State { get; init; } = LegalContextState.Resolved;
+
     /// <summary>Days from <paramref name="today"/> to this date. Negative once it has passed.</summary>
-    public int DaysFrom(DateOnly today) => Date.DayNumber - today.DayNumber;
-}
-
-/// <summary>
-/// The periods the complaint procedure runs on.
-/// <para>
-/// Held in one place and configurable rather than scattered through the text, because these
-/// are the numbers most likely to change and the ones with the worst consequences if they
-/// are wrong. A customer told the wrong deadline loses the case on procedure without ever
-/// reaching the evidence.
-/// </para>
-/// </summary>
-public sealed record ComplaintPeriods
-{
-    public static readonly ComplaintPeriods Default = new();
-
-    /// <summary>Days from the event within which the complaint must reach the operator.</summary>
-    public int DaysToComplain { get; init; } = 30;
-
-    /// <summary>Days the operator has to answer a complaint.</summary>
-    public int DaysForOperatorResponse { get; init; } = 15;
-
-    /// <summary>
-    /// Days from the operator's answer - or from the day their answer was due - within
-    /// which the matter can be taken to the regulator.
-    /// <para>
-    /// Zakon o elektronskim komunikacijama ("Sl. glasnik RS" 35/2023), član 113. st. 6:
-    /// 15 dana od dostavljanja odgovora, odnosno 15 dana od isteka roka u kome je operater
-    /// bio dužan da odgovori. Isti rok navodi i RATEL na svojoj stranici o prigovorima.
-    /// Ranije je ovde stajalo 60 dana, što je korisniku obećavalo rok koji ne postoji.
-    /// </para>
-    /// </summary>
-    public int DaysToReachRegulator { get; init; } = 15;
-
-    /// <summary>
-    /// Hours within which a reported fault should be repaired.
-    /// <para>
-    /// Not a deadline in the same sense as the others: nothing is lost by it passing. It is
-    /// recorded because a fault left unrepaired past it is itself worth stating in the
-    /// complaint.
-    /// </para>
-    /// </summary>
-    public int HoursToRepair { get; init; } = 48;
+    public int? DaysFrom(DateOnly today) => Date is { } date ? date.DayNumber - today.DayNumber : null;
 }
 
 /// <summary>
 /// Works out what has to happen by when.
 /// <para>
-/// Every date here is derived from something the user tells us, and every one of them is
-/// stated in the output rather than assumed. The tool cannot know what a particular contract
-/// says, and pretending otherwise would produce a confident timetable that happens to be
-/// wrong for the person reading it.
+/// Every date here comes from a rule in <see cref="LegalRegistry"/>, and every rule carries
+/// what it was counted from and where it comes from. Nothing is a constant: the periods this
+/// program used to hold as defaults - fifteen days for an answer, fifteen to reach the
+/// Regulator - were the old law's, and no call site ever passed anything else, so the comment
+/// promising they were configurable was describing something that had never happened.
 /// </para>
 /// </summary>
 public static class ComplaintDeadlines
 {
-    /// <summary>
-    /// Builds the timetable from what is known so far.
-    /// </summary>
-    /// <param name="eventDate">When the fault occurred, or the disputed bill arrived.</param>
-    /// <param name="submitted">When the complaint was filed, if it has been.</param>
-    /// <param name="responded">When the operator answered, if they have.</param>
+    /// <summary>Builds the timetable from the rules that applied to this case.</summary>
     public static IReadOnlyList<ComplaintMilestone> Build(
-        DateOnly eventDate,
+        ResolvedLegalContext context,
+        AnchoredDate? eventDate,
         DateOnly? submitted = null,
         DateOnly? responded = null,
-        ComplaintPeriods? periods = null)
+        DateOnly? regulatorFiled = null)
     {
-        var p = periods ?? ComplaintPeriods.Default;
+        ArgumentNullException.ThrowIfNull(context);
 
-        var milestones = new List<ComplaintMilestone>
+        var milestones = new List<ComplaintMilestone>();
+
+        if (eventDate is not null)
         {
-            new(ComplaintStep.Event, eventDate, IsDeadline: false),
-            new(ComplaintStep.ComplaintDue, eventDate.AddDays(p.DaysToComplain), IsDeadline: true),
-        };
+            milestones.Add(new ComplaintMilestone(ComplaintStep.Event, eventDate.Date, IsDeadline: false));
+        }
+
+        milestones.Add(Deadline(ComplaintStep.ComplaintDue));
 
         if (submitted is not { } filed)
         {
@@ -117,37 +93,49 @@ public static class ComplaintDeadlines
         }
 
         milestones.Add(new ComplaintMilestone(ComplaintStep.ComplaintSubmitted, filed, IsDeadline: false));
-
-        var responseDue = filed.AddDays(p.DaysForOperatorResponse);
-        milestones.Add(new ComplaintMilestone(ComplaintStep.OperatorResponseDue, responseDue, IsDeadline: true));
+        milestones.Add(Deadline(ComplaintStep.OperatorResponseDue));
 
         if (responded is { } answered)
         {
             milestones.Add(new ComplaintMilestone(ComplaintStep.OperatorResponded, answered, IsDeadline: false));
         }
 
-        // Counted from the answer when there is one, and from the day it was due when there
-        // is not. An operator who simply never replies must not thereby postpone the
-        // customer's right to go further indefinitely - nor start the clock late.
-        var regulatorFrom = responded ?? responseDue;
+        milestones.Add(Deadline(ComplaintStep.RegulatorDisputeDue));
 
-        milestones.Add(new ComplaintMilestone(
-            ComplaintStep.RegulatorDue,
-            regulatorFrom.AddDays(p.DaysToReachRegulator),
-            IsDeadline: true));
+        // Only once the proceeding exists. Printing a target date for a decision nobody has
+        // asked for would be inventing a step that has not happened.
+        if (regulatorFiled is not null && context.For(ComplaintStep.RegulatorDecisionTarget) is not null)
+        {
+            milestones.Add(Deadline(ComplaintStep.RegulatorDecisionTarget));
+        }
 
         return milestones;
+
+        ComplaintMilestone Deadline(ComplaintStep step)
+        {
+            var applied = context.For(step);
+
+            return new ComplaintMilestone(step, applied?.Due, IsDeadline: true)
+            {
+                Rule = applied,
+                State = applied?.State ?? LegalContextState.Unresolved,
+            };
+        }
     }
 
     /// <summary>
     /// The next thing that has to be done, or null when nothing is outstanding.
+    /// <para>
+    /// A deadline whose date could not be settled is not offered as the next action. Telling
+    /// somebody to act by a date the program could not work out is worse than saying nothing.
+    /// </para>
     /// </summary>
     public static ComplaintMilestone? NextAction(IReadOnlyList<ComplaintMilestone> milestones, DateOnly today)
     {
         ArgumentNullException.ThrowIfNull(milestones);
 
         return milestones
-            .Where(m => m.IsDeadline && m.Date >= today)
+            .Where(m => m.IsDeadline && m.Date is { } date && date >= today)
             .OrderBy(m => m.Date)
             .FirstOrDefault();
     }
@@ -163,7 +151,25 @@ public static class ComplaintDeadlines
 
         var done = milestones.Select(m => m.Step).ToHashSet();
 
-        return [.. milestones.Where(m => m.IsDeadline && m.Date < today && !WasMet(m.Step, done, regulatorFiled))];
+        // An unsettled date is never reported as missed. "I could not work out your deadline"
+        // must not become "your deadline has passed" - which is the substitution that would
+        // stop somebody from filing a complaint they were still entitled to file.
+        return
+        [
+            .. milestones.Where(m =>
+                m.IsDeadline &&
+                m.Date is { } date &&
+                date < today &&
+                !WasMet(m.Step, done, regulatorFiled)),
+        ];
+    }
+
+    /// <summary>Deadlines the rules could not settle, which the output has to say out loud.</summary>
+    public static IReadOnlyList<ComplaintMilestone> Unsettled(IReadOnlyList<ComplaintMilestone> milestones)
+    {
+        ArgumentNullException.ThrowIfNull(milestones);
+
+        return [.. milestones.Where(m => m.IsDeadline && m.Date is null)];
     }
 
     /// <summary>Whether the action a deadline calls for has been recorded as done.</summary>
@@ -175,9 +181,12 @@ public static class ComplaintDeadlines
         ComplaintStep.ComplaintDue => recorded.Contains(ComplaintStep.ComplaintSubmitted),
         ComplaintStep.OperatorResponseDue => recorded.Contains(ComplaintStep.OperatorResponded),
 
-        // Recorded in the case journal rather than the milestones, because it is the one
+        // Recorded on the case rather than derived from the milestones, because it is the one
         // step that happens after every other date has already passed.
-        ComplaintStep.RegulatorDue => regulatorFiled is not null,
+        ComplaintStep.RegulatorDisputeDue => regulatorFiled is not null,
+
+        // Not the subscriber's deadline at all: nothing of theirs is lost by it passing.
+        ComplaintStep.RegulatorDecisionTarget => true,
         _ => false,
     };
 }

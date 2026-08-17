@@ -124,6 +124,28 @@ public sealed record CliSettings
     /// <summary>Whether the operator upheld the complaint: <c>--usvojen</c> or <c>--odbijen</c>.</summary>
     public bool? OperatorUpheld { get; init; }
 
+    /// <summary>
+    /// Date the request actually reached the Regulator, recorded into the case journal.
+    /// <para>
+    /// Recorded rather than assumed from the day the letter was generated. Writing a
+    /// submission is not filing it, and until this is entered the case rightly shows the
+    /// deadline as still outstanding.
+    /// </para>
+    /// </summary>
+    public DateOnly? RegulatorFiled { get; init; }
+
+    /// <summary>The subscriber is not a consumer, so the consumer protection period does not apply.</summary>
+    public bool NonConsumer { get; init; }
+
+    /// <summary>The complaint is about the amount charged rather than the quality of the service.</summary>
+    public bool BillingComplaint { get; init; }
+
+    /// <summary>The day the disputed invoice fell due, which a billing complaint runs from.</summary>
+    public DateOnly? InvoiceDue { get; init; }
+
+    /// <summary>Which recorded outage the complaint is about, where the session has several.</summary>
+    public int? IncidentNumber { get; init; }
+
     /// <summary>Session directory to prepare the regulator submission from.</summary>
     public string? RegulatorDirectory { get; init; }
 
@@ -246,6 +268,59 @@ public static class CommandLine
                     }
 
                     result = result with { OperatorResponded = responded };
+                    break;
+
+                case "--prijavljeno":
+                    if (!TryTakeValue(args, ref i, out var filedText) ||
+                        !TryParseDate(filedText, out var filed))
+                    {
+                        error = "Nedostaje ili nije prepoznat datum za --prijavljeno. Primer: --prijavljeno 05.10.2026.";
+                        settings = result;
+                        return false;
+                    }
+
+                    result = result with { RegulatorFiled = filed };
+                    break;
+
+                case "--pravno-lice":
+                    result = result with { NonConsumer = true };
+                    break;
+
+                case "--prigovor-na":
+                    if (!TryTakeValue(args, ref i, out var kindText) ||
+                        kindText is not ("kvalitet" or "racun" or "račun"))
+                    {
+                        error = "Za --prigovor-na navedite kvalitet ili racun. Primer: --prigovor-na racun";
+                        settings = result;
+                        return false;
+                    }
+
+                    result = result with { BillingComplaint = kindText != "kvalitet" };
+                    break;
+
+                case "--dospece-racuna":
+                    if (!TryTakeValue(args, ref i, out var invoiceText) ||
+                        !TryParseDate(invoiceText, out var invoiceDue))
+                    {
+                        error = "Nedostaje ili nije prepoznat datum za --dospece-racuna. Primer: --dospece-racuna 01.09.2026.";
+                        settings = result;
+                        return false;
+                    }
+
+                    result = result with { InvoiceDue = invoiceDue };
+                    break;
+
+                case "--prekid":
+                    if (!TryTakeValue(args, ref i, out var incidentText) ||
+                        !int.TryParse(incidentText, NumberStyles.Integer, CultureInfo.InvariantCulture, out var incident) ||
+                        incident < 1)
+                    {
+                        error = "Za --prekid navedite redni broj prekida iz izveštaja. Primer: --prekid 2";
+                        settings = result;
+                        return false;
+                    }
+
+                    result = result with { IncidentNumber = incident };
                     break;
 
                 case "--usvojen":
@@ -544,8 +619,13 @@ public static class CommandLine
                   --predmet             Prikazuje stanje predmeta i rokove iz dnevnika.
                   --podnet <datum>      Beleži dan podnošenja prigovora. Primer: --podnet 12.09.2026.
                   --odgovor <datum>     Beleži dan odgovora operatera. Primer: --odgovor 20.09.2026.
+                  --prijavljeno <datum> Beleži dan kada je zahtev stigao Regulatoru.
                   --usvojen             Beleži da je operater usvojio prigovor.
                   --odbijen             Beleži da je operater odbio prigovor.
+                  --prekid <broj>       Prekid od kog teku rokovi, kad ih sesija ima više.
+                  --prigovor-na <vrsta> kvalitet (podrazumevano) ili racun.
+                  --dospece-racuna <d>  Dan dospeća spornog računa, za prigovor na račun.
+                  --pravno-lice         Korisnik nije potrošač, pa važe drugi rokovi.
                   --prijava-ratel <folder>  Priprema prijavu RATEL-u iz sesije, kad je
                                         operateru istekao rok ili je prigovor odbijen.
               -p, --pomoc               Prikazuje ovu pomoć.
@@ -555,7 +635,7 @@ public static class CommandLine
               iem -t 48h                Test za prigovor operateru
               iem -i "Wi-Fi" -t 24h     Nadzor konkretnog adaptera
               iem -v "C:\...\Sesija_20260813_182150"
-                                        Provera da paket nije menjan
+                                        Provera doslednosti lanca otisaka
               iem -r "C:\...\Sesija_20260813_182150"
                                         Ponovna izrada izveštaja
 

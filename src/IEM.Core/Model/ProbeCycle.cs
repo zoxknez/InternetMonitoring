@@ -24,7 +24,21 @@ public readonly record struct ProbeTally(int Attempted, int Succeeded, int Fresh
 
     public bool SomeFailed => Attempted > 0 && Succeeded < Attempted;
 
-    public double LossPercent => Attempted == 0 ? 0d : 100d * Failed / Attempted;
+    /// <summary>
+    /// The share of this family's targets that did not answer.
+    /// <para>
+    /// Not a packet loss figure, and named so it cannot be mistaken for one. The external
+    /// ICMP family is three <em>different destinations</em> with one probe each, so two
+    /// silent ones give 66.7 % - a number that says two of three operators' networks did not
+    /// answer a ping, not that two thirds of packets were dropped. Reported as loss, it put
+    /// "66,7 % gubitka paketa" into complaints when the truth was often one resolver that
+    /// filters ICMP by policy.
+    /// </para>
+    /// <para>
+    /// A real loss figure needs many probes to the same destination. That is a 3.0 change.
+    /// </para>
+    /// </summary>
+    public double UnreachableShare => Attempted == 0 ? 0d : 100d * Failed / Attempted;
 }
 
 /// <summary>
@@ -87,6 +101,24 @@ public sealed record ProbeCycle(
     public ProbeTally Gateway => Tally(r => r.Scope == ProbeScope.Gateway && r.Kind == ProbeKind.Icmp);
 
     public ProbeTally ExternalIcmp => Tally(r => r.Scope == ProbeScope.External && r.Kind == ProbeKind.Icmp);
+
+    /// <summary>
+    /// Which external destinations did not answer ICMP, by name.
+    /// <para>
+    /// Because the count alone is misleading: "2 of 3 failed" over three different operators'
+    /// resolvers is a very different finding depending on which two, and one of them
+    /// answering nothing on every sample of a healthy session is a target that filters ICMP
+    /// rather than a connection that drops packets.
+    /// </para>
+    /// </summary>
+    public IReadOnlyList<string> UnansweredExternalIcmpTargets =>
+    [
+        .. Results
+            .Where(r => r.Scope == ProbeScope.External &&
+                        r.Kind == ProbeKind.Icmp &&
+                        r.Outcome != ProbeOutcome.Success)
+            .Select(r => r.Target),
+    ];
 
     public ProbeTally ExternalTcp => Tally(r => r.Scope == ProbeScope.External && r.Kind == ProbeKind.TcpConnect);
 

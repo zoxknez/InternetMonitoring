@@ -40,11 +40,11 @@ public static class RegulatorSubmission
     }
 
     /// <summary>Whether a submission can be written, and what stands in the way if not.</summary>
-    public static Obstacle CanSubmit(ComplaintCase complaint, DateOnly today, ComplaintPeriods? periods = null)
+    public static Obstacle CanSubmit(ComplaintCase complaint, DateOnly today, ResolvedLegalContext? context = null)
     {
         ArgumentNullException.ThrowIfNull(complaint);
 
-        return complaint.StageOn(today, periods) switch
+        return complaint.StageOn(today, context ?? complaint.Resolve(today)) switch
         {
             CaseStage.Gathering or CaseStage.ReadyToFile => Obstacle.OperatorNotContacted,
             CaseStage.AwaitingOperator => Obstacle.OperatorStillHasTime,
@@ -82,20 +82,21 @@ public static class RegulatorSubmission
         SessionSnapshot session,
         DateOnly today,
         out Obstacle obstacle,
-        ComplaintPeriods? periods = null)
+        ResolvedLegalContext? context = null)
     {
         ArgumentNullException.ThrowIfNull(complaint);
         ArgumentNullException.ThrowIfNull(session);
 
-        obstacle = CanSubmit(complaint, today, periods);
+        var legal = context ?? complaint.Resolve(today);
+        obstacle = CanSubmit(complaint, today, legal);
 
         if (obstacle != Obstacle.None)
         {
             return null;
         }
 
-        var stage = complaint.StageOn(today, periods);
-        var milestones = complaint.Milestones(periods);
+        var stage = complaint.StageOn(today, legal);
+        var milestones = complaint.Milestones(legal);
         var builder = new StringBuilder();
 
         builder.AppendLine(RegulatorName);
@@ -120,8 +121,8 @@ public static class RegulatorSubmission
         builder.AppendLine($"  Prigovor podnet:    {Date(complaint.SubmittedDate!.Value)}");
         builder.AppendLine($"  Broj predmeta:      {complaint.OperatorReference ?? "____________________"}");
 
-        var responseDue = milestones.First(m => m.Step == ComplaintStep.OperatorResponseDue).Date;
-        builder.AppendLine($"  Rok za odgovor:     {Date(responseDue)}");
+        var responseDue = milestones.FirstOrDefault(m => m.Step == ComplaintStep.OperatorResponseDue)?.Date;
+        builder.AppendLine($"  Rok za odgovor:     {(responseDue is { } due ? Date(due) : "nije utvrđen")}");
 
         builder.AppendLine(complaint.OperatorRespondedDate is { } answered
             ? $"  Operater odgovorio: {Date(answered)} - prigovor odbijen"
@@ -139,13 +140,7 @@ public static class RegulatorSubmission
 
         builder.AppendLine();
 
-        builder.AppendLine(Wrap(
-            "Ovlašćenje za ovu prijavu je član 113. stav 6. Zakona o elektronskim " +
-            "komunikacijama („Sl. glasnik RS\" 35/2023), prema kome se pretplatnik može " +
-            "obratiti Agenciji u roku od 15 dana od dana dostavljanja odgovora operatera, " +
-            "odnosno od dana isteka roka u kome je operater bio dužan da odgovori."));
-
-        builder.AppendLine();
+        AppendLegalBasis(builder, legal, milestones, today);
 
         AppendEvidence(builder, session);
 
@@ -171,20 +166,34 @@ public static class RegulatorSubmission
         builder.AppendLine("  5. Potvrda integriteta evidencije (Provera-lanca.txt)");
         builder.AppendLine();
 
+        // The quality pravilnik that applied when the session was recorded, not whichever one
+        // is current when this letter happens to be written.
+        var quality = LegalSources.QualityPravilnikOn(
+            DateOnly.FromDateTime(session.StartedUtc.LocalDateTime));
+
         builder.AppendLine(Wrap(
             "Napomena: za zvanično merenje brzine koristi se RATEL NetTest aplikacija, " +
             "odnosno merenje na internet portu modema Eternet kablom, kako propisuje " +
-            "Pravilnik o parametrima kvaliteta („Sl. glasnik RS\" 23/2023). " +
-            "Evidencija priložena uz ovu prijavu dokumentuje prekide usluge i vreme njihovog " +
-            "trajanja, sa zapisom svakog pojedinačnog merenja."));
+            $"{quality}. Evidencija priložena uz ovu prijavu dokumentuje prekide usluge i " +
+            "vreme njihovog trajanja, sa zapisom svakog pojedinačnog merenja."));
 
         builder.AppendLine();
 
-        builder.AppendLine(Wrap(
-            "Postupak vansudskog rešavanja spora pred Agencijom uređen je Pravilnikom " +
-            "(„Sl. glasnik RS\" 58/2024), po kome Agencija donosi rešenje u roku od 90 dana. " +
-            "Za vreme postupka operater ne može obustaviti uslugu zbog spora, ukoliko se " +
-            "nesporni deo računa redovno plaća (član 113. stav 7. Zakona)."));
+        var decision = LegalRegistry.On(today).RuleFor(
+            ComplaintStep.RegulatorDecisionTarget,
+            complaint.CustomerType,
+            complaint.ServiceKind,
+            complaint.ComplaintKind);
+
+        if (decision is not null)
+        {
+            builder.AppendLine(Wrap(
+                $"Postupak vansudskog rešavanja spora pred Agencijom uređen je: " +
+                $"{string.Join("; ", decision.CitationsOn(today))}. Agencija donosi rešenje u roku " +
+                $"od {decision.Value} dana, s tim da se u složenim slučajevima taj rok može produžiti."));
+
+            builder.AppendLine();
+        }
 
         builder.AppendLine();
         builder.AppendLine("Potpis: ____________________");
@@ -193,6 +202,52 @@ public static class RegulatorSubmission
         builder.AppendLine(Wrap(CaseText.Disclaimer));
 
         return builder.ToString();
+    }
+
+    /// <summary>
+    /// The provision the request rests on, with the period it prescribes and the date it
+    /// falls on - all three from the rule that was applied, none of them written into the text.
+    /// <para>
+    /// This paragraph used to name article 113 and a period of fifteen days, in a constant of
+    /// its own that no longer even matched the one the rest of the program counted with. Both
+    /// were the old law's, and by the time anyone read this letter the article had been
+    /// replaced.
+    /// </para>
+    /// </summary>
+    private static void AppendLegalBasis(
+        StringBuilder builder,
+        ResolvedLegalContext legal,
+        IReadOnlyList<ComplaintMilestone> milestones,
+        DateOnly today)
+    {
+        var dispute = legal.For(ComplaintStep.RegulatorDisputeDue);
+
+        if (dispute?.Value is not { } days || dispute.Citations.Count == 0)
+        {
+            builder.AppendLine(Wrap(
+                "Rok za obraćanje Agenciji nije bilo moguće pouzdano utvrditi iz podataka o " +
+                "predmetu, pa je pre podnošenja potrebno proveriti ga u važećem propisu."));
+
+            builder.AppendLine();
+            return;
+        }
+
+        var sources = string.Join("; ", dispute.Citations);
+        var due = milestones.FirstOrDefault(m => m.Step == ComplaintStep.RegulatorDisputeDue)?.Date;
+
+        builder.AppendLine(Wrap(
+            $"Ovlašćenje za ovaj zahtev je {sources}, prema kome se korisnik može obratiti " +
+            $"Agenciji u roku od {days} dana od dana dostavljanja odgovora operatera, odnosno " +
+            $"od dana isteka roka u kome je operater bio dužan da odgovori." +
+            (due is { } date ? $" U ovom predmetu taj rok ističe {Date(date)}." : string.Empty)));
+
+        builder.AppendLine();
+
+        if (legal.State != LegalContextState.Resolved)
+        {
+            builder.AppendLine(Wrap(legal.State.Explain()));
+            builder.AppendLine();
+        }
     }
 
     private static void AppendEvidence(StringBuilder builder, SessionSnapshot session)
@@ -216,7 +271,7 @@ public static class RegulatorSubmission
                 $"Zabeleženo je {upstream.Count} prekida usluge u ukupnom trajanju od " +
                 $"{SerbianText.Duration(total)}. Tokom svakog od njih moj ruter je uredno " +
                 $"odgovarao, a nijedna meta van lokalne mreže nije bila dostupna, čime je moja " +
-                $"oprema isključena kao uzrok."));
+                $"lokalna mreža isključena kao uzrok."));
 
             builder.AppendLine();
         }

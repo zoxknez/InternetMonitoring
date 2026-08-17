@@ -24,7 +24,11 @@ public sealed class FaultDomainTests
         Assert.True(domain.WorthReportingToOperator());
         Assert.DoesNotContain("Potvrđeno", domain.Explain(), StringComparison.OrdinalIgnoreCase);
         Assert.Contains("iza vašeg rutera", domain.Explain(), StringComparison.Ordinal);
-        Assert.Contains("ne dokazuje", domain.Explain(), StringComparison.Ordinal);
+
+        // What it does not settle, named rather than gestured at. 2.0 said "ne dokazuje šta
+        // se dešava unutar mreže operatera" and then claimed to have excluded the customer's
+        // own equipment - which the router's WAN side is part of.
+        Assert.Contains("Nisu isključeni", domain.Explain(), StringComparison.Ordinal);
     }
 
     /// <summary>

@@ -142,10 +142,11 @@ public static class FaultDomainInfo
             "Problem je na ruteru. Ako je ruter operaterov, prijavljuje se kao kvar opreme.",
 
         FaultDomain.UpstreamPath =>
-            "Vrlo jaka indikacija problema na putanji iza vašeg rutera. Ruter je tokom " +
-            "celog prekida odgovarao normalno, a ništa iza njega nije. Merenje je rađeno sa " +
-            "vašeg računara, pa ne dokazuje šta se tačno dešava unutar mreže operatera, ali " +
-            "isključuje vašu lokalnu mrežu i vašu opremu kao uzrok.",
+            "Problem je izolovan iza vašeg rutera: ruter je tokom celog prekida odgovarao " +
+            "normalno, a nijedna spoljna meta nije. To snažno smanjuje verovatnoću da je uzrok " +
+            "na putanji između računara i rutera. Nisu isključeni: WAN strana samog rutera, " +
+            "njegov firmver, PPPoE sesija ni stanje NAT tabele - sve to sa ovog računara " +
+            "izgleda isto kao i prekid dalje u mreži.",
 
         FaultDomain.Dns =>
             "Problem je u razrešavanju imena. Sama veza je tokom toga prenosila saobraćaj.",

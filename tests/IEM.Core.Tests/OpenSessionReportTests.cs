@@ -167,8 +167,8 @@ public sealed class OpenSessionReportTests : IDisposable
         // The counts and the downtime come from the same incident rows either way, so these
         // have to match exactly rather than approximately.
         Assert.Equal(Value(b, "Prekida ukupno:"), Value(a, "Prekida ukupno:"));
-        Assert.Equal(Value(b, "Od toga kod operatera:"), Value(a, "Od toga kod operatera:"));
-        Assert.Equal(Value(b, "Nedostupnost operatera:"), Value(a, "Nedostupnost operatera:"));
+        Assert.Equal(Value(b, "Izolovano iza rutera:"), Value(a, "Izolovano iza rutera:"));
+        Assert.Equal(Value(b, "Nedostupnost iza rutera:"), Value(a, "Nedostupnost iza rutera:"));
         Assert.Equal(Value(b, "Lokalna nedostupnost:"), Value(a, "Lokalna nedostupnost:"));
 
         // Monitored time is reconstructed from the span the samples cover rather than

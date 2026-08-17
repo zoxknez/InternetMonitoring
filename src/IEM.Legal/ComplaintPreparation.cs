@@ -11,6 +11,15 @@ public sealed record ComplaintPreparationResult(
     string? Refusal)
 {
     public bool Prepared => Case is not null;
+
+    /// <summary>
+    /// Said when the session offered more than one outage to date the complaint from.
+    /// <para>
+    /// The program proposes the first and names it; which one the complaint is actually about
+    /// is the subscriber's to say, and every deadline in the case is counted from it.
+    /// </para>
+    /// </summary>
+    public string? AnchorNote { get; init; }
 }
 
 /// <summary>
@@ -33,10 +42,16 @@ public static class ComplaintPreparation
     /// </summary>
     /// <param name="operatorName">Whoever the contract is with, when it is known.</param>
     /// <param name="today">The day the letter is dated.</param>
+    /// <param name="incidentNumber">
+    /// Which recorded outage the complaint is about, when the subscriber has said. A session
+    /// with several offers several candidate dates, and every deadline is counted from the
+    /// one chosen - so the program proposes rather than decides.
+    /// </param>
     public static ComplaintPreparationResult From(
         SessionSnapshot session,
         string? operatorName,
-        DateOnly today)
+        DateOnly today,
+        int? incidentNumber = null)
     {
         ArgumentNullException.ThrowIfNull(session);
 
@@ -45,17 +60,59 @@ public static class ComplaintPreparation
             return new ComplaintPreparationResult(null, null, refusal);
         }
 
+        var candidates = UpstreamOutages(session);
+        var chosen = incidentNumber is { } number
+            ? candidates.FirstOrDefault(i => i.Number == number)
+            : candidates.FirstOrDefault();
+
+        if (incidentNumber is not null && chosen is null)
+        {
+            return new ComplaintPreparationResult(
+                null,
+                null,
+                $"Prekid broj {incidentNumber} ne postoji u ovoj sesiji, ili nije bio izolovan iza rutera.");
+        }
+
+        // One candidate, or one the subscriber named: the date is established and says what
+        // it was taken from. Several with nothing said: it is a proposal, recorded as one.
+        var settled = chosen is not null && (incidentNumber is not null || candidates.Count == 1);
+
         var complaint = new ComplaintCase
         {
             OperatorName = string.IsNullOrWhiteSpace(operatorName) ? "____________________" : operatorName,
             SubscriberName = "____________________",
-            EventDate = FirstUpstreamOutage(session) ?? DateOnly.FromDateTime(session.StartedUtc.LocalDateTime),
+            EventDate = chosen is null
+                ? DateOnly.FromDateTime(session.StartedUtc.LocalDateTime)
+                : DateOnly.FromDateTime(chosen.StartedUtc.LocalDateTime),
+            EventOrigin = settled ? FactOrigin.DerivedFromSession : FactOrigin.Unknown,
+            EventEvidenceRef = chosen is null ? null : $"prekid-{chosen.Number}",
         };
 
         return new ComplaintPreparationResult(
             complaint,
             ComplaintLetter.ToOperator(complaint, session, today),
-            null);
+            null)
+        {
+            AnchorNote = settled || chosen is null
+                ? null
+                : $"Sesija ima {candidates.Count} prekida izolovanih iza rutera. Rokovi su " +
+                  $"računati od prvog (prekid {chosen.Number}, " +
+                  $"{DateOnly.FromDateTime(chosen.StartedUtc.LocalDateTime):dd.MM.yyyy.}). Ako se " +
+                  "prigovor odnosi na drugi, izaberite ga - svi rokovi teku od njega.",
+        };
+    }
+
+    /// <summary>The outages a complaint could be dated from, in the order they happened.</summary>
+    public static IReadOnlyList<IncidentRow> UpstreamOutages(SessionSnapshot session)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+
+        return
+        [
+            .. session.Incidents
+                .Where(i => i.Attribution == FaultAttribution.Upstream)
+                .OrderBy(i => i.StartedUtc),
+        ];
     }
 
     /// <summary>
@@ -76,8 +133,8 @@ public static class ComplaintPreparation
         if (upstream == 0)
         {
             return session.Incidents.Count > 0
-                ? $"Zabeleženo je {session.Incidents.Count} prekida, ali nijedan nije isključio vašu " +
-                  "opremu kao uzrok. Takvi prekidi se ne mogu pripisati operateru."
+                ? $"Zabeleženo je {session.Incidents.Count} prekida, ali nijedan nije bio izolovan " +
+                  "iza rutera. Takvi prekidi ne mogu da nose prigovor."
                 : "U ovoj sesiji nije zabeležen nijedan prekid usluge, pa nema osnova za prigovor.";
         }
 

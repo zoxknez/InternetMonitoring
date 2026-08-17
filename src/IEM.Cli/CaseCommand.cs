@@ -33,7 +33,11 @@ public static class CaseCommand
 
         if (settings.ComplaintSubmitted is not null ||
             settings.OperatorResponded is not null ||
-            settings.OperatorUpheld is not null)
+            settings.OperatorUpheld is not null ||
+            settings.RegulatorFiled is not null ||
+            settings.InvoiceDue is not null ||
+            settings.BillingComplaint ||
+            settings.NonConsumer)
         {
             return Record(root, journal, settings) ? 0 : 1;
         }
@@ -66,6 +70,10 @@ public static class CaseCommand
             SubmittedDate = settings.ComplaintSubmitted ?? journal.Case.SubmittedDate,
             OperatorRespondedDate = settings.OperatorResponded ?? journal.Case.OperatorRespondedDate,
             OperatorUpheld = settings.OperatorUpheld ?? journal.Case.OperatorUpheld,
+            RegulatorFiledDate = settings.RegulatorFiled ?? journal.Case.RegulatorFiledDate,
+            InvoiceDueDate = settings.InvoiceDue ?? journal.Case.InvoiceDueDate,
+            ComplaintKind = settings.BillingComplaint ? ComplaintKind.BillingAmount : journal.Case.ComplaintKind,
+            CustomerType = settings.NonConsumer ? CustomerType.NonConsumer : journal.Case.CustomerType,
         };
 
         var today = DateOnly.FromDateTime(DateTime.Now);
@@ -88,16 +96,14 @@ public static class CaseCommand
             return false;
         }
 
-        CaseJournalStore.Save(root, new CaseJournal
-        {
-            Case = updated,
-            RegulatorFiledDate = journal.RegulatorFiledDate,
-            Notes = journal.Notes,
-        });
+        var saved = new CaseJournal { Case = updated, Notes = journal.Notes };
+        CaseJournalStore.Save(root, saved, today);
 
         Console.WriteLine("  Zabeleženo. Stanje predmeta:");
         Console.WriteLine();
-        Print(updated, journal.RegulatorFiledDate, today);
+
+        // Printed from what was just written, so the screen and the file cannot disagree.
+        Print(CaseJournalStore.Load(root) ?? saved, today);
         Console.WriteLine();
 
         return true;
@@ -178,6 +184,16 @@ public static class CaseCommand
         Console.WriteLine("  poštom, lično, e-poštom ili preko web forme na portal.ratel.rs.");
         Console.WriteLine();
 
+        // Sastavljena prijava nije i podneta prijava. Dok se datum ne zabeleži, predmet s
+        // pravom prikazuje rok kao otvoren - a upravo taj datum odlučuje po kom se režimu
+        // vodi postupak pred Regulatorom.
+        ConsoleText.WriteWrapped(
+            "Kada prijavu stvarno pošaljete, zabeležite datum: iem --predmet --prijavljeno " +
+            $"{today:dd.MM.yyyy.} Bez toga predmet i dalje računa rok za obraćanje Regulatoru " +
+            "kao otvoren.");
+
+        Console.WriteLine();
+
         return true;
     }
 
@@ -196,36 +212,44 @@ public static class CaseCommand
             return true;
         }
 
-        Print(journal.Case, journal.RegulatorFiledDate, DateOnly.FromDateTime(DateTime.Now));
+        Print(journal, DateOnly.FromDateTime(DateTime.Now));
         Console.WriteLine();
 
         return true;
     }
 
-    private static void Print(ComplaintCase complaint, DateOnly? regulatorFiled, DateOnly today)
+    private static void Print(CaseJournal journal, DateOnly today)
     {
-        var stage = complaint.StageOn(today);
+        var complaint = journal.Case;
+
+        // The rules the case was recorded under, where it carries them. Recomputing would
+        // hand an old case today's periods, which is the one thing a record of a dispute must
+        // never do.
+        var legal = journal.Legal ?? complaint.Resolve(today);
+        var stage = complaint.StageOn(today, legal);
+        var milestones = complaint.Milestones(legal);
+        var regulatorFiled = complaint.RegulatorFiledDate;
 
         Console.WriteLine($"  Operater:        {complaint.OperatorName}");
-        Console.WriteLine($"  Događaj:         {complaint.EventDate:dd.MM.yyyy.}");
+        Console.WriteLine($"  Događaj:         {complaint.EventDate:dd.MM.yyyy.}  " +
+                          $"({new AnchoredDate(complaint.EventDate, complaint.EventOrigin, complaint.EventEvidenceRef).Describe()})");
+        Console.WriteLine($"  Vrsta prigovora: {Describe(complaint.ComplaintKind)}");
         Console.WriteLine($"  Stanje:          {stage.Label()}");
+        Console.WriteLine($"  Pravila:         {legal.Ruleset}");
         Console.WriteLine();
 
-        foreach (var milestone in complaint.Milestones())
+        foreach (var milestone in milestones)
         {
-            var days = milestone.DaysFrom(today);
+            Console.WriteLine($"  {Date(milestone.Date)}  {milestone.Step.Label(),-45}{Note(milestone)}");
 
-            var note = !milestone.IsDeadline
-                ? string.Empty
-                : days switch
-                {
-                    < 0 => "  ← rok je prošao",
-                    0 => "  ← danas je poslednji dan",
-                    1 => "  ← ostao još 1 dan",
-                    _ => $"  ← ostalo još {days} {SessionVerdict.Plural(days, "dan", "dana", "dana")}",
-                };
-
-            Console.WriteLine($"  {milestone.Date:dd.MM.yyyy.}  {milestone.Step.Label(),-45}{note}");
+            if (milestone.Rule is { Citations.Count: > 0 } rule)
+            {
+                Console.WriteLine($"  {' ',12}  ↳ {rule.Value} dana, {string.Join("; ", rule.Citations)}");
+            }
+            else if (milestone.Rule?.Impediment is { } impediment)
+            {
+                Console.WriteLine($"  {' ',12}  ↳ {impediment}");
+            }
         }
 
         if (regulatorFiled is { } filed)
@@ -234,16 +258,22 @@ public static class CaseCommand
             Console.WriteLine($"  RATEL-u prijavljeno: {filed:dd.MM.yyyy.}");
         }
 
+        if (legal.State != LegalContextState.Resolved)
+        {
+            Console.WriteLine();
+            ConsoleText.WriteWrapped(legal.State.Explain());
+        }
+
         Console.WriteLine();
         Console.WriteLine("  Šta sada:");
         Console.WriteLine();
 
-        foreach (var line in WrapLines(stage.WhatNow(), 70))
+        foreach (var line in ConsoleText.Wrap(stage.WhatNow()))
         {
             Console.WriteLine($"    {line}");
         }
 
-        var missed = ComplaintDeadlines.Missed(complaint.Milestones(), today, regulatorFiled);
+        var missed = ComplaintDeadlines.Missed(milestones, today, regulatorFiled);
 
         if (missed.Count > 0)
         {
@@ -257,33 +287,25 @@ public static class CaseCommand
 
         Console.WriteLine();
         Console.WriteLine($"  {CaseText.Disclaimer}");
+
+        string Note(ComplaintMilestone milestone) => !milestone.IsDeadline
+            ? string.Empty
+            : milestone.DaysFrom(today) switch
+            {
+                null => "  ← rok nije utvrđen",
+                < 0 => "  ← rok je prošao",
+                0 => "  ← danas je poslednji dan",
+                1 => "  ← ostao još 1 dan",
+                { } days => $"  ← ostalo još {days} {SessionVerdict.Plural(days, "dan", "dana", "dana")}",
+            };
     }
 
-    private static IEnumerable<string> WrapLines(string text, int width)
-    {
-        var line = new StringBuilder();
+    /// <summary>A deadline nobody could work out prints as such, never as a date.</summary>
+    private static string Date(DateOnly? date) =>
+        date is { } value ? value.ToString("dd.MM.yyyy.", SerbianText.Culture) : "nije utvrđeno";
 
-        foreach (var word in text.Split(' ', StringSplitOptions.RemoveEmptyEntries))
-        {
-            if (line.Length > 0 && line.Length + word.Length + 1 > width)
-            {
-                yield return line.ToString();
-                line.Clear();
-            }
-
-            if (line.Length > 0)
-            {
-                line.Append(' ');
-            }
-
-            line.Append(word);
-        }
-
-        if (line.Length > 0)
-        {
-            yield return line.ToString();
-        }
-    }
+    private static string Describe(ComplaintKind kind) =>
+        kind == ComplaintKind.BillingAmount ? "iznos računa" : "kvalitet usluge";
 
     private static void TryDelete(string path)
     {

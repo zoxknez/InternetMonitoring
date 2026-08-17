@@ -53,12 +53,61 @@ public sealed record ComplaintCase
     /// <summary>Contracted download rate, when the complaint concerns speed.</summary>
     public double? ContractedDownloadMbps { get; init; }
 
-    /// <summary>When the fault happened, or the disputed bill arrived.</summary>
+    /// <summary>
+    /// When the service could not be used - the day a quality complaint is counted from.
+    /// <para>
+    /// A session with three outages offers three candidate dates, and which one the complaint
+    /// is about is a choice. The program proposes the first and records what was chosen; it
+    /// does not take the first silently, which is why <see cref="EventOrigin"/> travels with
+    /// this date.
+    /// </para>
+    /// </summary>
     public required DateOnly EventDate { get; init; }
+
+    /// <summary>Where <see cref="EventDate"/> came from.</summary>
+    /// <remarks>
+    /// Absent from case files written before 2.7, which therefore read back as
+    /// <see cref="FactOrigin.Unknown"/> - the truth about them. Those cases are reconstructed
+    /// from their recorded dates and say so.
+    /// </remarks>
+    public FactOrigin EventOrigin { get; init; } = FactOrigin.Unknown;
+
+    /// <summary>The record <see cref="EventDate"/> was derived from, when it was derived.</summary>
+    public string? EventEvidenceRef { get; init; }
+
+    /// <summary>
+    /// The day the disputed invoice fell due, for a complaint about the amount charged.
+    /// <para>
+    /// No fallback to the outage date. A billing complaint runs from the day the invoice fell
+    /// due, and taking an incident date instead would be the same substitution this release
+    /// exists to remove - in the legal layer this time.
+    /// </para>
+    /// </summary>
+    public DateOnly? InvoiceDueDate { get; init; }
+
+    /// <summary>The day the service was provided, where the complaint runs from that instead.</summary>
+    public DateOnly? ServiceProvidedDate { get; init; }
+
+    /// <summary>What is being disputed, which decides what the period is counted from.</summary>
+    public ComplaintKind ComplaintKind { get; init; } = ComplaintKind.ServiceQuality;
+
+    /// <summary>Whether consumer protection law applies on top of the sector rules.</summary>
+    public CustomerType CustomerType { get; init; } = CustomerType.Consumer;
+
+    public ServiceKind ServiceKind { get; init; } = ServiceKind.Standard;
 
     public DateOnly? SubmittedDate { get; init; }
 
     public DateOnly? OperatorRespondedDate { get; init; }
+
+    /// <summary>
+    /// When the request reached the Regulator, once it did.
+    /// <para>
+    /// The day the proceeding before the Regulator begins, which is what the transitional rule
+    /// turns on - and what stops the report from nagging about a window that was used in time.
+    /// </para>
+    /// </summary>
+    public DateOnly? RegulatorFiledDate { get; init; }
 
     /// <summary>True when the operator's answer accepted the complaint.</summary>
     public bool? OperatorUpheld { get; init; }
@@ -66,8 +115,35 @@ public sealed record ComplaintCase
     /// <summary>Reference the operator gave the complaint, once they give one.</summary>
     public string? OperatorReference { get; init; }
 
-    public IReadOnlyList<ComplaintMilestone> Milestones(ComplaintPeriods? periods = null) =>
-        ComplaintDeadlines.Build(EventDate, SubmittedDate, OperatorRespondedDate, periods);
+    /// <summary>The events the law counts from, as this case records them.</summary>
+    public CaseFacts Facts => new()
+    {
+        CustomerType = CustomerType,
+        ServiceKind = ServiceKind,
+        ComplaintKind = ComplaintKind,
+        InvoiceDue = AnchoredDate.From(InvoiceDueDate, Origin),
+        ServiceProvided = AnchoredDate.From(ServiceProvidedDate, Origin),
+        ServiceUnavailable = new AnchoredDate(EventDate, Origin, EventEvidenceRef),
+        ComplaintFiled = AnchoredDate.From(SubmittedDate, Origin),
+        ResponseReceived = AnchoredDate.From(OperatorRespondedDate, Origin),
+        RegulatorProceedingFiled = AnchoredDate.From(RegulatorFiledDate, Origin),
+    };
+
+    private FactOrigin Origin => EventOrigin;
+
+    /// <summary>The rules that apply to this case, worked out step by step.</summary>
+    public ResolvedLegalContext Resolve(DateOnly today) => LegalRegistry.Resolve(Facts, today);
+
+    public IReadOnlyList<ComplaintMilestone> Milestones(ResolvedLegalContext context) =>
+        ComplaintDeadlines.Build(
+            context,
+            new AnchoredDate(EventDate, Origin, EventEvidenceRef),
+            SubmittedDate,
+            OperatorRespondedDate,
+            RegulatorFiledDate);
+
+    /// <summary>The timetable as of today, resolving the rules from scratch.</summary>
+    public IReadOnlyList<ComplaintMilestone> Milestones(DateOnly today) => Milestones(Resolve(today));
 
     /// <summary>
     /// Where the case stands today.
@@ -77,28 +153,34 @@ public sealed record ComplaintCase
     /// in the past would be worse than no status at all.
     /// </para>
     /// </summary>
-    public CaseStage StageOn(DateOnly today, ComplaintPeriods? periods = null)
+    public CaseStage StageOn(DateOnly today) => StageOn(today, Resolve(today));
+
+    /// <summary>
+    /// The same, against rules that were already worked out - the case file's own, when it
+    /// carries them, so an old case keeps the position it had.
+    /// </summary>
+    public CaseStage StageOn(DateOnly today, ResolvedLegalContext context)
     {
-        var p = periods ?? ComplaintPeriods.Default;
-        var milestones = Milestones(p);
+        var milestones = Milestones(context);
 
         if (SubmittedDate is null)
         {
-            var due = milestones.First(m => m.Step == ComplaintStep.ComplaintDue).Date;
-            return today > due ? CaseStage.Expired : CaseStage.ReadyToFile;
+            // An unsettled deadline never expires the case. "I could not work out your
+            // deadline" must not become "your deadline has passed", which would stop somebody
+            // filing a complaint they were still entitled to file.
+            return Passed(ComplaintStep.ComplaintDue) ? CaseStage.Expired : CaseStage.ReadyToFile;
         }
 
         if (OperatorRespondedDate is null)
         {
-            var responseDue = milestones.First(m => m.Step == ComplaintStep.OperatorResponseDue).Date;
-            var regulatorDue = milestones.First(m => m.Step == ComplaintStep.RegulatorDue).Date;
-
-            if (today > regulatorDue)
+            if (Passed(ComplaintStep.RegulatorDisputeDue))
             {
                 return CaseStage.Expired;
             }
 
-            return today > responseDue ? CaseStage.OperatorSilent : CaseStage.AwaitingOperator;
+            return Passed(ComplaintStep.OperatorResponseDue)
+                ? CaseStage.OperatorSilent
+                : CaseStage.AwaitingOperator;
         }
 
         if (OperatorUpheld == true)
@@ -106,8 +188,10 @@ public sealed record ComplaintCase
             return CaseStage.Upheld;
         }
 
-        var escalationDue = milestones.First(m => m.Step == ComplaintStep.RegulatorDue).Date;
-        return today > escalationDue ? CaseStage.Expired : CaseStage.Refused;
+        return Passed(ComplaintStep.RegulatorDisputeDue) ? CaseStage.Expired : CaseStage.Refused;
+
+        bool Passed(ComplaintStep step) =>
+            milestones.FirstOrDefault(m => m.Step == step)?.Date is { } date && today > date;
     }
 }
 
@@ -121,8 +205,32 @@ public static class CaseText
         ComplaintStep.ComplaintSubmitted => "Prigovor podnet",
         ComplaintStep.OperatorResponseDue => "Krajnji rok da operater odgovori",
         ComplaintStep.OperatorResponded => "Operater odgovorio",
-        ComplaintStep.RegulatorDue => "Krajnji rok za obraćanje RATEL-u",
+        ComplaintStep.RegulatorDisputeDue => "Krajnji rok za obraćanje RATEL-u",
+        ComplaintStep.RegulatorDecisionTarget => "Rok za odluku RATEL-a",
         _ => step.ToString(),
+    };
+
+    /// <summary>
+    /// What the program could establish about the legal position, said plainly.
+    /// <para>
+    /// A case file written before 2.7 has no record of which rules were applied to it. The
+    /// honest answer is that they were reconstructed, or that they could not be - not a
+    /// silent fallback to the old regime, which would hand somebody a fifteen-day deadline
+    /// that stopped existing at the start of 2025.
+    /// </para>
+    /// </summary>
+    public static string Explain(this LegalContextState state) => state switch
+    {
+        LegalContextState.Resolved => string.Empty,
+
+        LegalContextState.InferredFromRecordedDates =>
+            "Pravni režim nije bio zapisan uz predmet, nego je rekonstruisan iz datuma koji u " +
+            "njemu stoje. Proverite rokove pre nego što se na njih oslonite.",
+
+        _ =>
+            "Pravni režim: nije moguće pouzdano utvrditi. Predmet je napravljen starijom " +
+            "verzijom aplikacije koja nije beležila pravni režim, ili nema dovoljno datuma. " +
+            "Rok neće biti automatski proglašen isteklim ni otvorenim.",
     };
 
     public static string Label(this CaseStage stage) => stage switch
@@ -139,9 +247,14 @@ public static class CaseText
     /// <summary>What to do next, in the words of someone explaining it to a neighbour.</summary>
     public static string WhatNow(this CaseStage stage) => stage switch
     {
+        // Not "48 sati je minimum koji se ne može osporiti". Nothing prescribes a minimum
+        // monitoring period; the forty-eight hours in the Pravilnik is the time an operator
+        // has to clear a fault once the throughput has fallen below the minimum, which is a
+        // different thing entirely and was quoted here as if it were a rule about evidence.
         CaseStage.Gathering =>
-            "Pustite nadzor da radi dovoljno dugo da prekidi budu nesumnjivi. Za prigovor je " +
-            "obično dovoljno nekoliko dana, ali 48 sati je minimum koji se ne može osporiti.",
+            "Pustite nadzor da radi dovoljno dugo da prekidi budu nesumnjivi. Nekoliko dana " +
+            "neprekidnog nadzora daleko je ubedljivije od nekoliko sati, jer pokazuje da se " +
+            "prekidi ponavljaju.",
 
         CaseStage.ReadyToFile =>
             "Podnesite prigovor operateru u pisanom obliku i tražite potvrdu prijema sa brojem " +
@@ -152,8 +265,9 @@ public static class CaseText
             "korist - ćutanje operatera je razlog više za obraćanje RATEL-u.",
 
         CaseStage.OperatorSilent =>
-            "Rok je istekao bez odgovora. Možete se obratiti RATEL-u, i u prijavi navedite da " +
-            "operater nije odgovorio u zakonskom roku.",
+            "Rok je istekao bez odgovora. Možete pokrenuti vansudsko rešavanje spora pred " +
+            "RATEL-om, i u zahtevu navedite da operater nije odgovorio u zakonskom roku. " +
+            "Konkretan rok za taj zahtev, sa izvorom, stoji uz rokove ovog predmeta.",
 
         CaseStage.Upheld =>
             "Prigovor je usvojen. Sačuvajte odgovor operatera - ako se isti kvar ponovi, on je " +

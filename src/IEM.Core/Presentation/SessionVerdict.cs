@@ -69,8 +69,9 @@ public sealed record SessionVerdict(VerdictKind Kind, string Headline, string De
                 VerdictKind.UpstreamFault,
                 "Prekidi izolovani iza vaše opreme",
                 $"Zabeleženo je {upstreamIncidentCount} {word} tokom kojih je vaša lokalna mreža " +
-                "radila, a ništa iza rutera nije bilo dostupno. Vaša oprema je isključena kao " +
-                "uzrok, što je osnov za prijavu operateru.");
+                "radila, a ništa iza rutera nije bilo dostupno. Putanja između računara i rutera " +
+                "je time isključena kao uzrok - WAN strana samog rutera nije. To je osnov za " +
+                "prigovor operateru, koji na njega mora da odgovori.");
         }
 
         if (localDowntime > TimeSpan.Zero)

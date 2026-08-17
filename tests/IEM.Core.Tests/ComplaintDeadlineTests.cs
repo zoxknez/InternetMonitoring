@@ -6,6 +6,10 @@ namespace IEM.Core.Tests;
 /// The deadlines are the part of this module with the worst consequences if they are wrong.
 /// A customer told the wrong date loses on procedure without anyone ever looking at the
 /// evidence they spent two days collecting.
+/// <para>
+/// Every case here is dated in 2026, so the current regime governs it. The transitional ones
+/// live in <see cref="LegalTransitionTests"/>, where they belong.
+/// </para>
 /// </summary>
 public sealed class ComplaintDeadlineTests
 {
@@ -17,49 +21,57 @@ public sealed class ComplaintDeadlineTests
             OperatorName = "Operater",
             SubscriberName = "Petar Petrović",
             EventDate = Fault,
+            EventOrigin = FactOrigin.UserProvided,
             SubmittedDate = submitted,
             OperatorRespondedDate = responded,
             OperatorUpheld = upheld,
         };
 
-    // ---- The three periods ----------------------------------------------------
+    private static IReadOnlyList<ComplaintMilestone> Milestones(
+        DateOnly? submitted = null,
+        DateOnly? responded = null,
+        DateOnly on = default) =>
+        Case(submitted, responded).Milestones(on == default ? new DateOnly(2026, 3, 12) : on);
+
+    // ---- The periods ----------------------------------------------------------
 
     [Fact]
     public void The_complaint_is_due_thirty_days_after_the_fault()
     {
-        var due = ComplaintDeadlines.Build(Fault)
-            .First(m => m.Step == ComplaintStep.ComplaintDue);
+        var due = Milestones().First(m => m.Step == ComplaintStep.ComplaintDue);
 
         Assert.Equal(new DateOnly(2026, 4, 1), due.Date);
         Assert.True(due.IsDeadline);
-    }
-
-    [Fact]
-    public void The_operator_has_fifteen_days_from_the_complaint()
-    {
-        var filed = new DateOnly(2026, 3, 10);
-
-        var due = ComplaintDeadlines.Build(Fault, filed)
-            .First(m => m.Step == ComplaintStep.OperatorResponseDue);
-
-        Assert.Equal(new DateOnly(2026, 3, 25), due.Date);
+        Assert.Equal(LegalAnchor.ServiceUnavailableDate, due.Rule!.Anchor);
     }
 
     /// <summary>
-    /// Zakon o elektronskim komunikacijama ("Sl. glasnik RS" 35/2023), član 113. st. 6:
-    /// petnaest dana od dostavljanja odgovora operatera. Ranije je ovde važilo šezdeset,
-    /// rok koji zakon ne daje.
+    /// Eight days, not fifteen. Fifteen was the old law's period for every subscriber; for a
+    /// consumer the answer is owed within eight under the consumer protection act, which the
+    /// current ZEK refers to.
     /// </summary>
     [Fact]
-    public void The_regulator_window_is_fifteen_days_from_the_operators_answer()
+    public void A_consumer_is_owed_an_answer_within_eight_days()
     {
-        var filed = new DateOnly(2026, 3, 10);
-        var answered = new DateOnly(2026, 3, 20);
+        var due = Milestones(submitted: new DateOnly(2026, 3, 10))
+            .First(m => m.Step == ComplaintStep.OperatorResponseDue);
 
-        var due = ComplaintDeadlines.Build(Fault, filed, answered)
-            .First(m => m.Step == ComplaintStep.RegulatorDue);
+        Assert.Equal(new DateOnly(2026, 3, 18), due.Date);
+        Assert.Contains(due.Rule!.Citations, c => c.SourceId.StartsWith("RS-ZZP", StringComparison.Ordinal));
+    }
 
-        Assert.Equal(new DateOnly(2026, 4, 4), due.Date);
+    /// <summary>
+    /// Sixty days, not fifteen. The fifteen came from article 113 of the old law, which stood
+    /// only until the act under article 140 of the current one was adopted - and it was.
+    /// </summary>
+    [Fact]
+    public void The_regulator_window_is_sixty_days_from_the_operators_answer()
+    {
+        var due = Milestones(submitted: new DateOnly(2026, 3, 10), responded: new DateOnly(2026, 3, 20))
+            .First(m => m.Step == ComplaintStep.RegulatorDisputeDue);
+
+        Assert.Equal(new DateOnly(2026, 5, 19), due.Date);
+        Assert.Contains(due.Rule!.Citations, c => c.Article == "139");
     }
 
     /// <summary>
@@ -69,13 +81,46 @@ public sealed class ComplaintDeadlineTests
     [Fact]
     public void A_silent_operator_does_not_stop_the_regulator_clock()
     {
-        var filed = new DateOnly(2026, 3, 10);
+        var due = Milestones(submitted: new DateOnly(2026, 3, 10))
+            .First(m => m.Step == ComplaintStep.RegulatorDisputeDue);
 
-        var due = ComplaintDeadlines.Build(Fault, filed)
-            .First(m => m.Step == ComplaintStep.RegulatorDue);
+        // Counted from the day the answer was due - 18 March - not from some indefinite future.
+        Assert.Equal(new DateOnly(2026, 5, 17), due.Date);
+    }
 
-        // Counted from the day the answer was due, not from some indefinite future.
+    /// <summary>
+    /// Every period a person is shown has to be checkable. A date without its source is one
+    /// they have to take on trust, and these are numbers that move.
+    /// </summary>
+    [Fact]
+    public void Every_deadline_carries_its_source()
+    {
+        var milestones = Milestones(submitted: new DateOnly(2026, 3, 10), responded: new DateOnly(2026, 3, 20));
+
+        foreach (var milestone in milestones.Where(m => m.IsDeadline))
+        {
+            Assert.NotNull(milestone.Rule);
+            Assert.NotEmpty(milestone.Rule!.Citations);
+
+            foreach (var citation in milestone.Rule.Citations)
+            {
+                Assert.NotEmpty(citation.Url);
+                Assert.NotEqual(default, citation.VerifiedAt);
+            }
+        }
+    }
+
+    /// <summary>A company is not a consumer, and the period is a different one.</summary>
+    [Fact]
+    public void A_company_gets_the_sector_period_rather_than_the_consumer_one()
+    {
+        var company = Case(submitted: new DateOnly(2026, 3, 10)) with { CustomerType = CustomerType.NonConsumer };
+
+        var due = company.Milestones(new DateOnly(2026, 3, 12))
+            .First(m => m.Step == ComplaintStep.OperatorResponseDue);
+
         Assert.Equal(new DateOnly(2026, 4, 9), due.Date);
+        Assert.DoesNotContain(due.Rule!.Citations, c => c.SourceId.StartsWith("RS-ZZP", StringComparison.Ordinal));
     }
 
     // ---- Where the case stands ------------------------------------------------
@@ -97,7 +142,7 @@ public sealed class ComplaintDeadlineTests
     {
         var complaint = Case(submitted: new DateOnly(2026, 3, 10));
 
-        Assert.Equal(CaseStage.AwaitingOperator, complaint.StageOn(new DateOnly(2026, 3, 20)));
+        Assert.Equal(CaseStage.AwaitingOperator, complaint.StageOn(new DateOnly(2026, 3, 15)));
     }
 
     [Fact]
@@ -105,7 +150,7 @@ public sealed class ComplaintDeadlineTests
     {
         var complaint = Case(submitted: new DateOnly(2026, 3, 10));
 
-        Assert.Equal(CaseStage.OperatorSilent, complaint.StageOn(new DateOnly(2026, 3, 26)));
+        Assert.Equal(CaseStage.OperatorSilent, complaint.StageOn(new DateOnly(2026, 3, 20)));
     }
 
     [Fact]
@@ -139,12 +184,13 @@ public sealed class ComplaintDeadlineTests
     {
         var complaint = Case(submitted: new DateOnly(2026, 3, 10));
 
-        Assert.Equal(CaseStage.AwaitingOperator, complaint.StageOn(new DateOnly(2026, 3, 24)));
-        Assert.Equal(CaseStage.OperatorSilent, complaint.StageOn(new DateOnly(2026, 3, 26)));
+        Assert.Equal(CaseStage.AwaitingOperator, complaint.StageOn(new DateOnly(2026, 3, 17)));
+        Assert.Equal(CaseStage.OperatorSilent, complaint.StageOn(new DateOnly(2026, 3, 19)));
 
-        // The regulator window closed on 9 April: fifteen days from the unanswered deadline.
-        Assert.Equal(CaseStage.OperatorSilent, complaint.StageOn(new DateOnly(2026, 4, 8)));
-        Assert.Equal(CaseStage.Expired, complaint.StageOn(new DateOnly(2026, 4, 10)));
+        // The window to reach the Regulator closed on 17 May: sixty days from the unanswered
+        // deadline of 18 March.
+        Assert.Equal(CaseStage.OperatorSilent, complaint.StageOn(new DateOnly(2026, 5, 16)));
+        Assert.Equal(CaseStage.Expired, complaint.StageOn(new DateOnly(2026, 5, 18)));
     }
 
     // ---- What to do next ------------------------------------------------------
@@ -152,25 +198,47 @@ public sealed class ComplaintDeadlineTests
     [Fact]
     public void The_next_action_is_the_nearest_deadline_still_ahead()
     {
-        var milestones = ComplaintDeadlines.Build(Fault, new DateOnly(2026, 3, 10));
+        var milestones = Milestones(submitted: new DateOnly(2026, 3, 10));
 
         var next = ComplaintDeadlines.NextAction(milestones, new DateOnly(2026, 3, 12));
 
         Assert.NotNull(next);
         Assert.Equal(ComplaintStep.OperatorResponseDue, next.Step);
-        Assert.Equal(13, next.DaysFrom(new DateOnly(2026, 3, 12)));
+        Assert.Equal(6, next.DaysFrom(new DateOnly(2026, 3, 12)));
     }
 
     [Fact]
     public void A_deadline_that_was_met_is_not_reported_as_missed()
     {
-        var milestones = ComplaintDeadlines.Build(Fault, new DateOnly(2026, 3, 10));
+        var milestones = Milestones(submitted: new DateOnly(2026, 3, 10));
 
         var missed = ComplaintDeadlines.Missed(milestones, new DateOnly(2026, 4, 5));
 
         // The complaint was filed in time, so only the operator's silence is outstanding.
         Assert.DoesNotContain(missed, m => m.Step == ComplaintStep.ComplaintDue);
         Assert.Contains(missed, m => m.Step == ComplaintStep.OperatorResponseDue);
+    }
+
+    /// <summary>
+    /// Recording the day the request reached the Regulator is what stops the case reporting
+    /// that window as missed forever. Nothing in production ever wrote it until 2.7, so every
+    /// case that got that far carried a permanent false alarm.
+    /// </summary>
+    [Fact]
+    public void A_window_that_was_used_in_time_stops_being_reported_as_missed()
+    {
+        var complaint = Case(submitted: new DateOnly(2026, 3, 10), responded: new DateOnly(2026, 3, 20));
+        var late = new DateOnly(2026, 7, 1);
+
+        Assert.Contains(
+            ComplaintDeadlines.Missed(complaint.Milestones(late), late, complaint.RegulatorFiledDate),
+            m => m.Step == ComplaintStep.RegulatorDisputeDue);
+
+        var filed = complaint with { RegulatorFiledDate = new DateOnly(2026, 5, 10) };
+
+        Assert.DoesNotContain(
+            ComplaintDeadlines.Missed(filed.Milestones(late), late, filed.RegulatorFiledDate),
+            m => m.Step == ComplaintStep.RegulatorDisputeDue);
     }
 
     [Fact]
@@ -191,5 +259,18 @@ public sealed class ComplaintDeadlineTests
     public void An_expired_case_says_that_a_new_fault_starts_a_new_clock()
     {
         Assert.Contains("nov predmet", CaseStage.Expired.WhatNow(), StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Forty-eight hours is the time an operator has to clear a fault, not a minimum length
+    /// for the monitoring - and it was quoted here as though it were the latter.
+    /// </summary>
+    [Fact]
+    public void Gathering_evidence_is_not_described_as_a_forty_eight_hour_rule()
+    {
+        var text = CaseStage.Gathering.WhatNow();
+
+        Assert.DoesNotContain("48 sati", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("ne može osporiti", text, StringComparison.Ordinal);
     }
 }

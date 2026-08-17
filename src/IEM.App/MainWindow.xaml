@@ -225,7 +225,7 @@
                             </Grid.RowDefinitions>
 
                             <TextBlock Style="{StaticResource Body}" FontSize="13" LineHeight="21"
-                                       Text="Izaberite koliko dugo nadzor treba da traje. Za prigovor operateru uobičajeno je 48 sati - to je rok u kom je operater dužan da otkloni smetnju." />
+                                       Text="Izaberite koliko dugo nadzor treba da traje. Za prigovor operateru uobičajeno je 48 sati, jer se za to vreme po pravilu vidi da li se prekidi ponavljaju. Nijedan propis ne traži određeno trajanje nadzora." />
 
                             <!-- What a running test actually means for the machine. Without it
                                  this card was a paragraph and a button with a hole between them. -->
@@ -521,9 +521,9 @@
                                               StrokeThickness="2" Data="M 4.5,9.2 L 7.6,12.2 L 13.5,5.8" />
                                     </Border>
                                     <TextBlock Grid.Column="1" Style="{StaticResource RowFlow}">
-                                        <Run Text="Razlikuje ko je kriv" FontWeight="SemiBold" Foreground="{StaticResource Text}" />
+                                        <Run Text="Razlikuje dokle je problem izolovan" FontWeight="SemiBold" Foreground="{StaticResource Text}" />
                                         <Run Text=" · " Foreground="{StaticResource Faint}" />
-                                        <Run Text="Razdvaja kvar na vašem računaru, na Wi-Fi vezi, na ruteru i iza njega. Prigovor se podnosi samo za ono poslednje." />
+                                        <Run Text="Razdvaja kvar na vašem računaru, na Wi-Fi vezi, na ruteru i iza njega. Prigovor nosi samo ono poslednje." />
                                     </TextBlock>
                                 </Grid>
                             </Border>
@@ -638,9 +638,12 @@
 
                 <Border Grid.Column="2" Style="{StaticResource Card}" Padding="16,0" Margin="5,0,5,0">
                     <StackPanel VerticalAlignment="Center">
-                        <TextBlock Style="{StaticResource Label}" Text="GUBITAK PAKETA" />
+                        <!-- Not "packet loss": three destinations with one probe each, so the
+                             figure moves in thirds and a target that filters ICMP by policy
+                             reads identically to a connection dropping packets. -->
+                        <TextBlock Style="{StaticResource Label}" Text="METE BEZ ODGOVORA" />
                         <TextBlock Style="{StaticResource Value}" FontSize="25"
-                                   Text="{Binding LossText}" Margin="0,3,0,2" />
+                                   Text="{Binding UnreachableTargetsText}" Margin="0,3,0,2" />
                         <TextBlock Style="{StaticResource Hint}" Text="poslednji uzorak" />
                     </StackPanel>
                 </Border>
@@ -719,7 +722,7 @@
                                     ToolTip="Otvara Izvestaj.pdf, ili Izvestaj.html ako PDF još nije napravljen." />
                             <Button Style="{StaticResource Secondary}" Content="Prigovor"
                                     Padding="13,7" Command="{Binding PrepareComplaintCommand}" Margin="0,0,6,0"
-                                    ToolTip="Priprema prigovor operateru sa izračunatim rokovima. Odbija da ga napravi ako u evidenciji nema prekida koji se mogu pripisati operateru." />
+                                    ToolTip="Priprema prigovor operateru sa izračunatim rokovima. Odbija da ga napravi ako u evidenciji nema prekida izolovanih iza rutera." />
                             <Button Style="{StaticResource Secondary}" Content="Prijava RATEL"
                                     Padding="13,7" Command="{Binding PrepareRegulatorCommand}"
                                     ToolTip="Priprema prijavu RATEL-u kada je operateru istekao rok za odgovor ili je prigovor odbijen. Pre toga odbija, jer se prijava podneta ranije ne razmatra." />

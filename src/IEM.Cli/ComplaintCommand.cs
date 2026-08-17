@@ -19,7 +19,16 @@ public static class ComplaintCommand
     private const string LetterFile = "Prigovor-operateru.txt";
     private const string TimelineFile = "Rokovi.txt";
 
-    public static bool Run(string directory, string? operatorName, string? outputRoot = null)
+    /// <param name="incidentNumber">
+    /// Which recorded outage the complaint is about, where the session has more than one.
+    /// Every deadline is counted from it, so the program proposes the first and says so
+    /// rather than choosing silently.
+    /// </param>
+    public static bool Run(
+        string directory,
+        string? operatorName,
+        string? outputRoot = null,
+        int? incidentNumber = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(directory);
 
@@ -61,7 +70,7 @@ public static class ComplaintCommand
         }
 
         var today = DateOnly.FromDateTime(DateTime.Now);
-        var prepared = ComplaintPreparation.From(session, operatorName, today);
+        var prepared = ComplaintPreparation.From(session, operatorName, today, incidentNumber);
 
         // Refused when there is nothing to complain about, and that refusal is the point.
         // A letter demanding the cause of outages that were never recorded is the exact
@@ -84,16 +93,14 @@ public static class ComplaintCommand
 
         var complaint = MergeWithJournal(prepared.Case!, journal);
         var letter = ComplaintLetter.ToOperator(complaint, session, today);
-        var timeline = BuildTimeline(complaint, today, journal?.RegulatorFiledDate);
+        var timeline = BuildTimeline(complaint, today, prepared.AnchorNote);
 
         if (outputRoot is not null)
         {
-            CaseJournalStore.Save(outputRoot, new CaseJournal
-            {
-                Case = complaint,
-                RegulatorFiledDate = journal?.RegulatorFiledDate,
-                Notes = journal?.Notes,
-            });
+            CaseJournalStore.Save(
+                outputRoot,
+                new CaseJournal { Case = complaint, Notes = journal?.Notes },
+                today);
         }
 
         Write(Path.Combine(directory, LetterFile), letter);
@@ -131,6 +138,11 @@ public static class ComplaintCommand
                 SubmittedDate = recorded.SubmittedDate ?? fresh.SubmittedDate,
                 OperatorRespondedDate = recorded.OperatorRespondedDate ?? fresh.OperatorRespondedDate,
                 OperatorUpheld = recorded.OperatorUpheld ?? fresh.OperatorUpheld,
+                RegulatorFiledDate = recorded.RegulatorFiledDate ?? fresh.RegulatorFiledDate,
+                InvoiceDueDate = recorded.InvoiceDueDate ?? fresh.InvoiceDueDate,
+                ComplaintKind = recorded.ComplaintKind,
+                CustomerType = recorded.CustomerType,
+                ServiceKind = recorded.ServiceKind,
                 OperatorReference = recorded.OperatorReference ?? fresh.OperatorReference,
                 ContractNumber = recorded.ContractNumber ?? fresh.ContractNumber,
                 ContactPhone = recorded.ContactPhone ?? fresh.ContactPhone,
@@ -140,135 +152,91 @@ public static class ComplaintCommand
                     : fresh.SubscriberName,
             };
 
-    /// <summary>
-    /// Whether this session supports a complaint at all.
-    /// <para>
-    /// Two separate ways it might not: nothing went wrong, or something did but the
-    /// recording is too short for anyone to draw a conclusion from. Both produce a refusal
-    /// rather than a document, because a complaint that overstates what was measured is
-    /// worse for its author than no complaint - the operator answers the weakest sentence
-    /// in it and the rest goes with it.
-    /// </para>
-    /// </summary>
-    private static bool HasSomethingToComplainAbout(SessionSnapshot session, out string reason)
-    {
-        var upstream = session.Incidents
-            .Count(i => i.Attribution == IEM.Core.Model.FaultAttribution.Upstream);
+    // Two dead copies used to live here - one deciding whether a session supports a complaint
+    // and one finding the first upstream outage - both duplicating ComplaintPreparation with
+    // wording that had already drifted apart from it. Neither was called.
 
-        if (upstream == 0)
-        {
-            var local = session.Incidents.Count;
-
-            reason = local > 0
-                ? $"Zabeleženo je {local} prekida, ali nijedan nije isključio vašu opremu kao uzrok. " +
-                  "Takvi prekidi se ne mogu pripisati operateru."
-                : "U ovoj sesiji nije zabeležen nijedan prekid usluge.";
-
-            return false;
-        }
-
-        if (session.MonitoredTime < SessionVerdict.MinimumUsefulDuration)
-        {
-            reason =
-                $"Nadzor je trajao samo {SerbianText.Duration(session.MonitoredTime)}, što je prekratko " +
-                "da bi se izveo zaključak koji se može braniti.";
-
-            return false;
-        }
-
-        reason = string.Empty;
-        return true;
-    }
-
-    /// <summary>
-    /// The date the clock runs from: the first outage that ruled out the customer's own
-    /// equipment, since that is the one the complaint is about.
-    /// </summary>
-    private static DateOnly? FirstUpstreamOutage(SessionSnapshot session)
-    {
-        var first = session.Incidents
-            .Where(i => i.Attribution == IEM.Core.Model.FaultAttribution.Upstream)
-            .OrderBy(i => i.StartedUtc)
-            .FirstOrDefault();
-
-        return first is null ? null : DateOnly.FromDateTime(first.StartedUtc.LocalDateTime);
-    }
-
-    private static string BuildTimeline(ComplaintCase complaint, DateOnly today, DateOnly? regulatorFiled = null)
+    private static string BuildTimeline(ComplaintCase complaint, DateOnly today, string? anchorNote = null)
     {
         var builder = new StringBuilder();
-        var stage = complaint.StageOn(today);
+        var legal = complaint.Resolve(today);
+        var stage = complaint.StageOn(today, legal);
 
         builder.AppendLine("  ROKOVI");
         builder.AppendLine();
         builder.AppendLine($"  Stanje predmeta:  {stage.Label()}");
+        builder.AppendLine($"  Pravila:          {legal.Ruleset}");
         builder.AppendLine();
 
-        foreach (var milestone in complaint.Milestones())
+        foreach (var milestone in complaint.Milestones(legal))
         {
-            var days = milestone.DaysFrom(today);
-
             var note = !milestone.IsDeadline
                 ? string.Empty
-                : days switch
+                : milestone.DaysFrom(today) switch
                 {
+                    null => "  ← ROK NIJE UTVRĐEN",
                     < 0 => "  ← ROK JE PROŠAO",
                     0 => "  ← danas je poslednji dan",
                     1 => "  ← ostao još 1 dan",
-                    _ => $"  ← ostalo još {days} {SessionVerdict.Plural(days, "dan", "dana", "dana")}",
+                    { } days => $"  ← ostalo još {days} {SessionVerdict.Plural(days, "dan", "dana", "dana")}",
                 };
 
-            builder.AppendLine($"  {milestone.Date:dd.MM.yyyy.}  {milestone.Step.Label(),-45}{note}");
+            var date = milestone.Date is { } value
+                ? value.ToString("dd.MM.yyyy.", SerbianText.Culture)
+                : "nije utvrđeno";
+
+            builder.AppendLine($"  {date}  {milestone.Step.Label(),-45}{note}");
+
+            // The source beside the deadline, so the person can check it rather than take it
+            // on trust - and so a period that changes can be seen to have changed.
+            if (milestone.Rule is { Citations.Count: > 0 } rule)
+            {
+                builder.AppendLine($"  {' ',12}  ↳ {rule.Value} dana, {string.Join("; ", rule.Citations)}");
+            }
+            else if (milestone.Rule?.Impediment is { } impediment)
+            {
+                builder.AppendLine($"  {' ',12}  ↳ {impediment}");
+            }
         }
 
-        if (regulatorFiled is { } filed)
+        if (complaint.RegulatorFiledDate is { } filed)
         {
             builder.AppendLine();
             builder.AppendLine($"  RATEL-u prijavljeno: {filed:dd.MM.yyyy.}");
+        }
+
+        if (anchorNote is not null)
+        {
+            builder.AppendLine();
+            Paragraph(anchorNote);
+        }
+
+        if (legal.State != LegalContextState.Resolved)
+        {
+            builder.AppendLine();
+            Paragraph(legal.State.Explain());
         }
 
         builder.AppendLine();
         builder.AppendLine("  Šta sada:");
         builder.AppendLine();
 
-        foreach (var line in WrapLines(stage.WhatNow(), 70))
+        foreach (var line in ConsoleText.Wrap(stage.WhatNow()))
         {
             builder.AppendLine($"    {line}");
         }
 
         builder.AppendLine();
-
-        foreach (var line in WrapLines(CaseText.Disclaimer, 70))
-        {
-            builder.AppendLine($"  {line}");
-        }
+        Paragraph(CaseText.Disclaimer);
 
         return builder.ToString();
-    }
 
-    private static IEnumerable<string> WrapLines(string text, int width)
-    {
-        var line = new StringBuilder();
-
-        foreach (var word in text.Split(' ', StringSplitOptions.RemoveEmptyEntries))
+        void Paragraph(string text)
         {
-            if (line.Length > 0 && line.Length + word.Length + 1 > width)
+            foreach (var line in ConsoleText.Wrap(text))
             {
-                yield return line.ToString();
-                line.Clear();
+                builder.AppendLine($"  {line}");
             }
-
-            if (line.Length > 0)
-            {
-                line.Append(' ');
-            }
-
-            line.Append(word);
-        }
-
-        if (line.Length > 0)
-        {
-            yield return line.ToString();
         }
     }
 

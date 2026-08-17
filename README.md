@@ -1,4 +1,4 @@
-# Internet Monitoring 2.6
+# Internet Monitoring 2.7
 
 [![build](https://github.com/zoxknez/InternetMonitoring/actions/workflows/ci.yml/badge.svg)](https://github.com/zoxknez/InternetMonitoring/actions/workflows/ci.yml)
 [![licenca: MIT](https://img.shields.io/badge/licenca-MIT-blue.svg)](LICENSE)
@@ -11,7 +11,7 @@ za prigovor operateru.
 Sve radi lokalno. Nema naloga, nema servera, nema slanja podataka bilo gde. Nadzor radi
 i kada interneta nema - to mu je i svrha.
 
-> **Stanje: v2.6.** Merni engine, klasifikacija kvarova, konzolni pokretač, trajno
+> **Stanje: v2.7.** Merni engine, klasifikacija kvarova, konzolni pokretač, trajno
 > skladištenje sa hash-lancem, izveštaji u HTML-u i PDF-u, Windows servis, grafički
 > interfejs, bežični sloj i pravni modul rade. Merenje brzine meri **oba smera i kašnjenje
 > pod opterećenjem**, stoji u redu dok je veza zauzeta, i ulazi u izveštaj sa ocenom
@@ -32,15 +32,20 @@ Istorija izmena: [CHANGELOG.md](CHANGELOG.md).
 
 ## Šta ovaj alat radi drugačije
 
-**Razlikuje ko je kriv.** Većina alata kaže samo „interneta nema". Ovaj razdvaja kvar na
-vašem računaru, na Wi-Fi vezi, na ruteru i kod operatera - jer se prigovor može podneti
-samo za ono poslednje.
+**Razlikuje dokle je problem izolovan.** Većina alata kaže samo „interneta nema". Ovaj
+razdvaja kvar na vašem računaru, na Wi-Fi vezi, na ruteru i **iza rutera** - a prigovor nosi
+samo ono poslednje.
+
+Namerno „iza rutera", a ne „kod operatera". Merenje sa vašeg računara može da isključi putanju
+između računara i rutera; ne može da vidi WAN stranu samog rutera, njegov firmver, PPPoE sesiju
+ni NAT tabelu - a sve to odavde izgleda isto kao i prekid dalje u mreži. Nalaz koji imenuje
+krivca daje operateru najlakši mogući odgovor; nalaz koji kaže šta je izmereno ne daje.
 
 Najvažniji primer: **ruter kome otkaže Wi-Fi dok mu WAN veza radi.** Računar se
 diskonektuje i to izgleda identično kao da ste izašli iz dometa. Razlika je u tome da li
-se mreža uopšte još emituje. Kada SSID nestane iz skeniranja a Ethernet ka istom ruteru
-radi bez prekida - kriv je ruter, ne operater. Taj slučaj se bez ove provere ne može
-razlikovati od pravog prekida kod operatera.
+se mreža uopšte još emituje. Kada SSID nestane iz skeniranja a radio na računaru je pročitan
+kao uključen - uzrok je ruter, a ne domet. Ako se stanje radija ne može pročitati, alat to
+kaže i ne pravi nalaz o opremi.
 
 **Meri i ono što brzina ne pokazuje.** Veza koja postiže ugovorenu brzinu i dalje može biti
 neupotrebljiva za pozive i igre, i uzrok je gotovo uvek isti: prevelik bafer negde na putanji
@@ -129,7 +134,7 @@ gigabitnoj vezi to je oko 1 GB. `--bez-slanja` prepolovljuje taj trošak.
 
 ---
 
-## Kako se dokazuje da paket nije menjan
+## Kako se proverava doslednost paketa
 
 Svaka sesija pravi svoj folder:
 
@@ -168,8 +173,8 @@ dotnet run --project src/IEM.Cli -- --izvestaj "putanja\do\Sesija_20260813_18215
 ```
 
 Svaki red sirove evidencije sadrži otisak prethodnog reda i svoj sopstveni. Izmena bilo
-kog ranijeg reda narušava sve otiske posle njega, pa se falsifikat ne može ni sakriti ni
-ograničiti na jedno mesto.
+kog ranijeg reda narušava sve otiske posle njega, pa se izmena ne može ograničiti na jedno
+mesto.
 
 Proveru može pokrenuti bilo ko - i vi, i tehničar operatera:
 
@@ -180,9 +185,12 @@ dotnet run --project src/IEM.Cli -- --proveri "putanja\do\Sesija_20260813_182150
 Ispisuje `ISPRAVAN` ili `NARUŠEN` sa brojem prvog izmenjenog reda, i vraća izlazni kod
 `0` odnosno `1` da se može koristiti i u skripti.
 
-**Šta ovo dokazuje, a šta ne.** Dokazuje da paket nije menjan nakon što je snimljen.
-Ne dokazuje ko ga je i kada napravio - za to je potreban vremenski žig treće strane, što
-dolazi u kasnijoj fazi.
+**Šta ovo pokazuje, a šta ne.** Pokazuje da je lanac otisaka unutrašnje dosledan: nijedan
+zapis nije izmenjen a da to ne pokvari sve otiske posle njega. To je provera doslednosti, a
+ne dokaz porekla - `SHA256SUMS.txt` i sam lanac stoje u istom folderu u koji se piše, pa bi
+onaj ko može da izmeni zapis mogao da preračuna i jedno i drugo. Nezavisan dokaz vremena i
+porekla zahteva potpis i vremenski žig treće strane, što ovo izdanje ne radi; planirano je
+za 3.0.0.
 
 Sirova evidencija je izvor istine; SQLite baza je izvedeni indeks i može se ponovo
 napraviti iz nje. Zato se svaki zapis prvo upisuje u lanac, pa tek onda u bazu, i zato se
@@ -387,7 +395,7 @@ sam projekat ne vredi. Posledica se vidi odmah - Windows SmartScreen upozorava n
 izdavača, pa se preuzeti ZIP prvo odblokira:
 
 ```bash
-Unblock-File .\InternetMonitoring-2.6.0-win-x64.zip
+Unblock-File .\InternetMonitoring-2.7.0-win-x64.zip
 ```
 
 Ako se namena ikad promeni, polazna tačka je Azure Artifact Signing.
@@ -470,7 +478,7 @@ ovog programa neko će poslati svom operateru; sve u kodu služi tome da taj dok
 
 | | |
 |---|---|
-| **Verzija** | 2.6.0 |
+| **Verzija** | 2.7.0 |
 | **Autor** | **o0o0o0o** ([GitHub](https://github.com/zoxknez)) |
 | **Licenca** | [MIT](LICENSE) |
 | **Platforma** | Windows 10/11, x64 i ARM64. Ne traži instaliran .NET - objavljene arhive nose svoj runtime. |

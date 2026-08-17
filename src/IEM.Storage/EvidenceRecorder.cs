@@ -2,6 +2,7 @@ using System.Diagnostics;
 using IEM.Core;
 using IEM.Core.Incidents;
 using IEM.Core.Model;
+using IEM.Core.Presentation;
 using IEM.Storage.Evidence;
 
 namespace IEM.Storage;
@@ -422,8 +423,9 @@ public sealed class EvidenceRecorder : IDisposable
             $"Završni otisak:  {verification.HeadHash}",
             "",
             "Svaki zapis sadrži otisak prethodnog, pa izmena bilo kog ranijeg reda",
-            "narušava sve otiske posle njega. Ovim se dokazuje da paket nije menjan",
-            "nakon što je sačuvan završni otisak - ne i ko ga je i kada napravio.",
+            "narušava sve otiske posle njega.",
+            "",
+            .. TextWrap.Lines(ChainText.NotProofOfOrigin),
         ]);
 
         File.WriteAllLines(Paths.ChainVerification, lines, new System.Text.UTF8Encoding(true));

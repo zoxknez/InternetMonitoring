@@ -210,8 +210,8 @@ public static class PdfReportBuilder
                 "računa se samo ono što nije vaša oprema"),
             ("Prekida ukupno",
                 session.Incidents.Count.ToString(CultureInfo.InvariantCulture),
-                $"od toga {session.UpstreamIncidents.Count()} kod operatera"),
-            ("Nedostupnost operatera",
+                $"od toga {session.UpstreamIncidents.Count()} izolovano iza rutera"),
+            ("Nedostupnost iza rutera",
                 SerbianText.Duration(session.UpstreamDowntime),
                 $"najduži {SerbianText.Duration(session.LongestUpstreamOutage)}"),
             ("Lokalna nedostupnost",
@@ -304,6 +304,7 @@ public static class PdfReportBuilder
 
         Fact("Preneseno", $"{(transferred / 1_000_000d).ToString("0.#", SerbianText.Culture)} MB za {SerbianText.Duration(speed.Duration)} po smeru");
         Fact("Način merenja", $"{medium}, tri paralelne veze po smeru, veza mirna pre početka");
+        Fact("Putanja merenja", speed.RouteState.Label());
 
         AppendLoadedLatency();
 
@@ -585,7 +586,7 @@ public static class PdfReportBuilder
             {
                 flags.Add(
                     $"tokom prekida je i sam računar koristio vezu (do {SerbianText.Rate(localPeak)}), " +
-                    "pa se ovaj prekid ne može bez rezerve pripisati operateru");
+                    "pa se ovaj prekid ne može bez rezerve pripisati samoj vezi");
             }
 
             if (flags.Count > 0)
@@ -733,12 +734,14 @@ public static class PdfReportBuilder
         layout.Heading("Integritet zapisa");
 
         layout.Text(
-            valid
-                ? "Lanac otisaka je neprekinut - paket nije menjan nakon snimanja."
-                : "Lanac otisaka je narušen - paket je menjan nakon snimanja.",
+            valid ? ChainText.Consistent : ChainText.Broken,
             Fonts.BodyBold,
             valid ? Brushes.OkText : Brushes.BadText,
             13);
+
+        // Beside the finding rather than a page away, so a reader cannot take the first
+        // sentence for proof of origin.
+        layout.Note(ChainText.NotProofOfOrigin);
 
         if (headHash is not null)
         {
@@ -817,8 +820,7 @@ public static class PdfReportBuilder
 
         Bullet("Ovo je tehnička evidencija prekida, a ne merenje ovlašćene treće strane niti " +
                "zapis potpisan od strane operatera.");
-        Bullet("Dokazano je da paket nije menjan nakon snimanja. Nije dokazano ko ga je i kada " +
-               "napravio - za to je potreban vremenski žig treće strane.");
+        Bullet(ChainText.NotProofOfOrigin);
         Bullet(speedItem);
         Bullet("Uz prigovor zbog kvaliteta internet usluge RATEL navodi i rezultate merenja " +
                "aplikacijom RATEL NetTest, po proceduri od tri dana sa po dva merenja pre i " +

@@ -77,7 +77,7 @@ public sealed class ComplaintPreparationTests
 
         Assert.False(result.Prepared);
         Assert.Contains("2 prekida", result.Refusal!, StringComparison.Ordinal);
-        Assert.Contains("nijedan nije isključio vašu opremu", result.Refusal!, StringComparison.Ordinal);
+        Assert.Contains("nijedan nije bio izolovan iza rutera", result.Refusal!, StringComparison.Ordinal);
     }
 
     [Fact]

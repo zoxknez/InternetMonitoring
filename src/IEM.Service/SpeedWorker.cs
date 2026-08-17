@@ -203,9 +203,10 @@ public sealed class SpeedWorker(
             MeasuredUploadMbps = result.UploadMbps,
 
             // Checked rather than assumed: on a machine with a docking station or a VPN the
-            // transfer can leave through an adapter other than the one being described.
-            // Unknown counts as single, which is what this said unconditionally before.
-            SinglePath = MeasurementPath.LeavesThroughAdapter(link.InterfaceId) ?? true,
+            // transfer can leave through an adapter other than the one being described. An
+            // unresolved check stays unresolved - it used to fall back to "one path", so the
+            // service recorded a verified path on machines where nothing had been verified.
+            RouteState = MeasurementPath.Resolve(link.InterfaceId).State,
         };
 
         var note = SpeedMeasurementNote.From(

@@ -67,19 +67,17 @@ public static class ComplaintBuilder
 
         if (outputRoot is not null)
         {
-            CaseJournalStore.Save(outputRoot, new CaseJournal
-            {
-                Case = complaint,
-                RegulatorFiledDate = journal?.RegulatorFiledDate,
-                Notes = journal?.Notes,
-            });
+            CaseJournalStore.Save(
+                outputRoot,
+                new CaseJournal { Case = complaint, Notes = journal?.Notes },
+                today);
         }
 
         var letterPath = Path.Combine(directory, "Prigovor-operateru.txt");
         var timelinePath = Path.Combine(directory, "Rokovi.txt");
 
         Write(letterPath, ComplaintLetter.ToOperator(complaint, session, today));
-        Write(timelinePath, Timeline(complaint, today, journal?.RegulatorFiledDate));
+        Write(timelinePath, Timeline(complaint, today, prepared.AnchorNote));
 
         return new ComplaintOutcome(letterPath, timelinePath, null);
     }
@@ -172,6 +170,11 @@ public static class ComplaintBuilder
                 SubmittedDate = recorded.SubmittedDate ?? fresh.SubmittedDate,
                 OperatorRespondedDate = recorded.OperatorRespondedDate ?? fresh.OperatorRespondedDate,
                 OperatorUpheld = recorded.OperatorUpheld ?? fresh.OperatorUpheld,
+                RegulatorFiledDate = recorded.RegulatorFiledDate ?? fresh.RegulatorFiledDate,
+                InvoiceDueDate = recorded.InvoiceDueDate ?? fresh.InvoiceDueDate,
+                ComplaintKind = recorded.ComplaintKind,
+                CustomerType = recorded.CustomerType,
+                ServiceKind = recorded.ServiceKind,
                 OperatorReference = recorded.OperatorReference ?? fresh.OperatorReference,
                 ContractNumber = recorded.ContractNumber ?? fresh.ContractNumber,
                 ContactPhone = recorded.ContactPhone ?? fresh.ContactPhone,
@@ -181,36 +184,63 @@ public static class ComplaintBuilder
                     : fresh.SubscriberName,
             };
 
-    private static string Timeline(ComplaintCase complaint, DateOnly today, DateOnly? regulatorFiled = null)
+    private static string Timeline(ComplaintCase complaint, DateOnly today, string? anchorNote = null)
     {
         var builder = new StringBuilder();
-        var stage = complaint.StageOn(today);
+        var legal = complaint.Resolve(today);
+        var stage = complaint.StageOn(today, legal);
 
         builder.AppendLine("ROKOVI");
         builder.AppendLine();
         builder.AppendLine($"Stanje predmeta:  {stage.Label()}");
+        builder.AppendLine($"Pravila:          {legal.Ruleset}");
         builder.AppendLine();
 
-        foreach (var milestone in complaint.Milestones())
+        foreach (var milestone in complaint.Milestones(legal))
         {
-            var days = milestone.DaysFrom(today);
-
             var note = !milestone.IsDeadline
                 ? string.Empty
-                : days switch
+                : milestone.DaysFrom(today) switch
                 {
+                    null => "  <- ROK NIJE UTVRDJEN",
                     < 0 => "  <- ROK JE PROSAO",
                     0 => "  <- danas je poslednji dan",
-                    _ => $"  <- ostalo jos {days} {SessionVerdict.Plural(days, "dan", "dana", "dana")}",
+                    1 => "  <- ostao jos 1 dan",
+                    { } days => $"  <- ostalo jos {days} {SessionVerdict.Plural(days, "dan", "dana", "dana")}",
                 };
 
-            builder.AppendLine($"{milestone.Date:dd.MM.yyyy.}  {milestone.Step.Label(),-45}{note}");
+            var date = milestone.Date is { } value
+                ? value.ToString("dd.MM.yyyy.", SerbianText.Culture)
+                : "nije utvrdjeno";
+
+            builder.AppendLine($"{date}  {milestone.Step.Label(),-45}{note}");
+
+            if (milestone.Rule is { Citations.Count: > 0 } rule)
+            {
+                builder.AppendLine($"{' ',12}  -> {rule.Value} dana, {string.Join("; ", rule.Citations)}");
+            }
+            else if (milestone.Rule?.Impediment is { } impediment)
+            {
+                builder.AppendLine($"{' ',12}  -> {impediment}");
+            }
         }
 
-        if (regulatorFiled is { } filed)
+        if (complaint.RegulatorFiledDate is { } filed)
         {
             builder.AppendLine();
             builder.AppendLine($"RATEL-u prijavljeno: {filed:dd.MM.yyyy.}");
+        }
+
+        if (anchorNote is not null)
+        {
+            builder.AppendLine();
+            builder.AppendLine(anchorNote);
+        }
+
+        if (legal.State != LegalContextState.Resolved)
+        {
+            builder.AppendLine();
+            builder.AppendLine(legal.State.Explain());
         }
 
         builder.AppendLine();

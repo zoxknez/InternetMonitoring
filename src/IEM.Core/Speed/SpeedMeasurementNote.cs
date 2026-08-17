@@ -64,6 +64,17 @@ public sealed record SpeedMeasurementNote(
     public string? LoadedLatencyLabel { get; init; }
 
     /// <summary>
+    /// What the route table said about the measurement's own traffic.
+    /// <para>
+    /// A note written before 2.7 has no such field, so it reads back as
+    /// <see cref="MeasurementRouteState.Unknown"/> - which is the truth about it. Those
+    /// measurements were recorded under a rule that treated an unresolved route as a
+    /// verified one, and there is no way to tell afterwards which of them were checked.
+    /// </para>
+    /// </summary>
+    public MeasurementRouteState RouteState { get; init; } = MeasurementRouteState.Unknown;
+
+    /// <summary>
     /// Builds the note from one measurement and its conditions.
     /// <para>
     /// The single place where a measurement becomes a record, so the console, the window and
@@ -107,6 +118,7 @@ public sealed record SpeedMeasurementNote(
             LatencyUnderUploadMs = result.UploadLoadedLatency?.Median.TotalMilliseconds,
             LatencyIncreaseMs = increase?.TotalMilliseconds,
             LoadedLatencyLabel = result.LoadedLatencyGrade?.Label(),
+            RouteState = conditions.RouteState,
         };
     }
 

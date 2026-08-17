@@ -1,5 +1,6 @@
 using IEM.Core.Classification;
 using IEM.Core.Model;
+using IEM.Core.Presentation;
 
 namespace IEM.Core.Tests;
 
@@ -79,6 +80,28 @@ public sealed class StateClassifierTests
 
         Assert.Equal(NetworkState.AdapterDown, verdict.State);
         Assert.Equal(FaultAttribution.LocalDevice, verdict.State.AttributionOf());
+    }
+
+    /// <summary>
+    /// The same refusal, one step further back: the SSID really is gone from the scan, but
+    /// whether the radio is on could not be established.
+    /// <para>
+    /// Until 2.3 the condition read <c>RadioOn != false</c>, so an unreadable radio counted
+    /// as one that was on and the vanished network was reported as the access point having
+    /// stopped broadcasting. That is a finding of equipment failure assembled out of a
+    /// failed query - the substitution this tool exists to refuse, on the most consequential
+    /// judgement it makes.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public void Adapter_down_with_an_unreadable_radio_is_not_a_router_failure()
+    {
+        var verdict = _classifier.Classify(
+            CycleBuilder.Wireless().AdapterDown().SsidNotVisible().RadioStateUnreadable()
+                .AllExternalFail().Build());
+
+        Assert.Equal(NetworkState.AdapterDown, verdict.State);
+        Assert.DoesNotContain("radio", verdict.TechnicalDetail, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -280,12 +303,44 @@ public sealed class StateClassifierTests
     }
 
     [Fact]
-    public void Partial_icmp_loss_is_degradation_not_downtime()
+    public void Some_external_targets_falling_silent_is_degradation_not_downtime()
     {
         var verdict = _classifier.Classify(CycleBuilder.Wired().ExternalIcmpPartialLoss().Build());
 
         Assert.Equal(NetworkState.PacketLoss, verdict.State);
         Assert.False(verdict.IsOutage);
+    }
+
+    /// <summary>
+    /// What this state actually observes: one probe each to three <em>different</em>
+    /// destinations. Reported as a loss percentage it moved in thirds, so a single resolver
+    /// that filters ICMP by policy put "33,3 % gubitka paketa" into a complaint - a figure
+    /// the operator can dismiss in one sentence, and should.
+    /// </summary>
+    [Fact]
+    public void One_silent_target_is_not_reported_as_a_third_of_packets_lost()
+    {
+        var verdict = _classifier.Classify(CycleBuilder.Wired().ExternalIcmpPartialLoss().Build());
+
+        Assert.DoesNotContain("% loss", verdict.TechnicalDetail, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("33", verdict.TechnicalDetail, StringComparison.Ordinal);
+
+        // And it names the destination that went quiet, because which one it was is the
+        // finding: the same target every sample is a policy, a different one each time is a
+        // connection.
+        Assert.Contains("9.9.9.9", verdict.TechnicalDetail, StringComparison.Ordinal);
+        Assert.Contains("did not answer", verdict.TechnicalDetail, StringComparison.Ordinal);
+    }
+
+    /// <summary>The Serbian a reader sees has to make the same distinction, in their words.</summary>
+    [Fact]
+    public void The_serbian_wording_says_it_is_not_a_packet_loss_measurement()
+    {
+        var label = NetworkState.PacketLoss.Label();
+        var explanation = NetworkState.PacketLoss.Explanation();
+
+        Assert.DoesNotContain("gubitak", label, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("NIJE merenje gubitka paketa", explanation, StringComparison.Ordinal);
     }
 
     [Fact]

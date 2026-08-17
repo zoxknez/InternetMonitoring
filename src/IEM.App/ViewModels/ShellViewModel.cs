@@ -89,15 +89,21 @@ public sealed partial class ShellViewModel : ObservableObject, IAsyncDisposable
     }
 
     /// <summary>
-    /// 48 hours is the default because it is the window the regulations turn on: an
-    /// operator has that long to clear a fault before a subscriber can claim a reduction.
+    /// How long to watch for.
+    /// <para>
+    /// Two days is the default because it usually catches a fault that repeats, not because
+    /// anything prescribes it. The forty-eight hours in the quality pravilnik is the time an
+    /// operator has to clear a fault once throughput has fallen below the minimum - a
+    /// different thing entirely, and it was described here as if it were a rule about how
+    /// long evidence has to be gathered.
+    /// </para>
     /// </summary>
     public IReadOnlyList<DurationChoice> Durations { get; } =
     [
         new("1 sat", TimeSpan.FromHours(1), "brza provera"),
         new("6 sati", TimeSpan.FromHours(6), "popodne ili veče"),
         new("24 sata", TimeSpan.FromHours(24), "ceo dan i noć"),
-        new("48 sati", TimeSpan.FromHours(48), "rok operatera za smetnju"),
+        new("48 sati", TimeSpan.FromHours(48), "dva dana i dve noći"),
         new("72 sata", TimeSpan.FromHours(72), "vikend"),
         new("Do zaustavljanja", Timeout.InfiniteTimeSpan, "zaustavljate ga ručno"),
     ];
@@ -141,7 +147,11 @@ public sealed partial class ShellViewModel : ObservableObject, IAsyncDisposable
 
     public string LocalDowntimeText => SerbianText.Duration(Snapshot.LocalDowntime);
 
-    public string LossText => SerbianText.Percent(Snapshot.CurrentLossPercent, decimals: 1);
+    /// <summary>
+    /// The share of external destinations that went quiet on the last sample - not packet
+    /// loss, and no longer labelled as it. One probe per destination cannot measure loss.
+    /// </summary>
+    public string UnreachableTargetsText => SerbianText.Percent(Snapshot.UnreachableTargetShare, decimals: 1);
 
     /// <summary>
     /// Warns when a speed claim is being built on a wireless link, up front rather than
@@ -178,11 +188,11 @@ public sealed partial class ShellViewModel : ObservableObject, IAsyncDisposable
     [
         new("Dostupnost", AvailabilityText, "od nadziranog vremena"),
         new("Bez lokalnih kvarova", UpstreamAvailabilityText, "bez vaše opreme"),
-        new("Prekida kod operatera",
+        new("Prekida iza rutera",
             Snapshot.UpstreamIncidentCount.ToString(SerbianText.Culture),
             $"ukupno {Snapshot.IncidentCount.ToString(SerbianText.Culture)}"),
-        new("Nedostupnost operatera", DowntimeText, $"lokalno {LocalDowntimeText}"),
-        new("Gubitak paketa", LossText, "poslednji uzorak"),
+        new("Nedostupnost iza rutera", DowntimeText, $"lokalno {LocalDowntimeText}"),
+        new("Mete bez odgovora", UnreachableTargetsText, "poslednji uzorak"),
         new("Nenadzirano", SerbianText.Duration(Snapshot.GapTime), "spavanje ili restart"),
     ];
 
@@ -438,7 +448,11 @@ public sealed partial class ShellViewModel : ObservableObject, IAsyncDisposable
             return false;
         }
 
-        CaseJournalStore.Save(_outputRoot, journal with { Case = change(journal.Case) });
+        CaseJournalStore.Save(
+            _outputRoot,
+            journal with { Case = change(journal.Case) },
+            DateOnly.FromDateTime(DateTime.Now));
+
         RaiseCase();
         return true;
     }
@@ -449,9 +463,19 @@ public sealed partial class ShellViewModel : ObservableObject, IAsyncDisposable
         var journal = CaseJournalStore.Load(_outputRoot);
         var today = DateOnly.FromDateTime(DateTime.Now);
 
-        CaseText = journal is null
-            ? null
-            : $"{journal.Case.StageOn(today).Label()} · operater {journal.Case.OperatorName}";
+        if (journal is null)
+        {
+            CaseText = null;
+            return;
+        }
+
+        // The rules the case was recorded under, not today's. A case from last year keeps the
+        // position it had, which is the whole reason they are written into the file.
+        var legal = journal.Legal ?? journal.Case.Resolve(today);
+        var stage = journal.Case.StageOn(today, legal);
+        var uncertain = legal.State == LegalContextState.Resolved ? string.Empty : " · rokovi nisu potvrđeni";
+
+        CaseText = $"{stage.Label()} · operater {journal.Case.OperatorName}{uncertain}";
     }
 
     // ---- Scheduled speed measurement -----------------------------------------
@@ -724,9 +748,10 @@ public sealed partial class ShellViewModel : ObservableObject, IAsyncDisposable
             MeasuredUploadMbps = result.UploadMbps,
 
             // Checked rather than assumed: on a machine with a docking station or a VPN the
-            // transfer can leave through an adapter other than the one being described.
-            // Unknown counts as single, which is what this said unconditionally before.
-            SinglePath = MeasurementPath.LeavesThroughAdapter(link.InterfaceId) ?? true,
+            // transfer can leave through an adapter other than the one being described. An
+            // unresolved check stays unresolved - it used to fall back to "one path", so the
+            // window recorded a verified path on machines where nothing had been verified.
+            RouteState = MeasurementPath.Resolve(link.InterfaceId).State,
         };
 
         var latest = SessionPaths.FindLatest(_outputRoot);
@@ -991,7 +1016,7 @@ public sealed partial class ShellViewModel : ObservableObject, IAsyncDisposable
         OnPropertyChanged(nameof(UpstreamAvailabilityText));
         OnPropertyChanged(nameof(DowntimeText));
         OnPropertyChanged(nameof(LocalDowntimeText));
-        OnPropertyChanged(nameof(LossText));
+        OnPropertyChanged(nameof(UnreachableTargetsText));
         OnPropertyChanged(nameof(RemainingValue));
         OnPropertyChanged(nameof(ShowWirelessWarning));
         OnPropertyChanged(nameof(StatusPill));

@@ -227,7 +227,9 @@ public sealed class EvidencePackageTests : IDisposable
         var header = lines[0].Split(';');
         Assert.Contains("Najmanje (s)", header);
         Assert.Contains("Najviše (s)", header);
-        Assert.Contains("Operater", lines[1], StringComparison.Ordinal);
+        // The attribution column, which now says where the fault was isolated rather than
+        // naming a company the measurement never reached.
+        Assert.Contains("Izolovano iza rutera", lines[1], StringComparison.Ordinal);
     }
 
     [Fact]

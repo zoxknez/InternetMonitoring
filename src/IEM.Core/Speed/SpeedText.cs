@@ -1,3 +1,5 @@
+using System.Net.Sockets;
+
 namespace IEM.Core.Speed;
 
 /// <summary>
@@ -30,8 +32,18 @@ public static class SpeedText
             "Tokom merenja veza nije radila ispravno, pa rezultat opisuje kvar, a ne brzinu.",
 
         SpeedMeasurementDefect.PathAmbiguous =>
-            "Saobraćaj je izlazio kroz više mrežnih adaptera ili kroz VPN, pa se ne zna šta je " +
+            "Deo saobraćaja bi izašao kroz drugi adapter ili kroz VPN, pa se ne zna šta je " +
             "tačno mereno. Isključite VPN i ostale adaptere, pa ponovite.",
+
+        SpeedMeasurementDefect.PathElsewhere =>
+            "Saobraćaj ka meti merenja ne izlazi kroz adapter koji se nadzire, nego kroz drugi. " +
+            "Izmereno je nešto, ali ne ova veza. Isključite VPN, ili merite adapter kroz koji " +
+            "saobraćaj stvarno izlazi.",
+
+        SpeedMeasurementDefect.PathUnverified =>
+            "Nije se moglo utvrditi kroz koji adapter saobraćaj izlazi, pa se ne zna na koju se " +
+            "vezu rezultat odnosi. Merenje ostaje zapisano, ali ne može uz prigovor. Navedite " +
+            "adapter opcijom --interfejs i proverite da ime mete merenja može da se razreši.",
 
         SpeedMeasurementDefect.ContractUnknown =>
             "Ugovorena brzina nije uneta, pa nema sa čim da se uporedi izmereno.",
@@ -39,40 +51,137 @@ public static class SpeedText
         _ => string.Empty,
     };
 
-    public static string Label(this SpeedBand band) => band switch
+    /// <summary>
+    /// What the route table established, said as what it is.
+    /// <para>
+    /// The best case is deliberately not called a confirmed measurement path. The route table
+    /// describes the choice the operating system would make; the socket that carried the
+    /// transfer was never inspected, and a wording that implied otherwise would be the same
+    /// overreach this release exists to remove.
+    /// </para>
+    /// </summary>
+    public static string Label(this MeasurementRouteState state) => state switch
     {
-        SpeedBand.BelowMinimum => "ISPOD MINIMALNE",
-        SpeedBand.AboveMinimum => "iznad minimalne, ispod uobičajene",
-        SpeedBand.NormallyAvailable => "uobičajeno dostupna",
-        _ => "na nivou oglašene",
+        MeasurementRouteState.AllResolvedRoutesMatch => "tabela ruta je saglasna sa izabranim adapterom",
+        MeasurementRouteState.MixedRoutes => "deo ruta izlazi kroz drugi adapter",
+        MeasurementRouteState.OtherRouteOnly => "rute izlaze kroz drugi adapter",
+        _ => "putanja merenja nije proverena",
     };
 
-    /// <summary>What the band means for a complaint.</summary>
+    /// <summary>
+    /// The same finding with the addresses named, so a mixed result is actionable.
+    /// <para>
+    /// "Putanja je dvosmislena" tells nobody what to change. "IPv6 ide kroz drugi adapter"
+    /// does, and it is the one detail the check already had in hand.
+    /// </para>
+    /// </summary>
+    public static string Describe(this MeasurementRoute route)
+    {
+        ArgumentNullException.ThrowIfNull(route);
+
+        var text = route.State.Label();
+
+        var elsewhere = route.Elsewhere
+            .Select(candidate => candidate.Family.Label())
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+
+        if (elsewhere.Length > 0)
+        {
+            text += $" ({string.Join(" i ", elsewhere)} drugom rutom)";
+        }
+
+        if (route.UnresolvedCount > 0)
+        {
+            text += $"; {route.UnresolvedCount} adresa se nije mogla razrešiti";
+        }
+
+        return text;
+    }
+
+    private static string Label(this AddressFamily family) => family switch
+    {
+        AddressFamily.InterNetwork => "IPv4",
+        AddressFamily.InterNetworkV6 => "IPv6",
+        _ => family.ToString(),
+    };
+
+    /// <summary>
+    /// Where one measurement falls, as a share of the contracted rate.
+    /// <para>
+    /// Neutral bands rather than the regulator's terms. "Uobičajeno dostupna brzina" is
+    /// defined by the Pravilnik as at least 80 % of the contracted rate <em>over 90 % of the
+    /// measurement time</em> - a condition about a series, which a single measurement cannot
+    /// satisfy however good the figure. Printing that phrase beside one snapshot claimed a
+    /// regulatory conclusion the measurement had not established, and handed an operator an
+    /// easy objection to the whole document.
+    /// </para>
+    /// </summary>
+    public static string Label(this SpeedBand band) => band switch
+    {
+        SpeedBand.BelowMinimum => "ISPOD 70 % UGOVORENE",
+        SpeedBand.AboveMinimum => "70-80 % ugovorene",
+        SpeedBand.NormallyAvailable => "80-90 % ugovorene",
+        _ => "90 % ugovorene ili više",
+    };
+
+    /// <summary>
+    /// What the band means for a complaint, and what one measurement can and cannot settle.
+    /// <para>
+    /// The minimum is the one criterion a single measurement can speak to: the Pravilnik sets
+    /// it as a floor the service must not fall below, without a share-of-time condition. Every
+    /// band above it is defined over time, so a snapshot can only support or fail to support -
+    /// never conclude.
+    /// </para>
+    /// </summary>
     public static string Explain(this SpeedBand band) => band switch
     {
         SpeedBand.BelowMinimum =>
-            "Izmerena brzina je ispod minimalne koju ugovor predviđa. Ovo je osnov za prigovor, " +
-            "pod uslovom da je merenje rađeno preko kabla i uz mirnu vezu.",
+            "Izmerena brzina je ispod 70 % ugovorene, što je minimum koji propis predviđa. Ovo je " +
+            "osnov za prigovor, pod uslovom da je merenje rađeno preko kabla i uz mirnu vezu. " +
+            SeriesNote,
 
         SpeedBand.AboveMinimum =>
-            "Brzina je iznad ugovorenog minimuma, ali ispod uobičajeno dostupne. Jedno ovakvo " +
-            "merenje nije osnov za prigovor; ponovljena merenja tokom više dana jesu argument.",
+            "Brzina je iznad propisanog minimuma od 70 %, ali ispod 80 % ugovorene. Jedno ovakvo " +
+            "merenje nije osnov za prigovor; ponovljena merenja tokom više dana jesu argument. " +
+            SeriesNote,
 
         SpeedBand.NormallyAvailable =>
-            "Brzina odgovara uobičajeno dostupnoj. Nema osnova za prigovor po brzini.",
+            "Brzina je između 80 i 90 % ugovorene. Ovo merenje ne pokazuje pad ispod propisanog " +
+            "minimuma. " + NotProofOfService + " " + SeriesNote,
 
         _ =>
-            "Brzina odgovara oglašenoj. Nema osnova za prigovor po brzini.",
+            "Brzina je na nivou ugovorene ili iznad njega. Ovo merenje ne pokazuje pad ispod " +
+            "propisanog minimuma. " + NotProofOfService + " " + SeriesNote,
     };
 
-    /// <summary>Short label for the band, said of the sending direction.</summary>
-    public static string UploadLabel(this SpeedBand band) => band switch
-    {
-        SpeedBand.BelowMinimum => "ISPOD MINIMALNE (slanje)",
-        SpeedBand.AboveMinimum => "iznad minimalne, ispod uobičajene (slanje)",
-        SpeedBand.NormallyAvailable => "uobičajeno dostupna (slanje)",
-        _ => "na nivou oglašene (slanje)",
-    };
+    /// <summary>
+    /// Said of a good figure, because the substitution runs both ways.
+    /// <para>
+    /// The old wording answered a healthy snapshot with "Nema osnova za prigovor po brzini" -
+    /// a conclusion about the service drawn from one sample, in the operator's favour. A
+    /// connection that fails every evening measures perfectly at eleven in the morning.
+    /// </para>
+    /// </summary>
+    public const string NotProofOfService =
+        "To ne znači da je usluga uredna: jedno merenje opisuje jedan trenutak, a veza koja " +
+        "pada svako veče izmeri se uredno pre podne.";
+
+    /// <summary>
+    /// The condition a single measurement cannot meet, said wherever a band is explained.
+    /// <para>
+    /// Without it a reader takes "80-90 % ugovorene" for the regulator's "uobičajeno dostupna
+    /// brzina", which is that share <em>held over 90 % of the measurement time</em>. The
+    /// difference is the difference between a figure and a finding.
+    /// </para>
+    /// </summary>
+    public const string SeriesNote =
+        "Zaključak o uobičajeno dostupnoj brzini po propisu traži da brzina bude najmanje 80 % " +
+        "ugovorene u 90 % vremena merenja, što jedno merenje ne može da pokaže - za to je " +
+        "potrebna serija merenja kroz vreme, a za sam postupak merenje RATEL NetTest aplikacijom.";
+
+    /// <summary>The same band, said of the sending direction.</summary>
+    public static string UploadLabel(this SpeedBand band) => $"{band.Label()} (slanje)";
 
     public static string Label(this LoadedLatencyGrade grade) => grade switch
     {

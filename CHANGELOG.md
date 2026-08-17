@@ -10,6 +10,117 @@ izveštaj pravi.
 
 ---
 
+## 2.7.0 - 17.08.2026.
+
+Format zapisa **3** (nepromenjen). Pravila: klasifikacija **2.3.0**, pripisivanje **2.1**,
+pouzdanost 1.1.
+
+Ovo izdanje ne dodaje nijednu mogućnost. Uvodi jedno pravilo, svuda gde je bilo prekršeno:
+
+> **„Nisam mogao da proverim" nikada ne postaje „proverio sam i u redu je."**
+
+Tri invarianta su postala testovi koji padaju ako se pravilo prekrši, a ne rečenice u
+dokumentaciji: nepoznato ne postaje potvrđeno, stari predmet ne menja značenje, i prikaz ne
+tvrdi više nego što sirovi zapis sadrži.
+
+### Putanja merenja brzine: četiri stanja umesto dva (P0-3)
+
+`SpeedPath` je vraćao „ispravno" na **prvom** poklapanju rute, uz komentar da je „jedna
+poklopljena ruta dovoljna". Nije: host sa IPv4 preko Etherneta i IPv6 preko VPN-a davao je
+potvrdu, a `HttpClient` je slobodno mogao da uzme IPv6. Uz to su tri pozivna mesta - konzola,
+servis i prozor - radila `?? true`, pa je i „nije moglo da se utvrdi" postajalo potvrda.
+
+- `MeasurementRouteState`: `AllResolvedRoutesMatch`, `MixedRoutes`, `OtherRouteOnly`,
+  `Unknown`. Samo prvo stanje nosi prigovor; ostala tri daju svoj nedostatak
+  (`PathAmbiguous`, `PathElsewhere`, `PathUnverified`).
+- Uz stanje se zapisuje i koja adresna familija odlazi drugom rutom, pa poruka kaže šta da se
+  promeni umesto „putanja je dvosmislena".
+- Ni najbolje stanje se **ne** zove „potvrđena putanja merenja", nego „tabela ruta je saglasna
+  sa izabranim adapterom" - stvarni TCP put se ne vidi pre 3.0.0.
+
+Neka merenja koja su ranije prolazila sada ne prolaze. To je i svrha.
+
+### Wi-Fi: radio mora biti dokazano uključen (P0-4)
+
+Uslov je bio `RadioOn != false`, pa je `null` - „nismo uspeli da pročitamo stanje radija" -
+prolazio kao „radio je uključen" i nestanak SSID-a se prijavljivao kao kvar pristupne tačke.
+Sada je `RadioOn == true`; nepoznato pada dalje kroz lanac i završava kao `AdapterDown`, koji
+tvrdi samo ono što je adapter prijavio.
+
+### „Gubitak paketa" nije bio gubitak paketa (P0-5)
+
+Stanje je računalo procenat iz **tri različite destinacije** sa po jednom probom, pa je jedan
+resolver koji iz principa ne odgovara na ping davao „33,3 % gubitka paketa" u prigovoru.
+Sada: „Deo meta ne odgovara", sa imenima meta, i izričito da to nije merenje gubitka paketa.
+Vrednost `"PacketLoss"` u lancu ostaje nepromenjena; pravi model gubitka ide u 3.0.0.
+
+### Operater više nije proglašen krivim (P0-2)
+
+Model pripisivanja od 2.0 kaže da se sa korisnikovog računara ne može utvrditi čija je mreža u
+kvaru - a tekst je i dalje pisao „Prekida kod operatera", „Nedostupnost operatera" i „vaša
+oprema je isključena kao uzrok". Sve troje tvrdi više nego što merenje daje: WAN strana samog
+rutera, firmver, PPPoE sesija i NAT tabela odavde izgledaju isto kao i prekid dalje u mreži.
+
+- Prikaz sada svuda kaže **„izolovano iza rutera"**, a objašnjenje navodi i šta je izmereno i
+  šta nije isključeno.
+- U lancu i bazi se ništa ne menja - `FaultAttribution.Upstream` i sve vrednosti ostaju, pa
+  stara sesija i dalje čita isto. Podignut je samo broj modela pripisivanja na **2.1**.
+
+### Lanac otisaka dokazuje doslednost, ne poreklo (P0-6)
+
+„Dokazano je da paket nije menjan nakon snimanja" je bilo pretenciozno: `SHA256SUMS.txt` stoji
+u istom folderu u koji se piše, pa ko može da izmeni zapis može da preračuna i lanac i zbirove.
+Sada stoji šta lanac jeste - unutrašnja doslednost - i uz **svaki** takav nalaz ide ograda da
+nezavisan dokaz vremena i porekla traži potpis i vremenski žig treće strane, što ovo izdanje ne
+radi.
+
+### Jedno merenje brzine ne dokazuje vremenski kriterijum (P0-7)
+
+„Uobičajeno dostupna brzina" po propisu znači najmanje 80 % ugovorene **u 90 % vremena** - uslov
+o vremenu, koji jedno merenje ne može da ispuni. Pojasevi su sada neutralni (`ispod 70 %`,
+`70-80 %`, `80-90 %`, `90 % i više`), a objašnjenje kaže šta bi bilo potrebno za zaključak.
+Isto važi i u drugom smeru: dobro merenje više ne tvrdi „nema osnova za prigovor", jer veza
+koja pada svako veče izmeri se uredno pre podne.
+
+### Pravni rokovi su postali podaci sa poreklom (P0-1)
+
+Rokovi su bili konstante u zapisu čiji je komentar obećavao da su podesive - a nijedan
+produkcijski poziv nikada nije prosledio drugu vrednost. Dve su bile pogrešne za nov predmet:
+15 dana za odgovor operatera i 15 dana za obraćanje Regulatoru potiču iz **člana 113. ranijeg
+zakona**, koji je ostao na snazi samo dok se ne donese akt iz čl. 140 važećeg - a donet je
+(Pravilnik, „Sl. glasnik RS" 58/2024, primena od 1.1.2025).
+
+- `LegalCitation`, `LegalRule`, `LegalRuleset`, `LegalRegistry`: svako pravilo nosi **svoje
+  vremensko uporište**, uslov na koga se odnosi, granice primene i izvore sa URL-om i datumom
+  provere.
+- Za predmet pokrenut danas: prigovor **30 dana**, odgovor potrošaču **8 dana** (ZZP), pravnom
+  licu **30**, obraćanje Regulatoru **60 dana** (ZEK čl. 139), odluka **90 dana** (čl. 140).
+- Režim se ne bira za ceo predmet. Postupak pred Regulatorom počinje **prijemom zahteva**, pa
+  prigovor operateru iz novembra 2024. ne povlači zahtev iz januara 2025. u stari režim. Kad
+  rok pada preko granice, a zahtev nije podnet, odgovor je **nije utvrđeno** - ne izbor jedne
+  od dve mogućnosti.
+- Prigovor na **iznos računa** računa se od dospeća računa, a na **kvalitet** od dana
+  nemogućnosti korišćenja. Oba su 30 dana, ali od različitog datuma - zato se pamti i uporište,
+  ne samo broj.
+- Uporišni datum nosi i **poreklo**: sesija sa tri prekida ima tri kandidata, pa program
+  predlaže prvi i to kaže, a `--prekid <broj>` bira drugi. Bez izabranog kandidata rok se
+  računa, ali je označen kao rekonstruisan.
+- Predmet čuva **zamrznut** pravni kontekst - identifikator, verziju, heš i svaki primenjen
+  rok sa datumom od kog je brojan. Registar je nepromenljiv: izmena objavljene verzije pada na
+  testu, jer bi inače tiho promenila značenje starih predmeta.
+- Predmet napravljen starijom verzijom **ne** postaje automatski stari režim. Njegovi datumi se
+  čitaju kao preuzeti, rokovi se označe kao rekonstruisani, i to piše u izlazu.
+- Nov `--prijavljeno <datum>` beleži dan kada je zahtev stigao Regulatoru. Do sada to nijedno
+  mesto u programu nije upisivalo, pa je taj rok bio trajno prijavljen kao propušten.
+- 48 sati je rok operateru da otkloni uzrok, a ne najkraće trajanje nadzora - a tako je stajalo
+  i u prozoru i u savetu „48 sati je minimum koji se ne može osporiti".
+
+### Sitnije
+
+- Tri identične privatne kopije prelamanja teksta svedene na jednu (`TextWrap`).
+- Obrisani mrtvi duplikati u `ComplaintCommand` čiji su se tekstovi već razišli od originala.
+- „ostalo jos 1 dana" - grana za jedninu je dodata i u prozoru.
+
 ## 2.6.0 - 17.08.2026.
 
 Format zapisa 3, pravila nepromenjena.

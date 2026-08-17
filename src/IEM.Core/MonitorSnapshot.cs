@@ -38,8 +38,15 @@ public sealed record MonitorSnapshot
 
     public long SampleCount { get; init; }
 
-    /// <summary>Loss across the external targets on the most recent sample.</summary>
-    public double CurrentLossPercent { get; init; }
+    /// <summary>
+    /// The share of external targets that did not answer on the most recent sample.
+    /// <para>
+    /// Not packet loss. One probe per destination, so this counts destinations that went
+    /// quiet - which for three targets moves in thirds and says nothing about the proportion
+    /// of packets that survived.
+    /// </para>
+    /// </summary>
+    public double UnreachableTargetShare { get; init; }
 
     // ---- Totals -------------------------------------------------------------
 
@@ -107,7 +114,7 @@ public sealed record MonitorSnapshot
             CurrentState = latest?.Verdict.State ?? NetworkState.Ok,
             CurrentLatency = cycle?.AverageExternalRoundTrip,
             SampleCount = engine.LastSampleSequence,
-            CurrentLossPercent = cycle?.ExternalIcmp.LossPercent ?? 0d,
+            UnreachableTargetShare = cycle?.ExternalIcmp.UnreachableShare ?? 0d,
 
             MonitoredTime = statistics.MonitoredTime,
             GapTime = statistics.GapTime,
