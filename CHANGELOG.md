@@ -42,6 +42,11 @@ promenjenog algoritma. Verzije se sada čuvaju uz sesiju i ispisuju iz nje.
   izvršava na mestu, čime su ti putevi postali proverljivi.
 - README je davao dve putanje koje ne postoje (`artifacts/service`, exe bez podfoldera
   `service\`) - vidi se samo kada se stvarno instalira.
+- Zaključani spisak paketa bio je vezan za jednu zakrpu SDK-a, jer je `IEM.App.csproj` sam
+  deklarisao `SelfContained` i time uvlačio `Microsoft.NET.ILLink.Tasks` u lock fajl. Sada o
+  načinu objavljivanja odlučuje samo `build/publish.ps1`.
+- Projekat je otvoren: MIT licenca, CI na GitHub Actions, pravila za doprinose, prijavu
+  propusta i ponašanje, spisak tuđeg rada u `NOTICE.md`.
 
 ## 2.4.0 - 17.08.2026.
 

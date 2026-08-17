@@ -80,19 +80,13 @@ U `artifacts/` stoje `InternetMonitoring-2.5.0-*.zip` (tekuće izdanje, x64 i ar
 kontrolnim zbirovima) i prethodna izdanja 2.4.0, 2.3.0 i 2.2.0. Duplikati pod starim imenom za
 2.3.0 su obrisani.
 
-**Zamka pri objavljivanju, da se ne traži drugi put.** `build\publish.ps1` proverava
-zaključane zavisnosti pre gradnje, ali sam `dotnet publish -r <rid> --self-contained` usput
-**prepiše** `src/IEM.App/packages.lock.json` (Microsoft.NET.ILLink.Tasks se pojavljuje i
-nestaje zavisno od toga da li je evaluacija vezana za RID). Zato objavljivanje drugog RID-a
-odmah posle prvog padne na proveri. Rešenje je jedna komanda, pa ponovo:
-
-```powershell
-dotnet restore --force-evaluate
-powershell -ExecutionPolicy Bypass -File build\publish.ps1 -Runtime win-arm64
-```
-
-Posle objavljivanja `packages.lock.json` ostaje u obliku koji publish upisuje - isti onaj
-koji je bio i pre, pa u repozitorijumu nema izmene.
+Objavljivanje oba RID-a jedno za drugim sada prolazi bez ijedne dodatne komande. Do 17.08. nije:
+`IEM.App.csproj` je sam za sebe deklarisao `SelfContained`, zbog čega je SDK pri obnavljanju
+paketa dodavao `Microsoft.NET.ILLink.Tasks` u zaključani spisak - u verziji koju nosi
+instalirani SDK. Zaključani spisak je time postao vezan za jednu zakrpu SDK-a, pa je svaka
+mašina sa malo novijim SDK-om (uključujući CI) padala na proveri, na paketu koji ovde niko nije
+tražio. Kako se objavljuje odlučuje `build\publish.ps1` preko komandne linije, kao i za servis
+i konzolu, pa je iz projekta uklonjeno.
 
 ---
 
@@ -168,6 +162,11 @@ bez pokretanja celog WPF-a; sada se izvrše na mestu.
   nalogom (konzola, druga instalacija) dobijao prvu instancu i zatim odbijanje na svaku
   sledeću - upozorenje na svake dve sekunde i kanal sa jednim slušaocem umesto četiri.
   Sada se pravo dodeljuje i nalogu pod kojim proces stvarno radi.
+- **Zaključani spisak paketa bio je vezan za jednu zakrpu SDK-a.** `IEM.App.csproj` je
+  deklarisao `SelfContained`, pa je SDK dodavao `Microsoft.NET.ILLink.Tasks` u
+  `packages.lock.json` u svojoj verziji - i svaka mašina sa drugom zakrpom SDK-a padala je na
+  proveri zaključanih zavisnosti. Prijavio se prvi CI prolaz posle objavljivanja repozitorijuma.
+  Kako se objavljuje sada odlučuje samo `build\publish.ps1`, kao i za ostale projekte.
 - **README je davao dve putanje koje ne postoje.** Uputstvo je govorilo da se servis objavi u
   `artifacts/service` (instalater tamo ne gleda) i da se pokreće iz
   `Program Files\InternetEvidenceMonitor\InternetEvidenceService.exe`, a instalater ga stavlja

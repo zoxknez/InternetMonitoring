@@ -16,10 +16,21 @@
       other; the reported problems with it are from earlier versions.
     -->
     <PublishTrimmed>false</PublishTrimmed>
-    <PublishSingleFile>true</PublishSingleFile>
-    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
-    <SelfContained>true</SelfContained>
   </PropertyGroup>
+
+  <!--
+    How this is published - self-contained, one folder per runtime - is decided by
+    build/publish.ps1, which passes it on the command line. It used to be declared here as
+    well, and that had a cost nobody would guess from reading it: declaring SelfContained on
+    the project makes the SDK add Microsoft.NET.ILLink.Tasks as an implicit package reference
+    during *restore*, at whatever version the installed SDK carries. That version then lands
+    in packages.lock.json, which is committed - so the lock file silently became specific to
+    one SDK patch. A machine with a slightly newer SDK, including the CI runner, then fails
+    the locked restore with NU1004 on a package nobody here asked for. Found exactly that
+    way, on the first CI run after publishing the repository.
+  -->
+
+
 
   <ItemGroup>
     <ProjectReference Include="..\IEM.Core\IEM.Core.csproj" />
