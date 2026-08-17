@@ -123,9 +123,37 @@ public sealed class SourceInvariantTests
     }
 
     /// <summary>
-    /// Found from this file's own compile-time path rather than from the working directory,
-    /// which under a test runner is the output folder and several levels from anywhere useful.
+    /// The repository, found by walking up from wherever this assembly happens to be.
+    /// <para>
+    /// Not from the working directory, which under a test runner is the output folder. And
+    /// not from this file's compile-time path alone: a deterministic build - which the publish
+    /// script and CI both use - rewrites that to <c>/_/tests/…</c>, so the scan found no files,
+    /// and this test failed for a reason that had nothing to do with the invariant it guards.
+    /// </para>
     /// </summary>
-    private static string RepositoryRoot([CallerFilePath] string here = "") =>
-        Path.GetFullPath(Path.Combine(Path.GetDirectoryName(here)!, "..", ".."));
+    private static string RepositoryRoot([CallerFilePath] string here = "")
+    {
+        var fromSource = Path.GetDirectoryName(here);
+
+        if (fromSource is not null && Directory.Exists(fromSource))
+        {
+            return Path.GetFullPath(Path.Combine(fromSource, "..", ".."));
+        }
+
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+
+        while (directory is not null)
+        {
+            if (Directory.Exists(Path.Combine(directory.FullName, "src")) &&
+                directory.GetFiles("*.slnx").Length > 0)
+            {
+                return directory.FullName;
+            }
+
+            directory = directory.Parent;
+        }
+
+        throw new DirectoryNotFoundException(
+            $"Izvor nije pronađen: ni iz {here} ni iznad {AppContext.BaseDirectory}.");
+    }
 }
