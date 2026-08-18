@@ -15,8 +15,32 @@ public static class BuildInfo
 {
     public static string Product => "Internet Monitoring";
 
-    public static string Version { get; } =
-        typeof(BuildInfo).Assembly.GetName().Version?.ToString(3) ?? "0.0.0";
+    /// <summary>
+    /// The build's own version, prerelease suffix and all.
+    /// <para>
+    /// Taken from the informational version rather than the assembly version, because the
+    /// assembly version is numeric only: a beta build would introduce itself as "2.8.0" - a
+    /// release that does not exist - and a reader trying to reproduce a figure would go
+    /// looking for it. The commit hash the compiler appends is trimmed; the version is for
+    /// naming a build, and the rest belongs in the release notes.
+    /// </para>
+    /// </summary>
+    public static string Version { get; } = Describe();
+
+    private static string Describe()
+    {
+        var informational = typeof(BuildInfo).Assembly
+            .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
+
+        if (!string.IsNullOrWhiteSpace(informational))
+        {
+            var plus = informational.IndexOf('+', StringComparison.Ordinal);
+
+            return plus < 0 ? informational : informational[..plus];
+        }
+
+        return typeof(BuildInfo).Assembly.GetName().Version?.ToString(3) ?? "0.0.0";
+    }
 
     /// <summary>
     /// Whether every package version was fixed in advance rather than resolved on the day.

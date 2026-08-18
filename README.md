@@ -398,7 +398,7 @@ sam projekat ne vredi. Posledica se vidi odmah - Windows SmartScreen upozorava n
 izdavača, pa se preuzeti ZIP prvo odblokira:
 
 ```bash
-Unblock-File .\InternetMonitoring-2.7.2-win-x64.zip
+Unblock-File .\InternetMonitoring-2.8.0-beta.1-win-x64.zip
 ```
 
 Ako se namena ikad promeni, polazna tačka je Azure Artifact Signing.

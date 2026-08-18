@@ -10,6 +10,51 @@ izveštaj pravi.
 
 ---
 
+## 2.8.0-beta.1 - 18.08.2026.
+
+Format zapisa 3, pravila nepromenjena. Prvo izdanje otvoreno za testiranje van autorovog
+računara, pa je i označeno kao beta: kod je proveren testovima i uživo, ali ne i na tuđim
+mrežama, tuđim adapterima i tuđim operaterima.
+
+### Merenje beleži kojim je adapterom stvarno išlo
+
+Do sada je najjača tvrdnja o putanji merenja bila predviđanje iz tabele ruta - šta bi sistem
+uradio sa takvim saobraćajem. Sada se beleži i šta jeste: `ConnectCallback` zapisuje endpointe
+svake veze koju merenje otvori i adapter kome ta lokalna adresa pripada.
+
+Činjenica i zaključak stoje odvojeno, i oba su u izveštaju. Kad se ne slažu, opažanje opisuje
+figuru - merenje čije su veze izašle kroz drugi adapter **ne** može da dokazuje ugovorenu
+brzinu, ma šta tabela ruta rekla unapred. Neposmatrana putanja ne obara ništa: to je odsustvo
+nalaza, ne nalaz.
+
+Na ovoj mašini merenje označeno Wi-Fi adapterom daje 479 Mbit/s, a svih šest veza izađe kroz
+kabl. Do sada se to videlo samo kao predviđanje.
+
+### Merenje se nikada ne upisuje u zapečaćen paket
+
+Pre upisa se pitalo koji je folder najnoviji, a to nije isto pitanje kao koja sesija teče.
+Mašina koja je sesiju snimila prošle nedelje i od tada nijednu ima najnoviji folder koji je
+prebrojan, zapakovan i najverovatnije poslat operateru - i današnje merenje je odlazilo unutra,
+pa su `SHA256SUMS.txt` i arhiva opisivali folder koji se u međuvremenu promenio. **Ova greška
+postoji u 2.7.2 i svemu pre nje.**
+
+Druga polovina iste greške: merenje kome nema otvorene sesije čekalo je u korenu izlaza, a
+nijedan izveštaj tamo nije gledao. Sada ga prva sledeća sesija preuzima - u folder, u zbirove i
+u arhivu - premeštanjem umesto kopiranjem, da bi bilo preuzeto tačno jednom. Izveštaj uz njega
+kaže da je izvršeno pre početka tog nadzora.
+
+### Prozor kaže i da li merenje može da se koristi
+
+Za merenje preko Wi-Fi ispisivao je „Ocena: 90 % ugovorene ili više" i ništa više. Sada kaže i
+da li ispunjava uslove, zašto ne, i kuda su izašle njegove veze.
+
+### Izdanje se predstavlja imenom koje postoji
+
+`BuildInfo.Version` je uzimao numeričku verziju sklopa, pa bi se beta u izveštaju predstavila
+kao „2.8.0" - izdanje koje ne postoji. Sada nosi pun naziv, sa oznakom bete.
+
+---
+
 ## 2.7.2 - 18.08.2026.
 
 Format zapisa 3, pravila nepromenjena. Targeted review taga `v2.7.1` prošao je jedanaest od
