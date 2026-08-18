@@ -130,6 +130,28 @@ public sealed class CharacterizationTests
     }
 
     /// <summary>
+    /// 2.7.2 agreed with the route table, and it never looked at its own sockets. Read by a
+    /// build that does look, it has to keep saying so.
+    /// <para>
+    /// This is the whole reason for keeping a real file rather than building one in code: a
+    /// fixture written by today's build would carry today's fields, and the case that matters -
+    /// an old measurement passing through new presentation - would never be exercised. The
+    /// route table agreeing must not be allowed to speak for an observation nobody made.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public void A_measurement_from_before_the_sockets_were_watched_still_says_so()
+    {
+        var note = JsonSerializer.Deserialize<SpeedMeasurementNote>(
+            File.ReadAllText(BaselineSnapshot.File(SpeedMeasurementNote.FileName)), Json)!;
+
+        Assert.Equal(MeasurementRouteState.AllResolvedRoutesMatch, note.RouteState);
+        Assert.Equal(PathAgreementState.Unknown, note.ActualPathState);
+        Assert.Equal(0, note.ObservedConnections);
+        Assert.Equal("veze merenja nisu posmatrane", note.DescribeObservedPath());
+    }
+
+    /// <summary>
     /// The case carries the rules it was decided under, and reading it again does not change
     /// them - neither by re-resolving nor by picking up whatever registry ships today.
     /// </summary>

@@ -307,6 +307,7 @@ public static class PdfReportBuilder
         Fact("Preneseno", $"{(transferred / 1_000_000d).ToString("0.#", SerbianText.Culture)} MB za {SerbianText.Duration(speed.Duration)} po smeru");
         Fact("Način merenja", $"{medium}, tri paralelne veze po smeru, veza mirna pre početka");
         Fact("Putanja merenja", speed.RouteState.Label());
+        Fact("Veze merenja", speed.DescribeObservedPath());
 
         AppendLoadedLatency();
 

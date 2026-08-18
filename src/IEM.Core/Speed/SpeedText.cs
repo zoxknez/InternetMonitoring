@@ -45,6 +45,11 @@ public static class SpeedText
             "vezu rezultat odnosi. Merenje ostaje zapisano, ali ne može uz prigovor. Navedite " +
             "adapter opcijom --interfejs i proverite da ime mete merenja može da se razreši.",
 
+        SpeedMeasurementDefect.ActualPathMismatch =>
+            "Veze koje je merenje otvorilo nisu sve izašle kroz adapter na koji se rezultat " +
+            "odnosi. Ovo nije predviđanje iz tabele ruta nego ono što se stvarno desilo, pa " +
+            "figura opisuje drugu vezu. Isključite VPN i ostale adaptere, pa ponovite.",
+
         SpeedMeasurementDefect.ContractUnknown =>
             "Ugovorena brzina nije uneta, pa nema sa čim da se uporedi izmereno.",
 
@@ -105,6 +110,87 @@ public static class SpeedText
         AddressFamily.InterNetworkV6 => "IPv6",
         _ => family.ToString(),
     };
+
+    /// <summary>
+    /// What was observed about the sockets, said as observation.
+    /// <para>
+    /// „Potvrđena putanja" ostaje rezervisano i posle ovoga: ovo jeste jače od tabele ruta, ali
+    /// govori o vezama koje je merenje otvorilo, ne o svemu što bi korisnikov saobraćaj uradio.
+    /// </para>
+    /// </summary>
+    public static string Label(this PathAgreementState state) => state switch
+    {
+        PathAgreementState.Match => "veze merenja izašle su kroz izabrani adapter",
+        PathAgreementState.Mismatch => "veze merenja nisu sve izašle kroz izabrani adapter",
+        _ => "veze merenja nisu posmatrane",
+    };
+
+    /// <summary>The same, with the addresses named where they disagree.</summary>
+    public static string Describe(this PathAgreement agreement)
+    {
+        ArgumentNullException.ThrowIfNull(agreement);
+
+        var text = agreement.State.Label();
+
+        if (agreement.Attempts.Count > 0)
+        {
+            text += $" ({agreement.Attempts.Count} veza)";
+        }
+
+        // How many of them, not merely that some did. The first live run of the mismatch case
+        // had every single connection leaving through the other adapter while the sentence
+        // said "some" - understating the one finding the reader most needs.
+        var elsewhere = agreement.Elsewhere.ToArray();
+
+        if (elsewhere.Length > 0)
+        {
+            var adapters = elsewhere
+                .Select(attempt => attempt.Observed!.Name)
+                .Distinct(StringComparer.Ordinal);
+
+            text += $"; {elsewhere.Length} od {agreement.Attempts.Count} izašlo kroz: {string.Join(", ", adapters)}";
+        }
+
+        if (agreement.UnresolvedCount > 0)
+        {
+            text += $"; za {agreement.UnresolvedCount} veza adapter nije utvrđen";
+        }
+
+        return text;
+    }
+
+    /// <summary>
+    /// What a recorded note says its own sockets did.
+    /// <para>
+    /// Built from the fields the note stores rather than from a live <see cref="PathAgreement"/>,
+    /// because a report is usually rendered from a file - and often from one written by a build
+    /// that never watched the sockets at all. That file must read as "not observed", which is
+    /// what it is, and not quietly borrow the agreement of the session rendering it.
+    /// </para>
+    /// </summary>
+    public static string DescribeObservedPath(this SpeedMeasurementNote note)
+    {
+        ArgumentNullException.ThrowIfNull(note);
+
+        var text = note.ActualPathState.Label();
+
+        if (note.ObservedConnections > 0)
+        {
+            text += $" ({note.ObservedConnections} veza)";
+        }
+
+        if (note.ObservedInterfaces.Count > 0)
+        {
+            text += $"; izašlo kroz: {string.Join(", ", note.ObservedInterfaces)}";
+        }
+
+        if (note.UnresolvedConnections > 0)
+        {
+            text += $"; za {note.UnresolvedConnections} veza adapter nije utvrđen";
+        }
+
+        return text;
+    }
 
     /// <summary>
     /// Where one measurement falls, as a share of the contracted rate.

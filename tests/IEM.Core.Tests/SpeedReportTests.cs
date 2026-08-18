@@ -84,8 +84,42 @@ public sealed class SpeedReportTests : IDisposable
         var read = SpeedMeasurementNote.Read(_root);
 
         Assert.NotNull(read);
-        Assert.Equal(note with { Defects = read.Defects }, read);
+
+        // The lists are compared by their contents; a record compares them by reference, so
+        // they are carried over before the whole is compared field by field.
+        Assert.Equal(
+            note with { Defects = read.Defects, ObservedInterfaces = read.ObservedInterfaces },
+            read);
+
         Assert.Equal(note.Defects, read.Defects);
+        Assert.Equal(note.ObservedInterfaces, read.ObservedInterfaces);
+    }
+
+    /// <summary>
+    /// The report states what the sockets did, beside what the route table predicted - and for
+    /// a note that never watched them it says so rather than leaving the row out.
+    /// <para>
+    /// Left out, an unobserved path would be indistinguishable from a good one on the page,
+    /// which is the reading this whole line of work exists to prevent.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public void The_report_states_what_the_measurements_own_connections_did()
+    {
+        var observed = Note() with
+        {
+            ActualPathState = PathAgreementState.Mismatch,
+            ObservedConnections = 6,
+            ObservedInterfaces = ["Ethernet 4"],
+        };
+
+        var html = RenderHtml(observed);
+
+        Assert.Contains("Veze merenja", html, StringComparison.Ordinal);
+        Assert.Contains("nisu sve izašle kroz izabrani adapter", html, StringComparison.Ordinal);
+        Assert.Contains("Ethernet 4", html, StringComparison.Ordinal);
+
+        Assert.Contains("veze merenja nisu posmatrane", RenderHtml(Note()), StringComparison.Ordinal);
     }
 
     [Fact]

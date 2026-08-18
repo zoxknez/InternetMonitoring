@@ -141,11 +141,12 @@ public sealed class SpeedWorker(
         // No proxy, for the same reason the console command uses none: an intercepting proxy
         // silently caps the rate, and a measurement that quietly went through one is worse
         // than none at all.
-        using var httpClient = new HttpClient(new SocketsHttpHandler { UseProxy = false });
+        var observer = new ConnectionObserver();
+        using var httpClient = MeasurementHttpClient.Create(observer);
 
         // The round-trip probes travel on a client of their own, so they do not queue behind
         // the transfer they are measuring alongside.
-        using var latencyClient = new HttpClient(new SocketsHttpHandler { UseProxy = false });
+        using var latencyClient = MeasurementHttpClient.Create();
 
         var activity = new LinkActivityMonitor();
         var measurement = new ThroughputMeasurement(
@@ -207,6 +208,7 @@ public sealed class SpeedWorker(
             // unresolved check stays unresolved - it used to fall back to "one path", so the
             // service recorded a verified path on machines where nothing had been verified.
             RouteState = MeasurementPath.Resolve(link.InterfaceId).State,
+            ActualPath = PathAgreement.Of(link.InterfaceId, observer.Attempts),
         };
 
         var note = SpeedMeasurementNote.From(

@@ -683,11 +683,12 @@ public sealed partial class ShellViewModel : ObservableObject, IAsyncDisposable
         await using var linkInspection = WindowsLinkInspection.Create(null);
         var link = linkInspection.Inspector.Inspect();
 
-        using var httpClient = new HttpClient(new SocketsHttpHandler { UseProxy = false });
+        var observer = new ConnectionObserver();
+        using var httpClient = MeasurementHttpClient.Create(observer);
 
         // The round-trip probes travel on a client of their own, so they do not queue behind
         // the transfer they are measuring alongside.
-        using var latencyClient = new HttpClient(new SocketsHttpHandler { UseProxy = false });
+        using var latencyClient = MeasurementHttpClient.Create();
 
         var activity = new LinkActivityMonitor();
         var measurement = new ThroughputMeasurement(
@@ -759,6 +760,7 @@ public sealed partial class ShellViewModel : ObservableObject, IAsyncDisposable
             // unresolved check stays unresolved - it used to fall back to "one path", so the
             // window recorded a verified path on machines where nothing had been verified.
             RouteState = MeasurementPath.Resolve(link.InterfaceId).State,
+            ActualPath = PathAgreement.Of(link.InterfaceId, observer.Attempts),
         };
 
         var latest = SessionPaths.FindLatest(_outputRoot);

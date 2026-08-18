@@ -130,6 +130,37 @@ public sealed record SpeedMeasurementNote(
     public MeasurementRouteState RouteState { get; init; } = MeasurementRouteState.Unknown;
 
     /// <summary>
+    /// What the measurement's own sockets did: how many connections were observed, how many
+    /// left through the adapter this figure is filed under, and through which others.
+    /// <para>
+    /// The route table is a prediction; this is the observation. Recorded separately rather
+    /// than folded into one verdict, because they answer different questions and a reader is
+    /// entitled to see that they agreed - or that they did not.
+    /// </para>
+    /// <para>
+    /// Absent from every note written before 3.0, which read back as not observed. That is the
+    /// truth about them: nothing was watching the sockets.
+    /// </para>
+    /// </summary>
+    public PathAgreementState ActualPathState { get; init; } = PathAgreementState.Unknown;
+
+    /// <summary>How many connections the measurement opened, as observed.</summary>
+    public int ObservedConnections { get; init; }
+
+    /// <summary>The adapters those connections actually left through, by name.</summary>
+    public IReadOnlyList<string> ObservedInterfaces { get; init; } = [];
+
+    /// <summary>
+    /// How many of them could not be matched to any adapter on this machine.
+    /// <para>
+    /// Recorded because agreement is judged on the connections that resolved, and a reader is
+    /// owed the size of the remainder. Without it a note saying "left through the chosen
+    /// adapter" would hide that a third of the connections were never placed at all.
+    /// </para>
+    /// </summary>
+    public int UnresolvedConnections { get; init; }
+
+    /// <summary>
     /// Builds the note from one measurement and its conditions.
     /// <para>
     /// The single place where a measurement becomes a record, so the console, the window and
@@ -174,6 +205,17 @@ public sealed record SpeedMeasurementNote(
             LatencyIncreaseMs = increase?.TotalMilliseconds,
             LoadedLatencyLabel = result.LoadedLatencyGrade?.Label(),
             RouteState = conditions.RouteState,
+            ActualPathState = conditions.ActualPath.State,
+            ObservedConnections = conditions.ActualPath.Attempts.Count,
+            UnresolvedConnections = conditions.ActualPath.UnresolvedCount,
+            ObservedInterfaces =
+            [
+                .. conditions.ActualPath.Attempts
+                    .Select(attempt => attempt.Observed?.Name)
+                    .OfType<string>()
+                    .Distinct(StringComparer.Ordinal)
+                    .Order(StringComparer.Ordinal),
+            ],
             FindingSchemaVersion = CurrentFindingSchemaVersion,
         };
     }

@@ -48,6 +48,17 @@ public enum SpeedMeasurementDefect
     /// </summary>
     PathUnverified,
 
+    /// <summary>
+    /// The sockets that carried the measurement did not all leave through this adapter.
+    /// <para>
+    /// Stronger evidence than <see cref="PathAmbiguous"/>, which is what the route table
+    /// predicted. This is what the transfer actually did, so it outranks the prediction: a
+    /// figure whose own connections went elsewhere describes another link, whatever the route
+    /// table said beforehand.
+    /// </para>
+    /// </summary>
+    ActualPathMismatch,
+
     /// <summary>The contracted speed was never entered, so there is nothing to compare against.</summary>
     ContractUnknown,
 }
@@ -76,6 +87,16 @@ public sealed record SpeedMeasurementConditions(
     /// </para>
     /// </summary>
     public MeasurementRouteState RouteState { get; init; } = MeasurementRouteState.Unknown;
+
+    /// <summary>
+    /// What the measurement's own sockets did, as observed while they connected.
+    /// <para>
+    /// The route table says which way the system would send this; this says which way it did.
+    /// Both are recorded, because they answer different questions and can disagree - and when
+    /// they do, the observation is the one that describes the figure.
+    /// </para>
+    /// </summary>
+    public PathAgreement ActualPath { get; init; } = PathAgreement.NotObserved;
 
     /// <summary>
     /// What the customer is paying for in the sending direction, when the contract states it
@@ -183,6 +204,16 @@ public sealed record SpeedMeasurementValidity(
 
             default:
                 break;
+        }
+
+        // The observation outranks the prediction. A route table that agreed beforehand does
+        // not rescue a transfer whose sockets went somewhere else - and an unobserved path
+        // does not condemn one, because on some machines the connections cannot be inspected
+        // at all. Not established stays not established; it does not become a defect of its own
+        // on top of the route-table check that already covers it.
+        if (conditions.ActualPath.State == PathAgreementState.Mismatch)
+        {
+            defects.Add(SpeedMeasurementDefect.ActualPathMismatch);
         }
 
         return new SpeedMeasurementValidity(defects.Count == 0, defects);

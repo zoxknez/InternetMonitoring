@@ -49,7 +49,7 @@ interfejsom.**
 Dve podfaze, i namerno razdvojene — da testovi nikada ne zamute razliku između „posmatrao sam
 putanju" i „nametnuo sam putanju".
 
-**3.0-1a · `Observed`** — jedini cilj je pouzdano uhvatiti stvarnu putanju.
+**3.0-1a · `Observed`** — **urađeno.** Jedini cilj je bio pouzdano uhvatiti stvarnu putanju.
 
 - `SocketsHttpHandler.ConnectCallback` beleži `LocalEndpoint`, `RemoteEndpoint` i adresnu
   familiju za svaku konekciju merenja
@@ -57,6 +57,10 @@ putanju" i „nametnuo sam putanju".
 - `PathAgreement { Match, Mismatch, Unknown }` je **zaključak** iz te činjenice i traženog
   adaptera, sa vezom na zapise iz kojih je izveden
 - ništa se ne forsira: pita se šta bi sistem uradio, i zapisuje šta jeste
+- `ActualPathMismatch` je defekt merenja; `Unknown` nije, jer je već pokriven proverom tabele ruta
+- adrese se zapisuju raspakovane: soket dvostrukog steka javlja IPv4 vezu kao `::ffff:a.b.c.d`,
+  pa bi svako IPv4 merenje na ovoj mašini bilo zavedeno kao IPv6 — a mešovita familija je
+  upravo ono zbog čega se familija i beleži
 
 **3.0-1b · `Forced`** — merenje koje se namerno vezuje za izabrani adapter.
 

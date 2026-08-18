@@ -207,15 +207,50 @@ koji proverava da je svaki fajl iz `baseline/` praćen u gitu.
 
 ---
 
+## 12. OBSERVED_PATH_OUTRANKS_PREDICTED_PATH
+
+**Ono što su soketi merenja stvarno uradili jače je od onoga što je tabela ruta predvidela.**
+
+Kad se ne slažu, opažanje opisuje figuru. Tabela ruta koja se unapred složila **ne spasava**
+merenje čije su veze otišle drugim adapterom — a merenje čije veze nisu posmatrane time **ne
+postaje** neispravno, jer na nekim mašinama se soketi ne mogu pripisati adapteru uopšte.
+
+Oba nalaza se čuvaju odvojeno i prikazuju odvojeno. „Posmatrano" i „predviđeno" su različita
+pitanja, i čitalac ima pravo da vidi da su se složili — ili da nisu.
+
+**Kako je otkriveno:** na ovoj mašini merenje označeno Wi-Fi adapterom daje 479 Mbit/s, a svih
+šest veza izađe kroz kabl. Do 2.7.2 se to videlo samo kao predviđanje iz tabele ruta.
+
+**Gde se proverava:** `ActualPathTests.What_the_sockets_did_outranks_what_the_route_table_predicted`
+i `...An_unobserved_path_is_not_a_defect_of_its_own`.
+
+## 13. UNOBSERVED_PATH_IS_NOT_AGREEMENT
+
+**Veza koja se nije mogla pripisati nijednom adapteru nije saglasnost — ni jedna, ni sve.**
+
+Nijedna razrešena veza → `Unknown`, ne `Match`. Ako su neke razrešene a neke ne, saglasnost se
+sudi po razrešenima, ali se ostatak **uvek ispisuje**, da rečenica ne bi zvučala kao da su sve
+veze pripisane.
+
+**Kako je otkriveno:** prvo živo puštanje uhvatilo je šest veza i nijednu pripisalo, jer soket
+dvostrukog steka javlja IPv4 adresu kao `::ffff:192.168.1.102`, a adapter drži `192.168.1.102`.
+Da je pravilo bilo blaže, to bi izgledalo kao uredno merenje.
+
+**Gde se proverava:** `ActualPathTests.Connections_nobody_could_place_are_not_agreement`,
+`...Agreement_never_claims_the_connections_it_could_not_place`,
+`...An_ipv4_connection_is_recorded_as_ipv4_however_the_socket_wrote_it`.
+
+---
+
 ## Za 3.0: one koje još nemaju kod
 
-## 12. SIGNATURE_PROVES_INTEGRITY_NOT_TRUTH
+## 14. SIGNATURE_PROVES_INTEGRITY_NOT_TRUTH
 
 Potpis dokazuje da paket odgovara potpisanom sadržaju, da nije neprimetno menjan posle
 potpisivanja, i da je potpisan ključem te instalacije. **Ne dokazuje** da ulaz nije fabrikovan
 pre potpisivanja, da host nije bio kompromitovan, niti da je incident nastao kod operatera.
 
-## 13. TRUSTED_TIMESTAMP_PROVES_EXISTENCE_NOT_EVENT_TIME
+## 15. TRUSTED_TIMESTAMP_PROVES_EXISTENCE_NOT_EVENT_TIME
 
 Vremenski žig treće strane dokazuje da je određeni podatak **postojao pre** određenog trenutka.
 Ne dokazuje da se mrežni događaj desio tada, niti da je sadržaj istinit.

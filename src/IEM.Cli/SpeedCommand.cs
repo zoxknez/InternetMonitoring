@@ -70,12 +70,15 @@ public static class SpeedCommand
         // transfer, and an intercepting proxy silently caps the rate. A measurement that
         // quietly went through one is worse than none, and a network that only reaches the
         // internet through a proxy refuses the measurement honestly instead.
-        using var httpClient = new HttpClient(new SocketsHttpHandler { UseProxy = false });
+        // Records every connection it opens, so the figure can say which adapter actually
+        // carried it rather than which one the route table predicted.
+        var observer = new ConnectionObserver();
+        using var httpClient = MeasurementHttpClient.Create(observer);
 
         // The round-trip probes travel on a client of their own. Sharing the one carrying
         // fifty megabytes would have them queue behind it inside this process, and the delay
         // the measurement exists to attribute to the connection would be partly ours.
-        using var latencyClient = new HttpClient(new SocketsHttpHandler { UseProxy = false });
+        using var latencyClient = MeasurementHttpClient.Create();
 
         var activity = new LinkActivityMonitor();
         var measurement = new ThroughputMeasurement(
@@ -164,6 +167,7 @@ public static class SpeedCommand
             // to fall back to "one path" - which is what this claimed unconditionally before
             // there was any check at all, dressed up as a verified finding.
             RouteState = route.State,
+            ActualPath = PathAgreement.Of(link.InterfaceId, observer.Attempts),
             ContractedUploadMbps = contractedUploadMbps,
             MeasuredUploadMbps = result.UploadMbps,
         };
@@ -187,6 +191,12 @@ public static class SpeedCommand
         }
 
         WriteLoadedLatency(result);
+
+        // After the figure, not before it: this is the one path statement that describes what
+        // happened rather than what the route table predicted, and it can only be made once
+        // the connections have actually been opened.
+        Console.WriteLine($"  Veze merenja: {conditions.ActualPath.Describe()}.");
+        Console.WriteLine();
 
         var validity = SpeedMeasurementValidity.Of(conditions);
 

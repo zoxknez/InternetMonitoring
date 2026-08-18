@@ -611,6 +611,7 @@ public static class HtmlReportBuilder
               <tr><th>Preneseno</th><td>{(transferred / 1_000_000d).ToString("0.#", SerbianText.Culture)} MB za {SerbianText.Duration(speed.Duration)} po smeru</td></tr>
               <tr><th>Način merenja</th><td>{medium}, tri paralelne veze po smeru, veza mirna pre početka</td></tr>
               <tr><th>Putanja merenja</th><td>{Escape(speed.RouteState.Label())}</td></tr>
+              <tr><th>Veze merenja</th><td>{Escape(speed.DescribeObservedPath())}</td></tr>
             </table>
             """);
 
