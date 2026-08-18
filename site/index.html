@@ -194,7 +194,7 @@
   }
   .brand { display: flex; align-items: center; gap: 11px; font-weight: 600; }
   .brand svg { display: block; }
-  .top nav { display: flex; gap: 20px; font-size: .9rem; }
+  .top nav { display: flex; flex-wrap: wrap; gap: 8px 20px; font-size: .9rem; }
   .top nav a { color: var(--muted); text-decoration: none; }
   .top nav a:hover { color: var(--ink); text-decoration: underline; }
 
@@ -266,7 +266,9 @@
   }
   tbody tr:last-child td { border-bottom: 0; }
   td.num { font-family: var(--data); font-variant-numeric: tabular-nums; white-space: nowrap; color: var(--muted); }
-  td .file { display: block; font-family: var(--data); font-size: .84rem; word-break: break-all; }
+  /* break-all split "…-win-arm64.exe" after the "ex". Letting the browser use the
+     hyphens and dots the name already has keeps it readable when it wraps. */
+  td .file { display: block; font-family: var(--data); font-size: .84rem; overflow-wrap: anywhere; }
   td .what { display: block; margin-bottom: 3px; }
 
   /* ---- Platform status ----------------------------------------------------- */
@@ -331,6 +333,63 @@
     font-size: .88rem;
   }
   footer .links { display: flex; flex-wrap: wrap; gap: 8px 22px; }
+
+  /* ---- Telefon -------------------------------------------------------------
+     Two rules here, and both are about the same thing: nothing on this page may
+     make the reader drag sideways. The header ran off the edge once the GitHub
+     link was added, and the download table - fine as a table on a desktop - was
+     a 620px scroller inside a 375px screen, which reads as the page itself being
+     broken. Below 680px each row becomes its own card. */
+  @media (max-width: 680px) {
+    .ledger-wrap {
+      overflow-x: visible;
+      border: 0;
+      background: transparent;
+      border-radius: 0;
+    }
+    table { min-width: 0; }
+
+    /* Hidden outright, not clipped away: laying the rows out as blocks already
+       drops the table semantics that made the header useful, and a clipped
+       header leaves cells reporting geometry off the right edge. Each value
+       carries its own label below instead. */
+    thead { display: none; }
+
+    tbody { display: flex; flex-direction: column; gap: 12px; }
+
+    tbody tr {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 14px 22px;
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 16px;
+    }
+    tbody tr:last-child td { border-bottom: 0; }
+
+    tbody td { display: block; border-bottom: 0; padding: 0; }
+    tbody td:first-child { flex: 1 1 100%; }
+
+    tbody td.num::before {
+      content: attr(data-label);
+      display: block;
+      font-size: .62rem;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+      color: var(--faint);
+      margin-bottom: 2px;
+    }
+
+    /* A command that scrolls inside its own box is the same annoyance, smaller. */
+    pre { white-space: pre-wrap; word-break: break-word; }
+  }
+
+  @media (max-width: 480px) {
+    /* Full-width targets: three buttons side by side leave slivers to tap at. */
+    .cta .btn { flex: 1 1 100%; justify-content: center; }
+    .top nav { gap: 6px 16px; font-size: .85rem; }
+  }
 
   @media (prefers-reduced-motion: reduce) {
     * { animation-duration: .001ms !important; transition-duration: .001ms !important; }
@@ -436,8 +495,8 @@
     </div>
 
     <figure>
-      <img src="ui-nadzor.png" width="1166" height="833"
-           alt="Prozor programa tokom nadzora: stanje veze, kašnjenje, grafik kašnjenja kroz vreme i traka prekida." />
+      <a href="ui-nadzor.png" title="Otvori sliku u punoj veličini"><img src="ui-nadzor.png" width="1166" height="833"
+           alt="Prozor programa tokom nadzora: stanje veze, kašnjenje, grafik kašnjenja kroz vreme i traka prekida." /></a>
       <figcaption>Nadzor u toku. Traka prekida na dnu je isti prikaz koji stoji na vrhu ove stranice.</figcaption>
     </figure>
 
@@ -486,8 +545,8 @@
 
     <div class="grid two" style="align-items: start;">
       <figure>
-        <img src="ui-priprema.png" width="1180" height="840"
-             alt="Ekran pripreme testa: izbor trajanja nadzora, spisak fajlova koji nastaju i po čemu se program razlikuje." />
+        <a href="ui-priprema.png" title="Otvori sliku u punoj veličini"><img src="ui-priprema.png" width="1180" height="840"
+             alt="Ekran pripreme testa: izbor trajanja nadzora, spisak fajlova koji nastaju i po čemu se program razlikuje." /></a>
         <figcaption>Priprema testa. Za prigovor je uobičajeno 48 sati - nijedan propis ne traži određeno trajanje.</figcaption>
       </figure>
 
@@ -543,54 +602,54 @@
               <span class="what"><strong>Portabl program</strong> - pokrenete i radi</span>
               <a class="file" href="https://github.com/zoxknez/InternetMonitoring/releases/download/v2.8.0-beta.2/InternetMonitoring-2.8.0-beta.2-win-x64.exe">InternetMonitoring-2.8.0-beta.2-win-x64.exe</a>
             </td>
-            <td class="num">Windows x64</td>
-            <td class="num">65,1 MB</td>
-            <td class="num">64a725df…</td>
+            <td class="num" data-label="Platforma">Windows x64</td>
+            <td class="num" data-label="Veličina">65,1 MB</td>
+            <td class="num" data-label="SHA-256">64a725df…</td>
           </tr>
           <tr>
             <td>
               <span class="what"><strong>Portabl program</strong> - pokrenete i radi</span>
               <a class="file" href="https://github.com/zoxknez/InternetMonitoring/releases/download/v2.8.0-beta.2/InternetMonitoring-2.8.0-beta.2-win-arm64.exe">InternetMonitoring-2.8.0-beta.2-win-arm64.exe</a>
             </td>
-            <td class="num">Windows ARM64</td>
-            <td class="num">61,3 MB</td>
-            <td class="num">6cd9a720…</td>
+            <td class="num" data-label="Platforma">Windows ARM64</td>
+            <td class="num" data-label="Veličina">61,3 MB</td>
+            <td class="num" data-label="SHA-256">6cd9a720…</td>
           </tr>
           <tr>
             <td>
               <span class="what"><strong>Puna arhiva</strong> - sa servisom i instalacijom</span>
               <a class="file" href="https://github.com/zoxknez/InternetMonitoring/releases/download/v2.8.0-beta.2/InternetMonitoring-2.8.0-beta.2-win-x64.zip">InternetMonitoring-2.8.0-beta.2-win-x64.zip</a>
             </td>
-            <td class="num">Windows x64</td>
-            <td class="num">138,8 MB</td>
-            <td class="num">0b36b859…</td>
+            <td class="num" data-label="Platforma">Windows x64</td>
+            <td class="num" data-label="Veličina">138,8 MB</td>
+            <td class="num" data-label="SHA-256">0b36b859…</td>
           </tr>
           <tr>
             <td>
               <span class="what"><strong>Puna arhiva</strong> - sa servisom i instalacijom</span>
               <a class="file" href="https://github.com/zoxknez/InternetMonitoring/releases/download/v2.8.0-beta.2/InternetMonitoring-2.8.0-beta.2-win-arm64.zip">InternetMonitoring-2.8.0-beta.2-win-arm64.zip</a>
             </td>
-            <td class="num">Windows ARM64</td>
-            <td class="num">130,8 MB</td>
-            <td class="num">75eb69b3…</td>
+            <td class="num" data-label="Platforma">Windows ARM64</td>
+            <td class="num" data-label="Veličina">130,8 MB</td>
+            <td class="num" data-label="SHA-256">75eb69b3…</td>
           </tr>
           <tr>
             <td>
               <span class="what"><strong>Konzola</strong> - za skripte i proveru tuđeg paketa</span>
               <a class="file" href="https://github.com/zoxknez/InternetMonitoring/releases/download/v2.8.0-beta.2/iem-2.8.0-beta.2-win-x64.exe">iem-2.8.0-beta.2-win-x64.exe</a>
             </td>
-            <td class="num">Windows x64</td>
-            <td class="num">38,8 MB</td>
-            <td class="num">dde29b34…</td>
+            <td class="num" data-label="Platforma">Windows x64</td>
+            <td class="num" data-label="Veličina">38,8 MB</td>
+            <td class="num" data-label="SHA-256">dde29b34…</td>
           </tr>
           <tr>
             <td>
               <span class="what"><strong>Konzola</strong> - za skripte i proveru tuđeg paketa</span>
               <a class="file" href="https://github.com/zoxknez/InternetMonitoring/releases/download/v2.8.0-beta.2/iem-2.8.0-beta.2-win-arm64.exe">iem-2.8.0-beta.2-win-arm64.exe</a>
             </td>
-            <td class="num">Windows ARM64</td>
-            <td class="num">38,0 MB</td>
-            <td class="num">f0ef5089…</td>
+            <td class="num" data-label="Platforma">Windows ARM64</td>
+            <td class="num" data-label="Veličina">38,0 MB</td>
+            <td class="num" data-label="SHA-256">f0ef5089…</td>
           </tr>
         </tbody>
       </table>
