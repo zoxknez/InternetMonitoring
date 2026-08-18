@@ -38,3 +38,8 @@ DnevnikSlucaja.json
 # prave sesije, a ne da bi sprečilo da se u repozitorijum stavi fixture.
 !baseline/**/MerenjeBrzine.json
 !baseline/**/DnevnikSlucaja.json
+
+# Vercel CLI: .vercel drži vezu ka projektu na tuđem nalogu, .env* tokene.
+# Dodala ih je sama alatka pri povezivanju; ostaju, ali sa objašnjenjem.
+.vercel
+.env*
