@@ -1,4 +1,4 @@
-# Internet Monitoring 2.7
+# Internet Monitoring 2.8
 
 [![build](https://github.com/zoxknez/InternetMonitoring/actions/workflows/ci.yml/badge.svg)](https://github.com/zoxknez/InternetMonitoring/actions/workflows/ci.yml)
 [![licenca: MIT](https://img.shields.io/badge/licenca-MIT-blue.svg)](LICENSE)
@@ -7,6 +7,9 @@
 
 Alat koji beleži prekide i kvalitet internet veze, i pravi dokumentaciju upotrebljivu
 za prigovor operateru.
+
+**[internet-monitoring.vercel.app](https://internet-monitoring.vercel.app)** - opis, slike i
+preuzimanje. Ovaj dokument je za one koji hoće detalje.
 
 Sve radi lokalno. Nema naloga, nema servera, nema slanja podataka bilo gde. Nadzor radi
 i kada interneta nema - to mu je i svrha.
