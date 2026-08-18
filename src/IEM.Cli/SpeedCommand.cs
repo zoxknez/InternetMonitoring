@@ -303,18 +303,27 @@ public static class SpeedCommand
                 conditions,
                 result);
 
-            var directory = outputRoot is null
-                ? null
-                : SessionPaths.FindLatest(outputRoot)?.Directory ?? outputRoot;
-
-            if (directory is null)
+            if (outputRoot is null)
             {
                 return;
             }
 
+            // Beside the session only when one is open. The newest folder is not the same
+            // question: it can be a session sealed and emailed last week, and this file would
+            // land inside a package whose checksums no longer described it.
+            var session = SessionPaths.FindOpen(outputRoot);
+            var directory = session?.Directory ?? outputRoot;
+
             note.Write(directory);
 
             Console.WriteLine($"  Merenje je sačuvano: {Path.Combine(directory, SpeedMeasurementNote.FileName)}");
+
+            if (session is null)
+            {
+                Console.WriteLine("  Nijedna sesija nije u toku, pa merenje stoji samostalno. Sesija koja");
+                Console.WriteLine("  se pokrene posle ovoga preuzeće ga u svoj izveštaj i paket.");
+            }
+
             Console.WriteLine();
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)

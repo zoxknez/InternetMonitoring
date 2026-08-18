@@ -58,7 +58,7 @@ public static class HtmlReportBuilder
         AppendVerdict(builder, session);
         AppendFacts(builder, session);
         AppendStats(builder, session);
-        AppendSpeed(builder, speed);
+        AppendSpeed(builder, speed, session);
         AppendTimeline(builder, session);
         AppendLatencyChart(builder, session);
         AppendIncidents(builder, session);
@@ -554,7 +554,7 @@ public static class HtmlReportBuilder
     /// disservice no amount of decimal places can repair.
     /// </para>
     /// </summary>
-    private static void AppendSpeed(StringBuilder builder, SpeedMeasurementNote? speed)
+    private static void AppendSpeed(StringBuilder builder, SpeedMeasurementNote? speed, SessionSnapshot session)
     {
         if (speed is null)
         {
@@ -614,6 +614,11 @@ public static class HtmlReportBuilder
               <tr><th>Veze merenja</th><td>{Escape(speed.DescribeObservedPath())}</td></tr>
             </table>
             """);
+
+        if (SpeedText.OutsideSession(speed.MeasuredAtUtc, session.StartedUtc, session.EndedUtc) is { } apart)
+        {
+            builder.Append($"<p class=\"note\">{Escape(apart)}</p>");
+        }
 
         AppendLoadedLatency(builder, speed);
 

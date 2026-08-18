@@ -2,6 +2,7 @@
 using System.Text;
 using IEM.Core;
 using IEM.Core.Model;
+using IEM.Core.Speed;
 using IEM.Core.Scheduling;
 using IEM.Evidence;
 using IEM.Storage;
@@ -230,6 +231,66 @@ public sealed class EvidencePackageTests : IDisposable
         // The attribution column, which now says where the fault was isolated rather than
         // naming a company the measurement never reached.
         Assert.Contains("Izolovano iza rutera", lines[1], StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// A measurement run while no session was open waits beside the sessions, and the next
+    /// session takes it up - into the folder, the checksums and the archive.
+    /// <para>
+    /// Both halves of that promise were broken. The measurement was filed into whatever
+    /// session folder was newest, sealed or not; and when it did land in the root, no report
+    /// ever looked there, though the code said one would.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task A_measurement_waiting_beside_the_sessions_is_taken_up_by_the_next_one()
+    {
+        WaitingMeasurement(DateTimeOffset.UtcNow);
+
+        var (paths, _) = await BuildAsync(OutageScript(), ConclusiveSampleCount);
+
+        Assert.False(File.Exists(Path.Combine(_root, SpeedMeasurementNote.FileName)));
+        Assert.True(File.Exists(Path.Combine(paths.Directory, SpeedMeasurementNote.FileName)));
+
+        var report = await File.ReadAllTextAsync(Path.Combine(paths.Directory, "Izvestaj.html"));
+
+        Assert.Contains("Merenje brzine", report, StringComparison.Ordinal);
+
+        // Taken before the session began, so the report says it rather than leaving the date
+        // in a row for the reader to notice.
+        Assert.Contains("pre početka ovog nadzora", report, StringComparison.Ordinal);
+
+        var sums = await File.ReadAllTextAsync(Path.Combine(paths.Directory, SessionPaths.ChecksumFileName));
+
+        Assert.Contains(SpeedMeasurementNote.FileName, sums, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// A measurement taken after this session ended belongs to no session yet, and waits for
+    /// the next one rather than being drawn backwards into this package.
+    /// </summary>
+    [Fact]
+    public async Task A_measurement_taken_after_the_session_ended_is_left_where_it_is()
+    {
+        WaitingMeasurement(DateTimeOffset.UtcNow.AddHours(1));
+
+        var (paths, _) = await BuildAsync(OutageScript(), ConclusiveSampleCount);
+
+        Assert.True(File.Exists(Path.Combine(_root, SpeedMeasurementNote.FileName)));
+        Assert.False(File.Exists(Path.Combine(paths.Directory, SpeedMeasurementNote.FileName)));
+    }
+
+    private void WaitingMeasurement(DateTimeOffset measuredAtUtc)
+    {
+        Directory.CreateDirectory(_root);
+
+        new SpeedMeasurementNote(
+            measuredAtUtc, LinkMedium.Ethernet, 1_000, 100, 94.3, 523_000_000,
+            TimeSpan.FromSeconds(10), true, "90 % ugovorene ili više", [])
+        {
+            FindingSchemaVersion = SpeedMeasurementNote.CurrentFindingSchemaVersion,
+            RouteState = MeasurementRouteState.AllResolvedRoutesMatch,
+        }.Write(_root);
     }
 
     [Fact]

@@ -160,6 +160,36 @@ public static class SpeedText
     }
 
     /// <summary>
+    /// How the measurement sits against the session it is filed with, when it sits outside it.
+    /// <para>
+    /// Null while the measurement falls inside the monitored window, because then there is
+    /// nothing to say - it was taken during the session, which is what the reader assumes.
+    /// A measurement taken before the session began is perfectly good evidence about the
+    /// connection and none at all about the period the session covers, and a date printed in
+    /// a row of its own is not enough: it leaves the reader to notice.
+    /// </para>
+    /// </summary>
+    public static string? OutsideSession(
+        DateTimeOffset measuredAtUtc,
+        DateTimeOffset startedUtc,
+        DateTimeOffset? endedUtc)
+    {
+        if (measuredAtUtc < startedUtc)
+        {
+            return "Merenje je izvršeno pre početka ovog nadzora. Opisuje vezu u tom trenutku, " +
+                   "ne period koji sesija pokriva.";
+        }
+
+        if (endedUtc is { } ended && measuredAtUtc > ended)
+        {
+            return "Merenje je izvršeno posle završetka ovog nadzora. Opisuje vezu u tom trenutku, " +
+                   "ne period koji sesija pokriva.";
+        }
+
+        return null;
+    }
+
+    /// <summary>
     /// What a recorded note says its own sockets did.
     /// <para>
     /// Built from the fields the note stores rather than from a live <see cref="PathAgreement"/>,

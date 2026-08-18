@@ -219,8 +219,9 @@ public sealed class SpeedWorker(
             result);
 
         // Beside the session it belongs to, so the report states it with its verdict. With no
-        // session yet it waits in the output root, where the next session's report finds it.
-        var directory = SessionPaths.FindLatest(outputRoot)?.Directory ?? outputRoot;
+        // session open it waits in the output root, and the next session takes it up. Never
+        // into a sealed session: that package has already been checksummed and sent.
+        var directory = SessionPaths.FindOpen(outputRoot)?.Directory ?? outputRoot;
         note.Write(directory);
 
         // Every figure is formatted before it reaches the template. Left to the logger, the

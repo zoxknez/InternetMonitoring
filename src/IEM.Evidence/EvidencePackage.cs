@@ -64,7 +64,7 @@ public static class EvidencePackage
     private const string IncidentsCsv = "Prekidi.csv";
     private const string MeasurementsCsv = "Merenja.csv";
     private const string GapsCsv = "Pauze-nadzora.csv";
-    private const string ChecksumFile = "SHA256SUMS.txt";
+    private const string ChecksumFile = SessionPaths.ChecksumFileName;
 
     /// <summary>
     /// Builds every derived file in the session directory and checksums the result.
@@ -115,7 +115,7 @@ public static class EvidencePackage
                 // A measurement taken beside the session, when one was. Absent for sessions
                 // that never had one, and a file that cannot be parsed reads as absent rather
                 // than taking the export down with it.
-                var speed = SpeedMeasurementNote.Read(paths.Directory);
+                var speed = SpeedMeasurementNote.Read(paths.Directory) ?? Adopt(paths, session);
 
                 Write(ReportHtml, p => HtmlReportBuilder.Write(p, session, verification.HeadHash, verification.Valid, speed));
 
@@ -217,6 +217,55 @@ public static class EvidencePackage
     /// tools rather than only with this application.
     /// </para>
     /// </summary>
+    /// <summary>
+    /// Takes up a measurement that was waiting in the output root, if one is.
+    /// <para>
+    /// A measurement run while no session was open is filed beside the sessions rather than
+    /// inside one, because at that moment there is no session to file it into. It is taken up
+    /// here, before the checksums are written, so it is hashed and archived with the rest.
+    /// </para>
+    /// <para>
+    /// Moved rather than copied, so it is claimed exactly once. Copied, the same measurement
+    /// would reappear in every session from now on, each report presenting it as its own.
+    /// </para>
+    /// <para>
+    /// A measurement taken after this session ended belongs to no session yet and is left
+    /// where it is. One taken before it began is taken up, and the report says so rather than
+    /// letting the date sit there for the reader to catch.
+    /// </para>
+    /// </summary>
+    private static SpeedMeasurementNote? Adopt(SessionPaths paths, SessionSnapshot session)
+    {
+        var root = Directory.GetParent(paths.Directory)?.FullName;
+
+        if (root is null)
+        {
+            return null;
+        }
+
+        var waiting = SpeedMeasurementNote.Read(root);
+
+        if (waiting is null || waiting.MeasuredAtUtc > (session.EndedUtc ?? DateTimeOffset.UtcNow))
+        {
+            return null;
+        }
+
+        try
+        {
+            File.Move(
+                Path.Combine(root, SpeedMeasurementNote.FileName),
+                Path.Combine(paths.Directory, SpeedMeasurementNote.FileName));
+
+            return waiting;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // The measurement stays where it is and the report goes out without it. Losing a
+            // supporting figure is bad; losing the session's own evidence over it is worse.
+            return null;
+        }
+    }
+
     private static void WriteChecksums(string directory)
     {
         var checksumPath = Path.Combine(directory, ChecksumFile);

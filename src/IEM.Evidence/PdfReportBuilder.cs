@@ -59,7 +59,7 @@ public static class PdfReportBuilder
             AppendVerdict(layout, session);
             AppendFacts(layout, session);
             AppendStats(layout, session);
-            AppendSpeed(layout, speed);
+            AppendSpeed(layout, speed, session);
             AppendTimeline(layout, session);
             AppendLatencyChart(layout, session);
             AppendIncidents(layout, session);
@@ -259,7 +259,7 @@ public static class PdfReportBuilder
     /// for the same reason the HTML report states it: the conditions are what make the figure
     /// usable or useless, and a bare number hides exactly the part an operator would ask about.
     /// </summary>
-    private static void AppendSpeed(Layout layout, SpeedMeasurementNote? speed)
+    private static void AppendSpeed(Layout layout, SpeedMeasurementNote? speed, SessionSnapshot session)
     {
         if (speed is null)
         {
@@ -308,6 +308,11 @@ public static class PdfReportBuilder
         Fact("Način merenja", $"{medium}, tri paralelne veze po smeru, veza mirna pre početka");
         Fact("Putanja merenja", speed.RouteState.Label());
         Fact("Veze merenja", speed.DescribeObservedPath());
+
+        if (SpeedText.OutsideSession(speed.MeasuredAtUtc, session.StartedUtc, session.EndedUtc) is { } apart)
+        {
+            layout.Note(apart);
+        }
 
         AppendLoadedLatency();
 

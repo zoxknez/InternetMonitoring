@@ -763,7 +763,7 @@ public sealed partial class ShellViewModel : ObservableObject, IAsyncDisposable
             ActualPath = PathAgreement.Of(link.InterfaceId, observer.Attempts),
         };
 
-        var latest = SessionPaths.FindLatest(_outputRoot);
+        var latest = SessionPaths.FindOpen(_outputRoot);
         var note = SpeedMeasurementNote.From(
             DateTimeOffset.UtcNow,
             link.Medium,
@@ -808,8 +808,22 @@ public sealed partial class ShellViewModel : ObservableObject, IAsyncDisposable
             text += $"Ocena slanja: {uploadBand}. ";
         }
 
+        // Whether the figure can be used, not only where it falls. The window used to print
+        // "Ocena: 90 % ugovorene ili više" for a measurement taken over Wi-Fi and say nothing
+        // more - a band beside a figure that could be dismissed in one sentence.
+        text += assessment.State switch
+        {
+            SpeedAssessmentState.MeetsConditions => "Ispunjava uslove za korišćenje uz prigovor. ",
+            SpeedAssessmentState.DoesNotMeetConditions =>
+                $"NE ispunjava uslove za dokazivanje ugovorene brzine: {string.Join(" ", assessment.Defects)} ",
+            _ => $"{assessment.State.Label()} ",
+        };
+
+        // The one statement about the path that is an observation rather than a prediction.
+        text += $"Veze merenja: {note.DescribeObservedPath()}. ";
+
         text += besideSession
-            ? "Sačuvano uz poslednju sesiju."
+            ? "Sačuvano uz sesiju koja je u toku."
             : "Sačuvano u folderu sa sesijama; ući će u izveštaj prve sledeće sesije.";
 
         return text;

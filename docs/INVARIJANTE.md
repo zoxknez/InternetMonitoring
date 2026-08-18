@@ -242,15 +242,41 @@ Da je pravilo bilo blaže, to bi izgledalo kao uredno merenje.
 
 ---
 
+## 14. SEALED_SESSION_IS_NEVER_WRITTEN_INTO_AGAIN
+
+**Kad je paket zapečaćen, folder sesije se više ne dira.**
+
+Zapečaćen je onaj u kome postoji `SHA256SUMS.txt` — spisak koji opisuje tačno te fajlove, i po
+kome je najverovatnije već napravljena arhiva i poslata operateru. Svaki fajl dodat posle toga
+ostavlja spisak i arhivu da opisuju folder koji se u međuvremenu promenio.
+
+Zato se pre upisa nikada ne pita „koji je folder najnoviji" nego **„koja je sesija otvorena"**.
+Merenje kome nema otvorene sesije čeka u korenu izlaza, a prva sledeća sesija ga preuzima — u
+folder, u zbirove i u arhivu — i izveštaj kaže da je izvršeno pre početka tog nadzora.
+
+Preuzima se **premeštanjem**, jednom. Kopirano, isto merenje bi se pojavljivalo u svakoj sledećoj
+sesiji, i svaki izveštaj bi ga predstavljao kao svoje.
+
+**Kako je otkriveno:** posle 3.0-1a, proverom šta se dešava sa merenjem koje je zapisano dok
+nijedna sesija ne teče. Ispostavilo se dvostruko: takvo merenje nijedan izveštaj nije čitao iako
+je komentar u kodu tvrdio da hoće, a na mašini sa starijom sesijom u istom folderu odlazilo je
+**unutra** — u paket koji je već bio prebrojan i zapakovan.
+
+**Gde se proverava:** `MeasurementFilingTests` (pet slučajeva oko `SessionPaths.FindOpen`),
+`EvidencePackageTests.A_measurement_waiting_beside_the_sessions_is_taken_up_by_the_next_one` i
+`...A_measurement_taken_after_the_session_ended_is_left_where_it_is`.
+
+---
+
 ## Za 3.0: one koje još nemaju kod
 
-## 14. SIGNATURE_PROVES_INTEGRITY_NOT_TRUTH
+## 15. SIGNATURE_PROVES_INTEGRITY_NOT_TRUTH
 
 Potpis dokazuje da paket odgovara potpisanom sadržaju, da nije neprimetno menjan posle
 potpisivanja, i da je potpisan ključem te instalacije. **Ne dokazuje** da ulaz nije fabrikovan
 pre potpisivanja, da host nije bio kompromitovan, niti da je incident nastao kod operatera.
 
-## 15. TRUSTED_TIMESTAMP_PROVES_EXISTENCE_NOT_EVENT_TIME
+## 16. TRUSTED_TIMESTAMP_PROVES_EXISTENCE_NOT_EVENT_TIME
 
 Vremenski žig treće strane dokazuje da je određeni podatak **postojao pre** određenog trenutka.
 Ne dokazuje da se mrežni događaj desio tada, niti da je sadržaj istinit.

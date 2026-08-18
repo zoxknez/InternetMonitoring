@@ -19,13 +19,51 @@ public sealed record SessionPaths(string Directory)
     public string ChainVerification => Path.Combine(Directory, "Provera-lanca.txt");
 
     /// <summary>
+    /// The checksum list, written last by the export. Its presence is what makes a session
+    /// directory <see cref="IsSealed">sealed</see>.
+    /// </summary>
+    public const string ChecksumFileName = "SHA256SUMS.txt";
+
+    public string Checksums => Path.Combine(Directory, ChecksumFileName);
+
+    /// <summary>
+    /// Whether this session has already been exported.
+    /// <para>
+    /// A sealed directory is described by a checksum list and, usually, by an archive already
+    /// sent to an operator. Adding a file to it afterwards leaves the package describing a
+    /// folder that no longer matches it - so nothing is ever filed into a sealed session.
+    /// </para>
+    /// </summary>
+    public bool IsSealed => File.Exists(Checksums);
+
+    /// <summary>
     /// Names a session directory after its start time. Sortable, unambiguous, and free of
     /// diacritics so the folder survives being zipped and emailed to an operator.
     /// </summary>
     public static SessionPaths ForNewSession(string root, DateTimeOffset startedAt) =>
         new(Path.Combine(root, $"Sesija_{startedAt.ToLocalTime():yyyyMMdd_HHmmss}"));
 
-    /// <summary>Most recent session directory under <paramref name="root"/>, if any.</summary>
+    /// <summary>
+    /// The session a measurement taken now belongs beside, or null when none is open.
+    /// <para>
+    /// Asked instead of <see cref="FindLatest"/> wherever something is about to be written.
+    /// "Newest folder" is the wrong question: a machine that ran a session last week and none
+    /// since has a newest folder that was sealed, zipped and possibly already emailed, and
+    /// today's measurement was being filed into it - leaving the checksums and the archive
+    /// describing a folder that had since gained a file.
+    /// </para>
+    /// </summary>
+    public static SessionPaths? FindOpen(string root)
+    {
+        var latest = FindLatest(root);
+
+        return latest is null || latest.IsSealed || !File.Exists(latest.RawLog) ? null : latest;
+    }
+
+    /// <summary>
+    /// Most recent session directory under <paramref name="root"/>, if any - sealed or not.
+    /// Use <see cref="FindOpen"/> when something is going to be written there.
+    /// </summary>
     public static SessionPaths? FindLatest(string root)
     {
         if (!System.IO.Directory.Exists(root))
