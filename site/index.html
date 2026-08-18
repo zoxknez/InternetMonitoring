@@ -223,7 +223,8 @@
     color: var(--ink);
     border-color: var(--line);
   }
-  .cta-note { font-size: .84rem; color: var(--faint); }
+  .cta-note { font-size: .84rem; color: var(--faint); line-height: 1.5; }
+  @media (max-width: 900px) { .cta-note { flex-basis: 100%; } }
 
   /* ---- Cards & grids ------------------------------------------------------- */
   .grid { display: grid; gap: 18px; }
@@ -357,6 +358,12 @@
       <a href="#preuzimanje">Preuzimanje</a>
       <a href="#platforme">Platforme</a>
       <a href="#granice">Granice</a>
+      <a href="https://github.com/zoxknez/InternetMonitoring" style="display: inline-flex; align-items: center; gap: 6px;">
+        <svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+          <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z" />
+        </svg>
+        GitHub
+      </a>
     </nav>
   </header>
 </div>
@@ -369,7 +376,7 @@
       <p class="lede">
         Program beleži prekide i kvalitet internet veze i od toga pravi dokumentaciju
         upotrebljivu za prigovor operateru. Radi lokalno. Nema naloga, nema servera, ne šalje
-        podatke nigde — snimljeno ostaje u folderu sesije, a vi odlučujete kome ćete ga poslati.
+        podatke nigde - snimljeno ostaje u folderu sesije, a vi odlučujete kome ćete ga poslati.
       </p>
     </div>
 
@@ -399,8 +406,17 @@
         </svg>
         Preuzmi za Windows
       </a>
+      <a class="btn ghost" href="https://github.com/zoxknez/InternetMonitoring">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+          <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z" />
+        </svg>
+        Izvorni kod
+      </a>
       <a class="btn ghost" href="#preuzimanje">Ostale verzije</a>
-      <span class="cta-note">Jedan fajl, 65 MB. Ništa se ne instalira.</span>
+      <span class="cta-note">
+        Jedan fajl, 65 MB. Ništa se ne instalira.<br />
+        Otvoren kod pod MIT licencom - sve što program tvrdi može da se proveri u izvoru.
+      </span>
     </div>
   </section>
 </div>
@@ -414,7 +430,7 @@
       <h2>Sitne provere, svakih nekoliko sekundi, danima.</h2>
       <p class="lede">
         Program stalno pita ruter, pa spoljne mete, pa DNS i HTTP. Iz razlike između tih
-        odgovora zaključuje dokle je problem izolovan — i to je jedina stvar koju operater ne
+        odgovora zaključuje dokle je problem izolovan - i to je jedina stvar koju operater ne
         može da odbije rečenicom „proverite svoj Wi-Fi".
       </p>
     </div>
@@ -430,7 +446,7 @@
         <h3>Razlikuje dokle je problem izolovan</h3>
         <p>
           Razdvaja kvar na vašem računaru, na Wi-Fi vezi, na ruteru i iza njega. Prigovor nosi
-          samo ono poslednje — a program nikada ne tvrdi da je kriv operater, jer se to sa
+          samo ono poslednje - a program nikada ne tvrdi da je kriv operater, jer se to sa
           vašeg računara ne može dokazati.
         </p>
       </div>
@@ -472,7 +488,7 @@
       <figure>
         <img src="ui-priprema.png" width="1180" height="840"
              alt="Ekran pripreme testa: izbor trajanja nadzora, spisak fajlova koji nastaju i po čemu se program razlikuje." />
-        <figcaption>Priprema testa. Za prigovor je uobičajeno 48 sati — nijedan propis ne traži određeno trajanje.</figcaption>
+        <figcaption>Priprema testa. Za prigovor je uobičajeno 48 sati - nijedan propis ne traži određeno trajanje.</figcaption>
       </figure>
 
       <div class="stack">
@@ -505,7 +521,7 @@
       <p class="eyebrow">Preuzimanje · 2.8.0-beta.2</p>
       <h2>Jedan fajl je dovoljan. Servis je za dvodnevni test.</h2>
       <p class="lede">
-        Portabl fajl pokrenete i radi — ali nadzor tada traje dok je prozor otvoren. Za test
+        Portabl fajl pokrenete i radi - ali nadzor tada traje dok je prozor otvoren. Za test
         koji preživljava zatvaranje prozora i restart računara instalira se servis iz arhive.
         Program to kaže i na svom ekranu, umesto da obeća suprotno.
       </p>
@@ -524,7 +540,7 @@
         <tbody>
           <tr>
             <td>
-              <span class="what"><strong>Portabl program</strong> — pokrenete i radi</span>
+              <span class="what"><strong>Portabl program</strong> - pokrenete i radi</span>
               <a class="file" href="https://github.com/zoxknez/InternetMonitoring/releases/download/v2.8.0-beta.2/InternetMonitoring-2.8.0-beta.2-win-x64.exe">InternetMonitoring-2.8.0-beta.2-win-x64.exe</a>
             </td>
             <td class="num">Windows x64</td>
@@ -533,7 +549,7 @@
           </tr>
           <tr>
             <td>
-              <span class="what"><strong>Portabl program</strong> — pokrenete i radi</span>
+              <span class="what"><strong>Portabl program</strong> - pokrenete i radi</span>
               <a class="file" href="https://github.com/zoxknez/InternetMonitoring/releases/download/v2.8.0-beta.2/InternetMonitoring-2.8.0-beta.2-win-arm64.exe">InternetMonitoring-2.8.0-beta.2-win-arm64.exe</a>
             </td>
             <td class="num">Windows ARM64</td>
@@ -542,7 +558,7 @@
           </tr>
           <tr>
             <td>
-              <span class="what"><strong>Puna arhiva</strong> — sa servisom i instalacijom</span>
+              <span class="what"><strong>Puna arhiva</strong> - sa servisom i instalacijom</span>
               <a class="file" href="https://github.com/zoxknez/InternetMonitoring/releases/download/v2.8.0-beta.2/InternetMonitoring-2.8.0-beta.2-win-x64.zip">InternetMonitoring-2.8.0-beta.2-win-x64.zip</a>
             </td>
             <td class="num">Windows x64</td>
@@ -551,7 +567,7 @@
           </tr>
           <tr>
             <td>
-              <span class="what"><strong>Puna arhiva</strong> — sa servisom i instalacijom</span>
+              <span class="what"><strong>Puna arhiva</strong> - sa servisom i instalacijom</span>
               <a class="file" href="https://github.com/zoxknez/InternetMonitoring/releases/download/v2.8.0-beta.2/InternetMonitoring-2.8.0-beta.2-win-arm64.zip">InternetMonitoring-2.8.0-beta.2-win-arm64.zip</a>
             </td>
             <td class="num">Windows ARM64</td>
@@ -560,7 +576,7 @@
           </tr>
           <tr>
             <td>
-              <span class="what"><strong>Konzola</strong> — za skripte i proveru tuđeg paketa</span>
+              <span class="what"><strong>Konzola</strong> - za skripte i proveru tuđeg paketa</span>
               <a class="file" href="https://github.com/zoxknez/InternetMonitoring/releases/download/v2.8.0-beta.2/iem-2.8.0-beta.2-win-x64.exe">iem-2.8.0-beta.2-win-x64.exe</a>
             </td>
             <td class="num">Windows x64</td>
@@ -569,7 +585,7 @@
           </tr>
           <tr>
             <td>
-              <span class="what"><strong>Konzola</strong> — za skripte i proveru tuđeg paketa</span>
+              <span class="what"><strong>Konzola</strong> - za skripte i proveru tuđeg paketa</span>
               <a class="file" href="https://github.com/zoxknez/InternetMonitoring/releases/download/v2.8.0-beta.2/iem-2.8.0-beta.2-win-arm64.exe">iem-2.8.0-beta.2-win-arm64.exe</a>
             </td>
             <td class="num">Windows ARM64</td>
@@ -582,7 +598,7 @@
 
     <div style="margin-top: 18px;">
       <details>
-        <summary>Program nije digitalno potpisan — kako da proverite šta ste skinuli</summary>
+        <summary>Program nije digitalno potpisan - kako da proverite šta ste skinuli</summary>
         <div class="body stack">
           <p style="color: var(--muted); font-size: .95rem;">
             SmartScreen će upozoriti na nepoznatog izdavača. Potpis je planiran; do tada je
@@ -610,7 +626,7 @@ Unblock-File .\InternetMonitoring-2.8.0-beta.2-win-x64.exe</pre>
       <h2>Danas Windows. Ostalo je u pripremi.</h2>
       <p class="lede">
         Nadzor, lanac otisaka i izveštaj ne zavise od Windows-a. Ono što zavisi jeste čitanje
-        Wi-Fi stanja, tabele ruta i rad kao servis — i to je posao koji svaka nova platforma
+        Wi-Fi stanja, tabele ruta i rad kao servis - i to je posao koji svaka nova platforma
         traži iznova.
       </p>
     </div>
@@ -660,7 +676,7 @@ Unblock-File .\InternetMonitoring-2.8.0-beta.2-win-x64.exe</pre>
         </svg>
         <span class="name">Android</span>
         <span class="chip wait">U pripremi</span>
-        <p>Nadzor mobilne veze je drugo pitanje od kućne — i drugi dokaz.</p>
+        <p>Nadzor mobilne veze je drugo pitanje od kućne - i drugi dokaz.</p>
       </div>
     </div>
   </section>
@@ -686,8 +702,8 @@ Unblock-File .\InternetMonitoring-2.8.0-beta.2-win-x64.exe</pre>
         <p>
           Za dokazivanje ugovorene brzine RATEL traži merenje
           <a href="https://nettest.ratel.rs/home">NetTest</a> aplikacijom, po propisanoj
-          proceduri, preko kabla direktno na modem. Ovaj alat je dopuna tome — pokazuje kada je
-          i pod kojim uslovima brzina padala — a ne zamena.
+          proceduri, preko kabla direktno na modem. Ovaj alat je dopuna tome - pokazuje kada je
+          i pod kojim uslovima brzina padala - a ne zamena.
         </p>
       </div>
       <div class="notice">
@@ -704,13 +720,13 @@ Unblock-File .\InternetMonitoring-2.8.0-beta.2-win-x64.exe</pre>
         <p>
           Program računa rokove i uz svaki navodi propis iz kog dolazi, sa datumom provere. To
           je pomoć u snalaženju. Kad podaci ne dozvoljavaju jednoznačan odgovor, program kaže
-          da rok nije utvrđen — umesto da pogodi.
+          da rok nije utvrđen - umesto da pogodi.
         </p>
       </div>
       <div class="notice">
         <h3>Folder sesije sadrži vaše podatke</h3>
         <p>
-          Ime računara, naziv adaptera, IP rutera, SSID. Tako i treba, jer je to deo dokaza —
+          Ime računara, naziv adaptera, IP rutera, SSID. Tako i treba, jer je to deo dokaza -
           ali šaljite samo ono što ste spremni da objavite.
         </p>
       </div>

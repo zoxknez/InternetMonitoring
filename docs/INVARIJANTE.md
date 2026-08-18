@@ -19,7 +19,7 @@ vrednošću, `??`, `!= false`, `GetValueOrDefault(true)` ili bilo kojim drugim t
 Gde stvarno postoje tri stanja, model ih ima sva tri, sa nepoznatim kao podrazumevanim.
 
 **Kako je otkriveno:** tri pozivna mesta su radila `?? true` nad proverom putanje merenja, a
-klasifikator `RadioOn != false` — nepročitan radio je prolazio kao uključen i prijavljivao kvar
+klasifikator `RadioOn != false` - nepročitan radio je prolazio kao uključen i prijavljivao kvar
 pristupne tačke. Sve to je prošlo 478 testova.
 
 **Gde se proverava:** `SourceInvariantTests.Unknown_never_becomes_confirmed` skenira ceo `src/`
@@ -28,7 +28,7 @@ za zabranjene obrasce, uz jedan dokumentovan izuzetak (identitet fold-a). Uz nje
 
 ### 1a. UNKNOWN_NEVER_BECOMES_ZERO
 
-Isto pravilo za brojeve. Pločica „Mete bez odgovora" pisala je `0 %` pre prvog uzorka — umirujući
+Isto pravilo za brojeve. Pločica „Mete bez odgovora" pisala je `0 %` pre prvog uzorka - umirujući
 odgovor na pitanje koje još niko nije postavio. Nemereno se prikazuje kao nemereno.
 
 ---
@@ -43,7 +43,7 @@ ni da je nešto dokazano kad nije, ni da je sve u redu kad se to ne zna.
 **Kako je otkriveno:** model pripisivanja je od 2.0 govorio da se sa korisnikovog računara ne
 može utvrditi čija je mreža u kvaru, dok je 31 fajl i dalje pisao „Prekida kod operatera".
 Kasnije, u istoj kategoriji: „Veza je bila stabilna" posle dva minuta nadzora, i konflikt koji
-je zapisan u dnevnik a nigde prikazan — ekran je tvrdio da je rok utvrđen dok je zapis znao da
+je zapisan u dnevnik a nigde prikazan - ekran je tvrdio da je rok utvrđen dok je zapis znao da
 je osporen.
 
 **Gde se proverava:** `AttributionWordingTests` pušta sve `NetworkState` × `FaultDomain` kroz
@@ -57,7 +57,7 @@ izveštajem.
 **Predmet razrešen pod jednim skupom pravila daje iste rokove i posle izmene registra.**
 
 Zapis o sporu je jedina vrsta dokumenta koji ne sme tiho da promeni značenje. Registar pravnih
-pravila je zato nepromenljiv — pravna promena pravi novu verziju sa novim hešom — a predmet nosi
+pravila je zato nepromenljiv - pravna promena pravi novu verziju sa novim hešom - a predmet nosi
 zamrznut kontekst, ne samo identifikator.
 
 **Kako je otkriveno:** invariant je držao pri čitanju a padao pri pisanju. `Save` je pri svakom
@@ -91,7 +91,7 @@ kao konflikt, pa je predmet kao aktuelan držao datum za koji je već znao da je
 **Ono što je ranija verzija izmerila jeste dokaz; ono što je zaključila nije.**
 
 Zapisan zaključak ima rok trajanja. Ako se pravilo po kom je donet promeni, on postaje
-istorijski podatak — čuva se, ali se ne usvaja i ne obrće.
+istorijski podatak - čuva se, ali se ne usvaja i ne obrće.
 
 **Kako je otkriveno:** nalaz merenja iz 2.6 nosi `ValidForComplaint: true`, ocenu po pravilu
 koje je neproverenu putanju računalo kao proverenu. Izveštaj 2.7.0 je u istoj tabeli pisao
@@ -107,11 +107,11 @@ koje je neproverenu putanju računalo kao proverenu. Izveštaj 2.7.0 je u istoj 
 semantike kojom je izvedena.**
 
 Odnosi se na sve što nije direktno opažanje: pojas brzine, klasifikaciju stanja, pripisivanje,
-ocenu valjanosti, pravno razrešenje, zaključke izveštaja — i, u 3.0, na potpisani manifest,
+ocenu valjanosti, pravno razrešenje, zaključke izveštaja - i, u 3.0, na potpisani manifest,
 ocenu kvaliteta dokaza i redigovani paket.
 
 Broj verzije nije dovoljan: dva builda mogu nositi isti broj a različit sadržaj. Identitet je
-zato `{Model, Version, ContentHash}` — kako `LegalRulesetRef` već radi.
+zato `{Model, Version, ContentHash}` - kako `LegalRulesetRef` već radi.
 
 **Kako je otkriveno:** posledica nalaza 4. Da je nalaz merenja od početka nosio verziju,
 problem se ne bi ni desio.
@@ -122,7 +122,7 @@ problem se ne bi ni desio.
 ### 5a. INTERPRETATION_IS_BOUND_TO_CLAIM_NOT_SESSION
 
 Identitet semantike pripada **tvrdnji**, ne sesiji. Sesija sme da nosi katalog tumačenja i da
-svaka tvrdnja pokazuje na unos u njemu — to je fizička deduplikacija, ne semantička.
+svaka tvrdnja pokazuje na unos u njemu - to je fizička deduplikacija, ne semantička.
 
 Pretpostavka „jedna sesija = jedna verzija tumačenja" ne stoji: dvodnevni nadzor može preživeti
 nadogradnju servisa. Kada se tumačenje promeni usred sesije, to je zabeležen događaj
@@ -145,11 +145,11 @@ kad se promeni pravilo.
 **Zaključci i ocene idu u odvojen, takođe append-only dnevnik**, sa vezom na zapise iz lanca na
 koje se oslanjaju i na tumačenje koje ih je proizvelo.
 
-Manifest hešira oba i potpis štiti oba — ali se više nikada ne mešaju. Zaključak se uvek može
+Manifest hešira oba i potpis štiti oba - ali se više nikada ne mešaju. Zaključak se uvek može
 napraviti iznova iz lanca; opažanje ne može ni iz čega.
 
 **Zašto:** danas stoje u istom redu, i to je izvor nalaza 4. Kad se pravilo promeni, mora se
-moći reći koji deo zapisa je i dalje tačan — a to se ne može ako su izmešani.
+moći reći koji deo zapisa je i dalje tačan - a to se ne može ako su izmešani.
 
 **Stari lanac se ne popravlja.** Zapis iz 2.x sadrži i opažanje i tadašnje tumačenje; čita se i
 verifikuje po svojoj originalnoj verziji, bez retroaktivnog prevođenja.
@@ -158,7 +158,7 @@ verifikuje po svojoj originalnoj verziji, bez retroaktivnog prevođenja.
 
 ## 8. LEGACY_PACKETLOSS_IS_NEVER_INTERPRETED_AS_PACKET_LOSS
 
-**Vrednost `PacketLoss` iz 2.x zauvek znači ono što je istorijski značila** — udeo meta koje
+**Vrednost `PacketLoss` iz 2.x zauvek znači ono što je istorijski značila** - udeo meta koje
 nisu odgovorile, tri destinacije po jedna proba. Nikada se ne prikazuje kao pravi gubitak
 paketa, ne preračunava se i ne preslikava na nov model.
 
@@ -195,7 +195,7 @@ U 3.0 dobija i ACL koji to sprovodi, ne samo poštuje.
 
 **Fixture na disku, fixture u repozitorijumu i fixture u tagu su tri različite stvari.**
 
-Testovi koji ih čitaju **padaju** kad fajla nema — nikada ga ne preskaču. Test koji ćuti kad mu
+Testovi koji ih čitaju **padaju** kad fajla nema - nikada ga ne preskaču. Test koji ćuti kad mu
 nedostaje ulaz gori je od nepostojećeg testa, jer prijavljuje uspeh za posao koji nije uradio.
 
 **Kako je otkriveno:** 2.7.1 je objavljena sa `baseline/` isključenim pravilom iz `.gitignore`
@@ -212,11 +212,11 @@ koji proverava da je svaki fajl iz `baseline/` praćen u gitu.
 **Ono što su soketi merenja stvarno uradili jače je od onoga što je tabela ruta predvidela.**
 
 Kad se ne slažu, opažanje opisuje figuru. Tabela ruta koja se unapred složila **ne spasava**
-merenje čije su veze otišle drugim adapterom — a merenje čije veze nisu posmatrane time **ne
+merenje čije su veze otišle drugim adapterom - a merenje čije veze nisu posmatrane time **ne
 postaje** neispravno, jer na nekim mašinama se soketi ne mogu pripisati adapteru uopšte.
 
 Oba nalaza se čuvaju odvojeno i prikazuju odvojeno. „Posmatrano" i „predviđeno" su različita
-pitanja, i čitalac ima pravo da vidi da su se složili — ili da nisu.
+pitanja, i čitalac ima pravo da vidi da su se složili - ili da nisu.
 
 **Kako je otkriveno:** na ovoj mašini merenje označeno Wi-Fi adapterom daje 479 Mbit/s, a svih
 šest veza izađe kroz kabl. Do 2.7.2 se to videlo samo kao predviđanje iz tabele ruta.
@@ -226,7 +226,7 @@ i `...An_unobserved_path_is_not_a_defect_of_its_own`.
 
 ## 13. UNOBSERVED_PATH_IS_NOT_AGREEMENT
 
-**Veza koja se nije mogla pripisati nijednom adapteru nije saglasnost — ni jedna, ni sve.**
+**Veza koja se nije mogla pripisati nijednom adapteru nije saglasnost - ni jedna, ni sve.**
 
 Nijedna razrešena veza → `Unknown`, ne `Match`. Ako su neke razrešene a neke ne, saglasnost se
 sudi po razrešenima, ali se ostatak **uvek ispisuje**, da rečenica ne bi zvučala kao da su sve
@@ -246,13 +246,13 @@ Da je pravilo bilo blaže, to bi izgledalo kao uredno merenje.
 
 **Kad je paket zapečaćen, folder sesije se više ne dira.**
 
-Zapečaćen je onaj u kome postoji `SHA256SUMS.txt` — spisak koji opisuje tačno te fajlove, i po
+Zapečaćen je onaj u kome postoji `SHA256SUMS.txt` - spisak koji opisuje tačno te fajlove, i po
 kome je najverovatnije već napravljena arhiva i poslata operateru. Svaki fajl dodat posle toga
 ostavlja spisak i arhivu da opisuju folder koji se u međuvremenu promenio.
 
 Zato se pre upisa nikada ne pita „koji je folder najnoviji" nego **„koja je sesija otvorena"**.
-Merenje kome nema otvorene sesije čeka u korenu izlaza, a prva sledeća sesija ga preuzima — u
-folder, u zbirove i u arhivu — i izveštaj kaže da je izvršeno pre početka tog nadzora.
+Merenje kome nema otvorene sesije čeka u korenu izlaza, a prva sledeća sesija ga preuzima - u
+folder, u zbirove i u arhivu - i izveštaj kaže da je izvršeno pre početka tog nadzora.
 
 Preuzima se **premeštanjem**, jednom. Kopirano, isto merenje bi se pojavljivalo u svakoj sledećoj
 sesiji, i svaki izveštaj bi ga predstavljao kao svoje.
@@ -260,7 +260,7 @@ sesiji, i svaki izveštaj bi ga predstavljao kao svoje.
 **Kako je otkriveno:** posle 3.0-1a, proverom šta se dešava sa merenjem koje je zapisano dok
 nijedna sesija ne teče. Ispostavilo se dvostruko: takvo merenje nijedan izveštaj nije čitao iako
 je komentar u kodu tvrdio da hoće, a na mašini sa starijom sesijom u istom folderu odlazilo je
-**unutra** — u paket koji je već bio prebrojan i zapakovan.
+**unutra** - u paket koji je već bio prebrojan i zapakovan.
 
 **Gde se proverava:** `MeasurementFilingTests` (pet slučajeva oko `SessionPaths.FindOpen`),
 `EvidencePackageTests.A_measurement_waiting_beside_the_sessions_is_taken_up_by_the_next_one` i
@@ -281,5 +281,5 @@ pre potpisivanja, da host nije bio kompromitovan, niti da je incident nastao kod
 Vremenski žig treće strane dokazuje da je određeni podatak **postojao pre** određenog trenutka.
 Ne dokazuje da se mrežni događaj desio tada, niti da je sadržaj istinit.
 
-Obe idu u `THREAT-MODEL-3.0.md` kao prvi pasus, ne kao dodatak — jer je 2.6 tačno tako i
+Obe idu u `THREAT-MODEL-3.0.md` kao prvi pasus, ne kao dodatak - jer je 2.6 tačno tako i
 pogrešila, tvrdnjom koja je zvučala jače nego što jeste.

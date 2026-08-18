@@ -20,7 +20,7 @@ izdanja i najlakše ih je pogrešno opisati, pa ovaj dokument počinje granicom,
 
 Ključ stoji na mašini koju kontroliše sam korisnik. Iz toga sledi da operater i dalje sme da
 kaže „mogli ste to snimiti u laboratoriji", i to je tačno. Ono što potpis oduzima jeste drugi
-prigovor — „paket je izmenjen posle snimanja" — i to je jedini prigovor koji zatvara.
+prigovor - „paket je izmenjen posle snimanja" - i to je jedini prigovor koji zatvara.
 
 **Vremenski žig dokazuje** da je određeni otisak **postojao pre** određenog trenutka, i to
 potvrđuje treća strana. Ne dokazuje da se mrežni događaj desio tada, niti da je sadržaj istinit.
@@ -45,7 +45,7 @@ drugi disk pokvari red. Lanac ovo hvata od 2.0 i to je najčešći stvarni sluč
 
 **Operater koji traži procesnu grešku.** Ne napada zapis nego tvrdnju: „merenje je preko
 Wi-Fi-a", „to je bio vaš saobraćaj", „ne dokazujete da je kod nas". Ovo se ne brani
-kriptografijom nego time da program ne tvrdi više nego što je izmerio — čemu je 2.7 posvećena
+kriptografijom nego time da program ne tvrdi više nego što je izmerio - čemu je 2.7 posvećena
 cela.
 
 **Korisnik koji falsifikuje.** Ima pun pristup mašini, ključu i folderu. Protiv njega lokalna
@@ -53,7 +53,7 @@ kriptografija ne radi ništa, i ne treba se praviti da radi. Jedino što pomaže
 treća strana: vremenski žig, i eventualno merenje kod regulatora.
 
 **Neko drugi sa pristupa mašini.** Malver ili druga osoba na istom nalogu. Delimično se brani
-time što servisni ključ nije izvozan i što `Raw/` piše samo servis — pa presnimavanje zahteva
+time što servisni ključ nije izvozan i što `Raw/` piše samo servis - pa presnimavanje zahteva
 prava koja običan korisnički proces nema.
 
 ---
@@ -93,7 +93,7 @@ paketu.** Koren poverenja dolazi iz politike verifikatora ili iz poznatog sistem
 nikada iz samog materijala koji se proverava. Verifikator zato ima tri ishoda, ne dva:
 
 - potpis i žig proveravaju se i lanac vodi do korena kome verifikator veruje;
-- potpis i žig su matematički ispravni, ali koren nije poznat — **to nije „valid"**;
+- potpis i žig su matematički ispravni, ali koren nije poznat - **to nije „valid"**;
 - nešto ne valja.
 
 ---

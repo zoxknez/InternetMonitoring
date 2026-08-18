@@ -15,7 +15,7 @@ KOJOM stvarnom mrežnom putanjom?
 KAKO se zna da rezultat posle toga nije neprimetno promenjen?
 ```
 
-Danas je odgovoreno prvo pitanje. Drugo delimično. Treće se svodi na „tabela ruta se slaže" —
+Danas je odgovoreno prvo pitanje. Drugo delimično. Treće se svodi na „tabela ruta se slaže" -
 što nije isto što i „soket je stvarno išao tim putem". Četvrto ima pošten ali skroman odgovor:
 lanac je unutrašnje dosledan, a kontrolni zbirovi stoje u istom folderu u koji se piše.
 
@@ -33,7 +33,7 @@ prikaz i distribucija. Svaka faza je upotrebljiva sama za sebe.
 Bez ijedne izmene ponašanja.
 
 - `EVIDENCE-MODEL-4.md`, `THREAT-MODEL-3.0.md`, `MIGRATION-2.x-TO-3.0.md`, `INVARIJANTE.md`
-- `baseline/v2.7.2/` — prava sesija snimljena pravim rekorderom, bez ijednog privatnog podatka
+- `baseline/v2.7.2/` - prava sesija snimljena pravim rekorderom, bez ijednog privatnog podatka
 - characterization testovi koji je čitaju: lanac se verifikuje, indeks se pregrađuje na iste
   vrednosti, nalaz i predmet nose svoje verzije, izveštaj nosi formulacije iz 2.7.2
 - CI korak koji odbija da fajl iz `baseline/` postoji samo lokalno
@@ -46,25 +46,25 @@ pad testa a ne kao primedba u pregledu.
 Danas: tabela ruta se slaže sa izabranim adapterom. Sutra: **ovaj soket je išao ovim
 interfejsom.**
 
-Dve podfaze, i namerno razdvojene — da testovi nikada ne zamute razliku između „posmatrao sam
+Dve podfaze, i namerno razdvojene - da testovi nikada ne zamute razliku između „posmatrao sam
 putanju" i „nametnuo sam putanju".
 
-**3.0-1a · `Observed`** — **urađeno.** Jedini cilj je bio pouzdano uhvatiti stvarnu putanju.
+**3.0-1a · `Observed`** - **urađeno.** Jedini cilj je bio pouzdano uhvatiti stvarnu putanju.
 
 - `SocketsHttpHandler.ConnectCallback` beleži `LocalEndpoint`, `RemoteEndpoint` i adresnu
   familiju za svaku konekciju merenja
-- lokalna adresa se preslikava u interfejs, pa nastaje `ConnectionAttempt` — **činjenica**
+- lokalna adresa se preslikava u interfejs, pa nastaje `ConnectionAttempt` - **činjenica**
 - `PathAgreement { Match, Mismatch, Unknown }` je **zaključak** iz te činjenice i traženog
   adaptera, sa vezom na zapise iz kojih je izveden
 - ništa se ne forsira: pita se šta bi sistem uradio, i zapisuje šta jeste
 - `ActualPathMismatch` je defekt merenja; `Unknown` nije, jer je već pokriven proverom tabele ruta
 - adrese se zapisuju raspakovane: soket dvostrukog steka javlja IPv4 vezu kao `::ffff:a.b.c.d`,
-  pa bi svako IPv4 merenje na ovoj mašini bilo zavedeno kao IPv6 — a mešovita familija je
+  pa bi svako IPv4 merenje na ovoj mašini bilo zavedeno kao IPv6 - a mešovita familija je
   upravo ono zbog čega se familija i beleži
 
-**3.0-1b · `Forced`** — merenje koje se namerno vezuje za izabrani adapter.
+**3.0-1b · `Forced`** - merenje koje se namerno vezuje za izabrani adapter.
 
-- `MeasurementIntent { ObserveSystemPath, MeasureRequestedInterface }` — dva različita pitanja,
+- `MeasurementIntent { ObserveSystemPath, MeasureRequestedInterface }` - dva različita pitanja,
   pa i dva različita nalaza; rezultat sa nametnutom putanjom ne dokazuje kojim putem ide
   korisnikov obični saobraćaj
 - bindovan soket bez rute → `MeasurementStatus = NotExecuted`, razlog
@@ -72,14 +72,14 @@ putanju" i „nametnuo sam putanju".
 
 **Kasnije, uz njih:** `TunnelIndication { Detected, NotDetected, Unknown }` sa signalima i
 verzijom detektora. Tunel je zaključak, ne činjenica, i `PathAgreement` ne sme da zavisi od
-njega — poređenje interfejsa je opažanje, „ovo liči na VPN" nije.
+njega - poređenje interfejsa je opažanje, „ovo liči na VPN" nije.
 
 Tek posle svega ovoga sme da postoji `ActualMeasurementPathConfirmed`.
 
 ### 3.0-2 · Potpisan manifest
 
 - kanonska serijalizacija (stabilan redosled polja, UTF-8, normalizacija, format brojeva i
-  vremena) — bez toga potpis nije ponovljiv
+  vremena) - bez toga potpis nije ponovljiv
 - `manifest.json`: verzija, sesija, vreme, verzije modela, završni otisak lanca, spisak fajlova
   sa veličinom i SHA-256, otisak pravnog konteksta
 - `manifest.sig`
@@ -107,19 +107,19 @@ Verifikator potvrđuje **integritet i poreklo paketa**, ne mrežni zaključak.
 ### 3.0-6 · Pravi gubitak paketa
 
 Tek ovde se termin vraća. Više proba ka **istoj** meti, po meti: poslato, primljeno, izgubljeno,
-min/median/p95/max RTT, džiter. Bez prosečivanja procenata preko meta — dve zdrave i jedna koja
+min/median/p95/max RTT, džiter. Bez prosečivanja procenata preko meta - dve zdrave i jedna koja
 filtrira ICMP nisu „23 % gubitka" nego jedna meta sa sopstvenim problemom.
 
 ### 3.0-7 · Zdravlje meta
 
 Istorija po meti (uspešnost, uzastopni neuspesi, sposobnost za ICMP, trenutno stanje). Meta koja
-se pokvari gubi težinu u klasifikaciji — ali se **ne izbacuje tiho**: evidencija kaže da je
+se pokvari gubi težinu u klasifikaciji - ali se **ne izbacuje tiho**: evidencija kaže da je
 isključena i zašto.
 
 ### 3.0-8 · Šta ruter ume
 
 Prvih nekoliko minuta uči se profil: odgovara li na ICMP, kako se ponaša ARP, ima li upravljački
-odgovor. Ako je „ICMP dokazano podržan" pa prestane — to je jak signal. Ako je „nepouzdan",
+odgovor. Ako je „ICMP dokazano podržan" pa prestane - to je jak signal. Ako je „nepouzdan",
 izostanak odgovora ne sme sam po sebi da znači `GatewayDown`.
 
 ### 3.0-9 · Zdravlje sopstvenih proba
@@ -138,7 +138,7 @@ Sesija/
   Exports/    korisnik piše
 ```
 
-Ponovna izrada izveštaja čita `Raw/` + `Evidence/` i piše u `Derived/` ili `Exports/` — nikada
+Ponovna izrada izveštaja čita `Raw/` + `Evidence/` i piše u `Derived/` ili `Exports/` - nikada
 u izvor.
 
 ### 3.0-11 · Komande preko imenovane cevi
@@ -151,14 +151,14 @@ servisa.
 
 Checkpoint nosi i identifikator pokretanja sistema. Ako se proces restartovao a Windows nije,
 trajanje se rekonstruiše; ako se Windows restartovao, period **nije meren** i tako se i
-prijavljuje — ne kao prekid interneta.
+prijavljuje - ne kao prekid interneta.
 
 ### 3.0-13 · Ocena kvaliteta dokaza
 
 Jedno mesto, ne deset `if`-ova po prikazu. Dimenzije: pokrivenost, izolacija lokalne putanje,
 potvrda spolja, provera stvarne putanje, kvalitet merenja, integritet, pouzdano vreme, zdravlje
 proba, pravni kontekst. Ishod je pojas (`Strong`/`Moderate`/`Limited`/`Insufficient`), a ne
-procenat — `87,4 %` izgleda kao verovatnoća a nije.
+procenat - `87,4 %` izgleda kao verovatnoća a nije.
 
 ### 3.0-14 · Jedan model dokumenta
 
@@ -172,14 +172,14 @@ pet renderera.
 
 ### 3.0-15 · Preuređen prozor
 
-Četiri celine: MONITOR, EVIDENCE, CASE, SPEED. Namerno tek ovde — raspored ekrana pre nego što
+Četiri celine: MONITOR, EVIDENCE, CASE, SPEED. Namerno tek ovde - raspored ekrana pre nego što
 se zna šta se sve prikazuje bio bi posao dva puta.
 
 ### 3.0-16 · Redigovani paket za deljenje
 
 Izvedena kopija bez imena mreža, BSSID-a, imena mašine i privatnih adresa. Original se ne dira.
 Redigovani paket nosi otisak originalnog manifesta, politiku redakcije, nov manifest i nov
-potpis — pa se može dokazati da je izvedena verzija baš tog originala.
+potpis - pa se može dokazati da je izvedena verzija baš tog originala.
 
 ### 3.0-17 · Instalacija i izdanje
 

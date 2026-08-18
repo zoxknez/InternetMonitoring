@@ -1,6 +1,6 @@
 # baseline/
 
-Zamrznuti artefakti prethodnih verzija. **Testovi ih čitaju** — nisu primeri ni dokumentacija.
+Zamrznuti artefakti prethodnih verzija. **Testovi ih čitaju** - nisu primeri ni dokumentacija.
 
 | Folder | Šta sadrži |
 |---|---|
@@ -18,13 +18,13 @@ vrsta ulaza koja to hvata.
 **Ne menjati.** Ako novoj verziji treba drugačiji slučaj, dodaje se nov fajl ili nov folder;
 postojeći ostaju kakvi jesu, jer opisuju šta je stvarno bilo na disku.
 
-**Fajlovi su obavezni.** Test koji ih čita **pada** kad fajla nema — nikada ga ne preskače.
+**Fajlovi su obavezni.** Test koji ih čita **pada** kad fajla nema - nikada ga ne preskače.
 Provera koja tiho ne uradi ništa prijavljuje uspeh za posao koji nije obavljen. CI uz to
 odbija fajl iz `baseline/` koji postoji lokalno a nije u gitu; tačno to se desilo u 2.7.1,
 gde ih je pojelo `.gitignore` pravilo pisano da zaštiti prave sesije.
 
-**Nema privatnih podataka.** `v2.7.2/sesija/` je prava evidencija — pravi rekorder, pravi lanac,
-pravi izveštaji — ali od sintetičkih uzoraka: mašina je `TEST-PC`, adrese su dokumentacione.
+**Nema privatnih podataka.** `v2.7.2/sesija/` je prava evidencija - pravi rekorder, pravi lanac,
+pravi izveštaji - ali od sintetičkih uzoraka: mašina je `TEST-PC`, adrese su dokumentacione.
 Piše je `BaselineSnapshotWriter`, i to samo kada je postavljeno `IEM_WRITE_BASELINE=1`:
 
 ```bash
