@@ -32,3 +32,9 @@ merenje.json
 merenje-u-toku.json
 zahtev.json
 DnevnikSlucaja.json
+
+# Osim onih u baseline/ - to su izmišljeni fajlovi u obliku koji je pisala starija verzija,
+# bez ijednog stvarnog podatka, i testovi ih čitaju. Pravilo iznad postoji da bi zaštitilo
+# prave sesije, a ne da bi sprečilo da se u repozitorijum stavi fixture.
+!baseline/**/MerenjeBrzine.json
+!baseline/**/DnevnikSlucaja.json

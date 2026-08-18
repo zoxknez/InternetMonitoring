@@ -1,0 +1,12 @@
+{
+  "MeasuredAtUtc": "2026-08-16T09:15:00+02:00",
+  "Medium": "Ethernet",
+  "LinkSpeedMbps": 1000,
+  "ContractedMbps": 100,
+  "DownloadMbps": 61.4,
+  "BytesTransferred": 76000000,
+  "Duration": "00:00:10",
+  "ValidForComplaint": true,
+  "BandLabel": "iznad minimalne, ispod uobičajene",
+  "Defects": []
+}
