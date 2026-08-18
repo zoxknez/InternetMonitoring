@@ -25,6 +25,7 @@
     --accent:  #1B4DD8;
     --accent-ink: #FFFFFF;
     --accent-soft: #E5EBFB;
+    --warn-soft: #FBF1DE;
 
     /* The outage strip's own four states. They mean here exactly what they
        mean on the program's screen, which is why they are named for it. */
@@ -56,6 +57,7 @@
       --accent:  #6E96FF;
       --accent-ink: #08101F;
       --accent-soft: #16264A;
+      --warn-soft: #2B2214;
       --ok:         #45BE77;
       --degraded:   #E8B65C;
       --down:       #F0655F;
@@ -76,6 +78,7 @@
     --accent:  #6E96FF;
     --accent-ink: #08101F;
     --accent-soft: #16264A;
+    --warn-soft: #2B2214;
     --ok:         #45BE77;
     --degraded:   #E8B65C;
     --down:       #F0655F;
@@ -313,6 +316,55 @@
   .chip.wait { background: var(--sunken); color: var(--faint); }
   .plat p { font-size: .85rem; color: var(--muted); margin: 0; }
 
+  /* ---- Isticanje ------------------------------------------------------------
+     One instruction on this page changes whether the program works at all, and
+     it was set in the same faint grey as the file size. */
+  .callout {
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+    border: 1px solid var(--degraded);
+    background: var(--warn-soft);
+    border-radius: 6px;
+    padding: 16px 18px;
+    max-width: var(--col);
+  }
+  .callout svg { flex: 0 0 auto; color: var(--degraded); margin-top: 2px; }
+  .callout strong { display: block; font-size: 1.02rem; margin-bottom: 3px; }
+  .callout p { font-size: .92rem; color: var(--muted); }
+  .callout .keys {
+    font-family: var(--data);
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 3px;
+    padding: 1px 6px;
+    white-space: nowrap;
+  }
+
+  /* ---- Verzije --------------------------------------------------------------
+     Newest first, each with what actually changed. A version line with no
+     description is a number nobody can act on. */
+  .versions { display: flex; flex-direction: column; }
+  .ver {
+    display: grid;
+    grid-template-columns: 10.5rem 1fr;
+    gap: 6px 26px;
+    padding: 22px 0;
+    border-top: 1px solid var(--line);
+  }
+  .ver:first-child { border-top: 0; padding-top: 4px; }
+  .ver-mark { display: flex; flex-direction: column; gap: 7px; align-items: flex-start; }
+  .ver-tag { font-family: var(--data); font-size: .95rem; font-weight: 600; }
+  .ver-date { font-family: var(--data); font-size: .74rem; color: var(--faint); }
+  .ver-body h3 { margin-bottom: 7px; }
+  .ver-body p { color: var(--muted); font-size: .95rem; }
+  .ver-body ul { margin: 7px 0 0; padding-left: 18px; color: var(--muted); font-size: .95rem; }
+  .ver-body li { margin-bottom: 4px; }
+  @media (max-width: 620px) {
+    .ver { grid-template-columns: 1fr; gap: 10px; }
+    .ver-mark { flex-direction: row; align-items: baseline; gap: 12px; }
+  }
+
   /* ---- Notices ------------------------------------------------------------- */
   .notice {
     border-left: 3px solid var(--degraded);
@@ -430,6 +482,7 @@
     <nav>
       <a href="#kako">Kako radi</a>
       <a href="#preuzimanje">Preuzimanje</a>
+      <a href="#verzije">Verzije</a>
       <a href="#platforme">Platforme</a>
       <a href="#granice">Granice</a>
       <a href="https://github.com/zoxknez/InternetMonitoring" style="display: inline-flex; align-items: center; gap: 6px;">
@@ -489,9 +542,24 @@
       <a class="btn ghost" href="#preuzimanje">Ostale verzije</a>
       <span class="cta-note">
         Jedan fajl, 65 MB. Ništa se ne instalira.<br />
-        Pokrenite ga <strong>desnim klikom &rarr; Pokreni kao administrator</strong>.<br />
         Otvoren kod pod MIT licencom - sve što program tvrdi može da se proveri u izvoru.
       </span>
+    </div>
+
+    <div class="callout" style="margin-top: 24px;">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M12 2.5 4.5 5.5v6.2c0 4.6 3.1 8.6 7.5 9.8 4.4-1.2 7.5-5.2 7.5-9.8V5.5L12 2.5Z" />
+        <path d="m8.7 11.8 2.4 2.4 4.2-4.6" />
+      </svg>
+      <div>
+        <strong>Pokrenite program kao administrator.</strong>
+        <p>
+          Desni klik na preuzeti fajl <span class="keys">&rarr; Pokreni kao administrator</span>.
+          Bez toga program ne može da pročita sve što mu treba od sistema, i prikaz nadzora ume
+          da otkaže.
+        </p>
+      </div>
     </div>
   </section>
 </div>
@@ -694,6 +762,118 @@ Unblock-File .\InternetMonitoring-2.8.0-beta.2-win-x64.exe</pre>
         </div>
       </details>
     </div>
+  </section>
+</div>
+
+<div class="wrap"><hr class="strip strip-rule" /></div>
+
+<div class="wrap">
+  <section id="verzije">
+    <div class="col stack" style="margin-bottom: 30px;">
+      <p class="eyebrow">Verzije</p>
+      <h2>Šta je u kojoj verziji, i zašto je menjano.</h2>
+      <p class="lede">
+        Prva cifra je oblik dokaza, druga ono što korisnik vidi, treća ispravke. Svaka izmena
+        koja obara neku dosadašnju tvrdnju programa piše se ovde, a ne samo u istoriji koda.
+      </p>
+    </div>
+
+    <div class="versions">
+      <div class="ver">
+        <div class="ver-mark">
+          <span class="ver-tag">2.8.0-beta.2</span>
+          <span class="chip">Trenutna</span>
+          <span class="ver-date">18.08.2026.</span>
+        </div>
+        <div class="ver-body">
+          <h3>Merenje beleži kojim je adapterom stvarno išlo</h3>
+          <p>
+            Do sada je najjača tvrdnja o putanji merenja bila predviđanje iz tabele ruta - šta
+            bi sistem uradio. Sada se beleži i šta jeste: svaka veza koju merenje otvori i
+            adapter kome pripada. Kad se ne slažu, opažanje odlučuje.
+          </p>
+          <ul>
+            <li>
+              merenje čije veze izađu kroz drugi adapter više ne može da dokazuje ugovorenu
+              brzinu, ma šta tabela ruta rekla unapred
+            </li>
+            <li>
+              merenje se više ne upisuje u zapečaćen paket - ranije je odlazilo u folder sesije
+              koji je već bio prebrojan i zapakovan za slanje
+            </li>
+            <li>prozor kaže da li merenje ispunjava uslove za prigovor, ne samo koliko je izmerio</li>
+            <li>portabl izdanje: jedan fajl, bez instalacije</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="ver">
+        <div class="ver-mark">
+          <span class="ver-tag">2.8.0-beta.1</span>
+          <span class="ver-date">18.08.2026.</span>
+        </div>
+        <div class="ver-body">
+          <h3>Prvo izdanje otvoreno za testiranje</h3>
+          <p>
+            Zamenjeno istog dana: prozor je nepromenljivim tekstom obećavao da nadzor preživljava
+            zatvaranje prozora i restart, što bez instaliranog servisa nije tačno.
+          </p>
+        </div>
+      </div>
+
+      <div class="ver">
+        <div class="ver-mark">
+          <span class="ver-tag">2.7.2</span>
+          <span class="ver-date">18.08.2026.</span>
+        </div>
+        <div class="ver-body">
+          <h3>Privremen rok se ne pretvara u konačan</h3>
+          <p>
+            Dok odgovor operatera nije stigao, rok za Regulatora računa se od dana do kog je
+            odgovor bio dužan. To je privremeno uporište, i kad pravi odgovor stigne, rok se
+            menja - unutar istih zamrznutih pravila, sa zapisanim razlogom izmene.
+          </p>
+        </div>
+      </div>
+
+      <div class="ver">
+        <div class="ver-mark">
+          <span class="ver-tag">2.7.1</span>
+          <span class="ver-date">18.08.2026.</span>
+        </div>
+        <div class="ver-body">
+          <h3>Stari nalaz nije današnji zaključak</h3>
+          <p>
+            Merenje snimljeno starijom verzijom nosi zaključak donet po pravilima koja su u
+            međuvremenu ispravljena. Takav nalaz se sada čita kao istorija, a brojevi se ocenjuju
+            iznova. Nemereno više nigde ne piše kao nula.
+          </p>
+        </div>
+      </div>
+
+      <div class="ver">
+        <div class="ver-mark">
+          <span class="ver-tag">2.7.0</span>
+          <span class="ver-date">17.08.2026.</span>
+        </div>
+        <div class="ver-body">
+          <h3>Svaka tvrdnja svedena na ono što je izmereno</h3>
+          <p>
+            Izdanje koje je uvelo pravilo po kom se sve ostalo meri: „nisam mogao da proverim"
+            nikada ne postaje „proverio sam i u redu je". Uklonjeno je pripisivanje krivice
+            operateru, „gubitak paketa" koji to nije bio, i tvrdnja da lanac otisaka dokazuje
+            više nego što dokazuje.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <p style="margin-top: 26px;">
+      Ceo spisak izmena, sa razlozima:
+      <a href="https://github.com/zoxknez/InternetMonitoring/blob/main/CHANGELOG.md">CHANGELOG.md</a>
+      &middot;
+      <a href="https://github.com/zoxknez/InternetMonitoring/releases">sva izdanja</a>
+    </p>
   </section>
 </div>
 
