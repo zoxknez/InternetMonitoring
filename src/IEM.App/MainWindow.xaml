@@ -13,14 +13,17 @@
         WindowStartupLocation="CenterScreen">
 
     <!--
-        A dashboard sized to the window, with two rules that the previous attempts broke.
-        Nothing scrolls, and nothing is clipped.
-        Those pull against each other: a fixed height with more content than fits does not
-        scroll, it cuts - which is how "Nenadzirano" lost its last line and the footer lost
-        its second. So every block that has to fit is laid out with UniformGrid, which
-        divides the space it is given exactly, and the text inside it is short enough to sit
-        in the resulting cell. Nothing here carries a MinHeight that could push the footer
-        off the bottom edge.
+        A dashboard sized to the window, and nothing is ever clipped.
+
+        It used to hold a second rule too - nothing scrolls - and the two were kept together by
+        laying every block out with UniformGrid, which divides the height it is given into equal
+        cells. That works only while the text fits the cell. On a smaller screen it does not:
+        the cells shrink, the wrapped lines run over each other, and the card becomes unreadable
+        until the window is dragged wider. A tester hit exactly that.
+
+        So the rows size to their content now, and the whole dashboard scrolls when the window
+        is too short to hold it. Between text that cannot be read and a scrollbar, the scrollbar
+        wins - and on a normal window there is nothing to scroll anyway.
     -->
 
     <Window.Resources>
@@ -144,8 +147,12 @@
             </Grid>
         </Border>
 
-        <Grid Grid.Row="1" MaxWidth="1300" Margin="22,14,22,14">
+        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto"
+                      HorizontalScrollBarVisibility="Disabled" Padding="0"
+                      Focusable="False">
+        <Grid MaxWidth="1300" Margin="22,14,22,14">
             <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
@@ -194,7 +201,7 @@
             <!-- ===================== Idle ===================== -->
             <!-- Three columns of near-equal content rather than two of unequal, which left
                  the shorter one with a band of blank card under it. -->
-            <UniformGrid Grid.Row="4" Columns="3"
+            <UniformGrid Grid.Row="5" Columns="3"
                          Visibility="{Binding IsRunning, Converter={StaticResource BoolToVisible},
                                       ConverterParameter=Invert}">
 
@@ -232,7 +239,14 @@
                             <ItemsControl Grid.Row="1" Margin="0,16,0,12">
                                 <ItemsControl.ItemsPanel>
                                     <ItemsPanelTemplate>
-                                        <UniformGrid Columns="1" />
+                                        <!--
+                                            StackPanel, ne UniformGrid. UniformGrid deli
+                                            raspoloživu visinu na jednake delove, pa na nižem
+                                            prozoru svaki red dobije manje nego što mu treba i
+                                            redovi teksta se preklope - nečitko dok se prozor
+                                            ne razvuče. Visina reda mora da prati svoj sadržaj.
+                                        -->
+                                        <StackPanel />
                                     </ItemsPanelTemplate>
                                 </ItemsControl.ItemsPanel>
 
@@ -335,9 +349,10 @@
                                        Margin="0,0,0,6" />
                             <TextBlock Style="{StaticResource Hint}" Margin="0,0,0,8"
                                        Text="Ako brzina pada u određeno doba dana, zakažite merenje za to vreme. Broj je koliko daleko je merenje." />
-                            <StackPanel Orientation="Horizontal">
+                            <WrapPanel>
                                 <TextBox Text="{Binding SpeedScheduleAmount}" Width="44" Padding="4,3"
-                                         FontSize="11.5" VerticalAlignment="Center" MaxLength="5" />
+                                         FontSize="11.5" VerticalAlignment="Center" MaxLength="5"
+                                         Margin="0,0,0,5" />
                                 <ComboBox ItemsSource="{Binding SpeedScheduleUnits}"
                                           SelectedItem="{Binding SelectedSpeedScheduleUnit}"
                                           Width="64" Margin="4,0,0,0" FontSize="11.5"
@@ -351,7 +366,7 @@
                                         Command="{Binding MeasureNowCommand}"
                                         IsEnabled="{Binding CanScheduleSpeed}"
                                         ToolTip="Meri brzinu sada: sačeka da veza utihne, pa zapiše izmereno uz sesiju." />
-                            </StackPanel>
+                            </WrapPanel>
 
                             <!-- Without the contracted rate a measurement can be recorded but
                                  never judged, so every figure taken here was filed as unusable
@@ -396,7 +411,7 @@
                         <ItemsControl Grid.Row="1">
                             <ItemsControl.ItemsPanel>
                                 <ItemsPanelTemplate>
-                                    <UniformGrid Columns="1" />
+                                    <StackPanel />
                                 </ItemsPanelTemplate>
                             </ItemsControl.ItemsPanel>
 
@@ -506,7 +521,7 @@
                         <ItemsControl Grid.Row="1">
                             <ItemsControl.ItemsPanel>
                                 <ItemsPanelTemplate>
-                                    <UniformGrid Columns="1" />
+                                    <StackPanel />
                                 </ItemsPanelTemplate>
                             </ItemsControl.ItemsPanel>
 
@@ -680,7 +695,13 @@
                 </Border>
             </Grid>
 
-            <Grid Grid.Row="3" MinHeight="86" Margin="0,4,0,10"
+            <!--
+                The verdict is one line, not a panel. It used to sit in a column beside the
+                action card and stretch to whatever height that card needed, which turned the
+                single most common result - "nijedan prekid" - into a green block covering half
+                the window with nothing in it.
+            -->
+            <Grid Grid.Row="3" Margin="0,4,0,10"
                   Visibility="{Binding IsRunning, Converter={StaticResource BoolToVisible}}">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
@@ -688,96 +709,175 @@
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
 
-                <Border x:Name="VerdictCard" Style="{StaticResource Banner}" Padding="16,0">
+                <Border x:Name="VerdictCard" Style="{StaticResource Banner}" Padding="18,13">
                     <Grid VerticalAlignment="Center">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="*" />
                         </Grid.ColumnDefinitions>
 
-                        <TextBlock x:Name="VerdictHeadline" FontSize="16.5" FontWeight="SemiBold"
-                                   VerticalAlignment="Center" MaxWidth="260" TextWrapping="Wrap"
+                        <TextBlock x:Name="VerdictHeadline" FontSize="16" FontWeight="SemiBold"
+                                   VerticalAlignment="Center" TextWrapping="NoWrap"
                                    Text="{Binding Verdict.Headline}" />
 
                         <TextBlock Grid.Column="1" Style="{StaticResource Body}"
-                                   Foreground="{StaticResource Muted}" FontSize="13.5" LineHeight="19"
-                                   VerticalAlignment="Center" Margin="18,0,0,0"
+                                   Foreground="{StaticResource Muted}" FontSize="13" LineHeight="18"
+                                   VerticalAlignment="Center" Margin="16,0,0,0" TextWrapping="Wrap"
                                    Text="{Binding Verdict.Detail}" />
                     </Grid>
                 </Border>
 
-                <Border Grid.Column="2" Style="{StaticResource Card}" Padding="11,10">
-                    <StackPanel VerticalAlignment="Center">
-                        <Button Style="{StaticResource Danger}" Content="Zaustavi nadzor"
-                                Padding="14,7" Margin="0,0,0,6"
-                                Command="{Binding StopCommand}"
-                                AutomationProperties.AutomationId="StopButton" />
-                        <StackPanel Orientation="Horizontal">
-                            <Button Style="{StaticResource Secondary}" Content="Folder"
-                                    Padding="13,7" Command="{Binding OpenFolderCommand}" Margin="0,0,6,0"
-                                    ToolTip="Otvara folder sa dokazima." />
-                            <Button Style="{StaticResource Secondary}" Content="Izveštaj"
-                                    Padding="13,7" Command="{Binding OpenReportCommand}" Margin="0,0,6,0"
-                                    AutomationProperties.AutomationId="ReportButton"
-                                    ToolTip="Otvara Izvestaj.pdf, ili Izvestaj.html ako PDF još nije napravljen." />
-                            <Button Style="{StaticResource Secondary}" Content="Prigovor"
-                                    Padding="13,7" Command="{Binding PrepareComplaintCommand}" Margin="0,0,6,0"
-                                    ToolTip="Priprema prigovor operateru sa izračunatim rokovima. Odbija da ga napravi ako u evidenciji nema prekida izolovanih iza rutera." />
-                            <Button Style="{StaticResource Secondary}" Content="Prijava RATEL"
-                                    Padding="13,7" Command="{Binding PrepareRegulatorCommand}"
-                                    ToolTip="Priprema prijavu RATEL-u kada je operateru istekao rok za odgovor ili je prigovor odbijen. Pre toga odbija, jer se prijava podneta ranije ne razmatra." />
-                        </StackPanel>
+                <Button Grid.Column="2" Style="{StaticResource Danger}" Content="Zaustavi nadzor"
+                        Padding="20,0" MinWidth="176" FontSize="13.5"
+                        Command="{Binding StopCommand}"
+                        AutomationProperties.AutomationId="StopButton"
+                        ToolTip="Zaustavlja nadzor. Pita da li da odmah napravi izveštaj." />
+            </Grid>
 
-                        <StackPanel Orientation="Horizontal" Margin="0,7,0,0">
-                            <Button Style="{StaticResource Secondary}" Content="Prigovor poslat"
-                                    Padding="9,4" FontSize="11.5" Margin="0,0,6,0"
-                                    Command="{Binding MarkSubmittedTodayCommand}"
-                                    ToolTip="Beleži današnji dan kao dan podnošenja prigovora u dnevnik predmeta." />
-                            <Button Style="{StaticResource Secondary}" Content="Odgovor: odbijen"
-                                    Padding="9,4" FontSize="11.5" Margin="0,0,6,0"
-                                    Command="{Binding MarkRefusedTodayCommand}"
-                                    ToolTip="Beleži da je operater danas odgovorio i odbio prigovor." />
-                            <Button Style="{StaticResource Secondary}" Content="Odgovor: usvojen"
-                                    Padding="9,4" FontSize="11.5"
-                                    Command="{Binding MarkUpheldTodayCommand}"
-                                    ToolTip="Beleži da je operater danas odgovorio i usvojio prigovor." />
-                        </StackPanel>
+            <!--
+                Four jobs, four columns, across the whole width. Stacked into one narrow card at
+                the right they crowded into its left edge and left the rest of it empty, which is
+                what a wall of small buttons with no grouping looks like when it is given a
+                column instead of a room. Every button stretches to its column, so a group reads
+                as a block rather than as leftovers pushed to one side.
+            -->
+            <Border Grid.Row="4" Style="{StaticResource Card}" Padding="20,16" Margin="0,0,0,10"
+                    Visibility="{Binding IsRunning, Converter={StaticResource BoolToVisible}}">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="28" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="28" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="28" />
+                        <ColumnDefinition Width="1.25*" />
+                    </Grid.ColumnDefinitions>
 
-                        <TextBlock Text="{Binding CaseText}" FontSize="11.5" Margin="1,7,0,0"
-                                   Foreground="{StaticResource Muted}" TextWrapping="Wrap" />
+                    <!-- Snimljeno -->
+                    <StackPanel>
+                        <TextBlock Style="{StaticResource Label}" Text="SNIMLJENO" Margin="0,0,0,9" />
+                        <Button Style="{StaticResource Secondary}" Content="Otvori folder"
+                                Padding="13,8" Margin="0,0,0,7" HorizontalAlignment="Stretch"
+                                Command="{Binding OpenFolderCommand}"
+                                ToolTip="Otvara folder sa dokazima." />
+                        <Button Style="{StaticResource Secondary}" Content="Otvori izveštaj"
+                                Padding="13,8" HorizontalAlignment="Stretch"
+                                Command="{Binding OpenReportCommand}"
+                                AutomationProperties.AutomationId="ReportButton"
+                                ToolTip="Otvara Izvestaj.pdf, ili Izvestaj.html ako PDF još nije napravljen." />
+                    </StackPanel>
 
-                        <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
-                            <TextBox Text="{Binding SpeedScheduleAmount}" Width="44" Padding="4,3"
-                                     FontSize="11.5" VerticalAlignment="Center" MaxLength="5"
+                    <Rectangle Grid.Column="1" Width="1" Fill="{StaticResource Hairline}"
+                               HorizontalAlignment="Center" VerticalAlignment="Stretch" />
+
+                    <!-- Prigovor -->
+                    <StackPanel Grid.Column="2">
+                        <TextBlock Style="{StaticResource Label}" Text="PRIGOVOR" Margin="0,0,0,9" />
+                        <Button Style="{StaticResource Secondary}" Content="Napravi prigovor"
+                                Padding="13,8" Margin="0,0,0,7" HorizontalAlignment="Stretch"
+                                Command="{Binding PrepareComplaintCommand}"
+                                ToolTip="Priprema prigovor operateru sa izračunatim rokovima. Odbija da ga napravi ako u evidenciji nema prekida izolovanih iza rutera." />
+                        <Button Style="{StaticResource Secondary}" Content="Prijava RATEL"
+                                Padding="13,8" HorizontalAlignment="Stretch"
+                                Command="{Binding PrepareRegulatorCommand}"
+                                ToolTip="Priprema prijavu RATEL-u kada je operateru istekao rok za odgovor ili je prigovor odbijen. Pre toga odbija, jer se prijava podneta ranije ne razmatra." />
+                    </StackPanel>
+
+                    <Rectangle Grid.Column="3" Width="1" Fill="{StaticResource Hairline}"
+                               HorizontalAlignment="Center" VerticalAlignment="Stretch" />
+
+                    <!-- Zabelezi -->
+                    <StackPanel Grid.Column="4">
+                        <TextBlock Style="{StaticResource Label}" Text="ZABELEŽI ŠTA SE DESILO"
+                                   Margin="0,0,0,9" />
+                        <Button Style="{StaticResource Secondary}" Content="Prigovor poslat danas"
+                                Padding="13,7" FontSize="12" Margin="0,0,0,6"
+                                HorizontalAlignment="Stretch"
+                                Command="{Binding MarkSubmittedTodayCommand}"
+                                ToolTip="Beleži današnji dan kao dan podnošenja prigovora u dnevnik predmeta." />
+                        <Button Style="{StaticResource Secondary}" Content="Odgovor: odbijen"
+                                Padding="13,7" FontSize="12" Margin="0,0,0,6"
+                                HorizontalAlignment="Stretch"
+                                Command="{Binding MarkRefusedTodayCommand}"
+                                ToolTip="Beleži da je operater danas odgovorio i odbio prigovor." />
+                        <Button Style="{StaticResource Secondary}" Content="Odgovor: usvojen"
+                                Padding="13,7" FontSize="12" HorizontalAlignment="Stretch"
+                                Command="{Binding MarkUpheldTodayCommand}"
+                                ToolTip="Beleži da je operater danas odgovorio i usvojio prigovor." />
+                    </StackPanel>
+
+                    <Rectangle Grid.Column="5" Width="1" Fill="{StaticResource Hairline}"
+                               HorizontalAlignment="Center" VerticalAlignment="Stretch" />
+
+                    <!-- Merenje brzine -->
+                    <StackPanel Grid.Column="6">
+                        <TextBlock Style="{StaticResource Label}" Text="MERENJE BRZINE" Margin="0,0,0,9" />
+
+                        <Grid Margin="0,0,0,8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="Ugovoreno" FontSize="12" VerticalAlignment="Center"
+                                       Foreground="{StaticResource Muted}" Margin="0,0,8,0" />
+                            <TextBox Grid.Column="1" Text="{Binding ContractedRateText}" Padding="6,5"
+                                     FontSize="12" VerticalAlignment="Center" MaxLength="12"
+                                     ToolTip="Ugovorena brzina u Mbit/s, kako piše u ugovoru: 100 ili 100/20 (preuzimanje/slanje). Bez nje se merenje zapisuje, ali se ne ocenjuje." />
+                            <TextBlock Grid.Column="2" Text="Mbit/s" FontSize="12"
+                                       VerticalAlignment="Center" Foreground="{StaticResource Muted}"
+                                       Margin="8,0,0,0" />
+                        </Grid>
+
+                        <Button Style="{StaticResource Secondary}" Content="Izmeri odmah"
+                                Padding="13,8" Margin="0,0,0,7" HorizontalAlignment="Stretch"
+                                Command="{Binding MeasureNowCommand}"
+                                IsEnabled="{Binding CanScheduleSpeed}"
+                                ToolTip="Meri brzinu sada: sačeka da veza utihne, pa zapiše izmereno uz sesiju." />
+
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="ili za" FontSize="12" VerticalAlignment="Center"
+                                       Foreground="{StaticResource Muted}" Margin="0,0,7,0" />
+                            <TextBox Grid.Column="1" Text="{Binding SpeedScheduleAmount}" Padding="6,5"
+                                     FontSize="12" VerticalAlignment="Center" MaxLength="5"
                                      ToolTip="Za koliko vremena da se pokrene merenje brzine. Samo broj: 90 znači za 90 minuta." />
-                            <ComboBox ItemsSource="{Binding SpeedScheduleUnits}"
+                            <ComboBox Grid.Column="2" ItemsSource="{Binding SpeedScheduleUnits}"
                                       SelectedItem="{Binding SelectedSpeedScheduleUnit}"
-                                      Width="64" Margin="4,0,0,0" FontSize="11.5"
+                                      Width="72" FontSize="12" Margin="6,0,6,0"
                                       VerticalAlignment="Center" />
-                            <Button Style="{StaticResource Secondary}" Content="Zakaži merenje brzine"
-                                    Padding="9,4" FontSize="11.5" Margin="4,0,0,0"
+                            <Button Grid.Column="3" Style="{StaticResource Secondary}" Content="Zakaži"
+                                    Padding="13,7" FontSize="12"
                                     Command="{Binding ScheduleSpeedCommand}"
                                     IsEnabled="{Binding CanScheduleSpeed}"
                                     ToolTip="Pokreće merenje brzine posle unešenog vremena, sačeka da veza utihne, pa zapiše izmereno uz sesiju. Prozor mora ostati otvoren." />
-                            <Button Style="{StaticResource Secondary}" Content="Izmeri odmah"
-                                    Padding="9,4" FontSize="11.5" Margin="4,0,0,0"
-                                    Command="{Binding MeasureNowCommand}"
-                                    IsEnabled="{Binding CanScheduleSpeed}"
-                                    ToolTip="Meri brzinu sada: sačeka da veza utihne, pa zapiše izmereno uz sesiju." />
-                            <TextBlock Text="Ugovoreno" FontSize="11.5" VerticalAlignment="Center"
-                                       Foreground="{StaticResource Muted}" Margin="10,0,6,0" />
-                            <TextBox Text="{Binding ContractedRateText}" Width="72" Padding="4,3"
-                                     FontSize="11.5" VerticalAlignment="Center" MaxLength="12"
-                                     ToolTip="Ugovorena brzina u Mbit/s, kako piše u ugovoru: 100 ili 100/20 (preuzimanje/slanje). Bez nje se merenje zapisuje, ali se ne ocenjuje." />
-                        </StackPanel>
-
-                        <TextBlock Text="{Binding SpeedStatus}" FontSize="11.5" Margin="1,6,0,0"
-                                   Foreground="{StaticResource Muted}" TextWrapping="Wrap" />
+                        </Grid>
                     </StackPanel>
-                </Border>
-            </Grid>
 
-            <Grid Grid.Row="4"
+                    <!-- Šta je zapisano u predmetu i šta je merenje reklo: pun red ispod, jer
+                         obe rečenice umeju da budu duge i ne pripadaju nijednoj koloni posebno. -->
+                    <StackPanel Grid.Row="1" Grid.ColumnSpan="7">
+                        <TextBlock Text="{Binding CaseText}" FontSize="12" Margin="0,13,0,0"
+                                   Foreground="{StaticResource Muted}" TextWrapping="Wrap"
+                                   Visibility="{Binding CaseText, Converter={StaticResource PresentToVisible}}" />
+                        <TextBlock Text="{Binding SpeedStatus}" FontSize="12" Margin="0,7,0,0"
+                                   Foreground="{StaticResource Muted}" TextWrapping="Wrap"
+                                   Visibility="{Binding SpeedStatus, Converter={StaticResource PresentToVisible}}" />
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <Grid Grid.Row="5"
                   Visibility="{Binding IsRunning, Converter={StaticResource BoolToVisible}}">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="1.62*" />
@@ -838,7 +938,7 @@
                                       ItemTemplate="{StaticResource MetricRow}">
                             <ItemsControl.ItemsPanel>
                                 <ItemsPanelTemplate>
-                                    <UniformGrid Columns="1" />
+                                    <StackPanel />
                                 </ItemsPanelTemplate>
                             </ItemsControl.ItemsPanel>
                         </ItemsControl>
@@ -880,18 +980,27 @@
                 </Border>
             </Grid>
         </Grid>
+        </ScrollViewer>
 
         <Border Grid.Row="2" Background="{StaticResource Sunken}" BorderBrush="{StaticResource Border}"
                 BorderThickness="0,1,0,0" Padding="22,11">
-            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" MaxWidth="1120">
+            <!-- A Grid, not a horizontal StackPanel: a StackPanel gives its children all the
+                 width they ask for and lets the rest hang off both edges, so on a narrower
+                 window this sentence was cut at the start and at the end at once. -->
+            <Grid HorizontalAlignment="Center" MaxWidth="1120">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+
                 <Border Background="{StaticResource IconBadgeFill}" CornerRadius="10"
                         Width="20" Height="20" Margin="0,0,10,0" VerticalAlignment="Center">
                     <Path Style="{StaticResource Glyph}" Width="11" Height="11" StrokeThickness="1.7"
                           Data="M 9,2 A 7,7 0 1 1 8.99,2 M 9,8.2 L 9,13 M 9,5.3 L 9,5.4" />
                 </Border>
-                <TextBlock Style="{StaticResource FooterNote}"
+                <TextBlock Grid.Column="1" Style="{StaticResource FooterNote}" TextWrapping="Wrap"
                            Text="Ovo je tehnička evidencija prekida, a ne merenje ovlašćene treće strane. Ugovorena brzina se dokazuje merenjem preko Ethernet kabla direktno na modem, uz rezultate RATEL NetTest aplikacije." />
-            </StackPanel>
+            </Grid>
         </Border>
     </Grid>
 </Window>
