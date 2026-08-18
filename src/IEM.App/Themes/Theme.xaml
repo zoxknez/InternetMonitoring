@@ -136,13 +136,25 @@
         <Setter Property="BorderThickness" Value="1" />
         <Setter Property="CornerRadius" Value="10" />
         <Setter Property="Padding" Value="18,16" />
-        <Setter Property="Effect">
-            <Setter.Value>
-                <!-- Barely there. Enough to lift the card off the page, not enough to notice. -->
-                <DropShadowEffect Color="#25324A" BlurRadius="14" ShadowDepth="2"
-                                  Direction="270" Opacity="0.06" />
-            </Setter.Value>
-        </Setter>
+        <!--
+            No drop shadow, and the reason is worth the paragraph.
+
+            A WPF Effect renders the element and everything under it into an intermediate
+            surface on the GPU first. When that allocation fails - and whether it fails depends
+            on the driver, not on the program - the card's whole content simply does not
+            appear. No exception, nothing in a log: the layout is right, the elements are all
+            there, and the screen shows a blank white card.
+
+            That is exactly what several testers reported: the two big cards lose their content
+            after some minutes while the four small ones above keep updating, which is the order
+            you would expect if the largest intermediate surfaces are the first to fail. It was
+            never reproducible here, which fits a driver-dependent fault.
+
+            The shadow it cost was Opacity 0.06 - "barely there. Enough to lift the card off the
+            page, not enough to notice", as this comment used to say. A decoration nobody can
+            see is not worth the whole window's content. The border and the ground colour do the
+            separating now.
+        -->
 
         <Style.Triggers>
             <!--
@@ -160,15 +172,9 @@
                 </BeginStoryboard>
             </EventTrigger>
 
-            <!-- Lifts under the pointer. Nothing moves; only the shadow and the edge. -->
+            <!-- Lifts under the pointer by its edge alone, for the same reason as above. -->
             <Trigger Property="IsMouseOver" Value="True">
                 <Setter Property="BorderBrush" Value="#C6D4E6" />
-                <Setter Property="Effect">
-                    <Setter.Value>
-                        <DropShadowEffect Color="#25324A" BlurRadius="22" ShadowDepth="4"
-                                          Direction="270" Opacity="0.13" />
-                    </Setter.Value>
-                </Setter>
             </Trigger>
         </Style.Triggers>
     </Style>
@@ -474,10 +480,6 @@
                             <Border Background="{StaticResource Surface}" BorderBrush="{StaticResource Border}"
                                     BorderThickness="1" CornerRadius="8" Padding="0,4" Margin="0,4,0,0"
                                     MinWidth="{TemplateBinding ActualWidth}">
-                                <Border.Effect>
-                                    <DropShadowEffect Color="#25324A" BlurRadius="18" ShadowDepth="3"
-                                                      Direction="270" Opacity="0.16" />
-                                </Border.Effect>
                                 <ItemsPresenter />
                             </Border>
                         </Popup>

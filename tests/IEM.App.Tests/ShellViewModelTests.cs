@@ -5,6 +5,8 @@ using IEM.Core;
 using IEM.Core.Model;
 using IEM.Storage;
 
+using IEM.Core.Presentation;
+
 namespace IEM.App.Tests;
 
 /// <summary>
@@ -457,5 +459,59 @@ public sealed class ShellViewModelTests : IDisposable
 
         host.Push(shell.Snapshot with { CurrentState = NetworkState.Ok });
         Assert.Equal(Severity.Ok, shell.CurrentSeverity);
+    }
+
+    // ---- Zaustavljanje -----------------------------------------------------
+
+    /// <summary>
+    /// The question is asked before anything stops, and "nastavi nadzor" really does mean
+    /// nothing happens. A session stopped by a stray click cannot be resumed.
+    /// </summary>
+    [Fact]
+    public async Task Cancelling_the_question_leaves_the_session_running()
+    {
+        var host = new StubMonitorHost();
+        var shell = new ShellViewModel(host, _root) { StopPromptAsked = (_, _) => StopChoice.Cancel };
+
+        await shell.StartCommand.ExecuteAsync(null);
+        await shell.StopCommand.ExecuteAsync(null);
+
+        Assert.Equal(0, host.StopsRequested);
+        Assert.True(shell.IsRunning);
+    }
+
+    [Fact]
+    public async Task Stopping_without_a_report_stops_and_nothing_more()
+    {
+        var host = new StubMonitorHost();
+        var shell = new ShellViewModel(host, _root) { StopPromptAsked = (_, _) => StopChoice.StopOnly };
+
+        await shell.StartCommand.ExecuteAsync(null);
+        await shell.StopCommand.ExecuteAsync(null);
+
+        Assert.Equal(1, host.StopsRequested);
+        Assert.False(shell.IsRunning);
+    }
+
+    /// <summary>
+    /// What the question shows: how much has been recorded, and - first - that stopping loses
+    /// nothing. That sentence is the reason people were asking in the first place.
+    /// </summary>
+    [Fact]
+    public void The_question_says_what_is_at_stake_and_that_nothing_is_lost()
+    {
+        var recorded = StopPrompt.Summarise(TimeSpan.FromHours(2) + TimeSpan.FromMinutes(14), 3);
+
+        Assert.Contains("2h 14m", recorded, StringComparison.Ordinal);
+        Assert.Contains("3", recorded, StringComparison.Ordinal);
+        Assert.Contains("Nijedan prekid nije zabeležen", StopPrompt.Summarise(TimeSpan.FromMinutes(9), 0), StringComparison.Ordinal);
+
+        Assert.Contains("ne gubi se", StopPrompt.Reassurance, StringComparison.Ordinal);
+
+        // Every answer says what it does, so none of the three is a leap in the dark.
+        foreach (var detail in new[] { StopPrompt.ReportDetail, StopPrompt.StopOnlyDetail, StopPrompt.CancelDetail })
+        {
+            Assert.False(string.IsNullOrWhiteSpace(detail));
+        }
     }
 }

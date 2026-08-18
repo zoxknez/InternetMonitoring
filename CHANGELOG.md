@@ -10,6 +10,39 @@ izveštaj pravi.
 
 ---
 
+## 2.8.0-beta.4 - 18.08.2026.
+
+Format zapisa 3, pravila nepromenjena.
+
+### Zaustavljanje nadzora pita šta dalje
+
+Dugme je zaustavljalo sesiju i ćutalo. Ljudi su posle dva dana snimanja ostajali bez odgovora
+na to da li imaju izveštaj, da li je nešto izgubljeno i šta sad - i pitali su, što je najjasniji
+znak da im program nije rekao.
+
+Sada iskoči prozor sa tri odgovora, i uz svaki piše šta radi: **zaustavi i napravi izveštaj**,
+**samo zaustavi** (izveštaj kasnije, dugmetom „Izveštaj"), **nastavi nadzor**. Prvo što prozor
+kaže jeste da se evidencija ne gubi ni u jednom slučaju. Zatvaranje prozora bilo čim što nije
+odgovor znači „nastavi": sesija zaustavljena slučajnim klikom ne može da se nastavi.
+
+### Interfejs više ne traži ništa od grafičkog drajvera
+
+Svaka kartica je nosila `DropShadowEffect`. WPF efekat iscrtava element i ceo njegov sadržaj
+prvo u među-površinu na GPU-u, a kad ta alokacija zakaže - što zavisi od drajvera, ne od
+programa - sadržaj jednostavno ne osvane. Bez izuzetka, bez ijednog reda u dnevniku: raspored
+je ispravan, svi elementi su tu, a na ekranu bela kartica.
+
+To je tačno ono što je nekoliko testera prijavilo: dve velike kartice izgube sadržaj posle
+nekoliko minuta, dok četiri male iznad nastavljaju da se osvežavaju - redosled koji se i očekuje
+ako prve otkazuju najveće među-površine. Ovde se nikada nije reprodukovalo, što odgovara grešci
+koja zavisi od drajvera.
+
+Senka je bila providna 6 %. Ukrasa koji se ne vidi nije vredan sadržaja celog prozora. Uklonjena
+je sa kartica, sa prelaza pod mišem i iz padajuće liste; razdvajanje sada rade ivica i podloga.
+Test prolazi kroz sav XAML i pada ako se efekat ikada vrati.
+
+---
+
 ## 2.8.0-beta.3 - 18.08.2026.
 
 Format zapisa 3, **klasifikacija 2.4.0**. Prva greška koju je prijavio tester, i pokazala je

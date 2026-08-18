@@ -336,11 +336,42 @@ public sealed partial class ShellViewModel : ObservableObject, IAsyncDisposable
         IsRunning = true;
     }
 
+    /// <summary>
+    /// Who gets asked what should happen to the session. A seam so a test can answer without
+    /// a window, and so the window is the only place that knows about windows.
+    /// </summary>
+    public Func<TimeSpan, int, StopChoice>? StopPromptAsked { get; init; }
+
+    /// <summary>
+    /// Stops monitoring - after asking, because two days of evidence end here.
+    /// <para>
+    /// The button used to stop the session silently. People pressed it and then asked whether
+    /// they had a report, whether the recording was lost, and what to do next; enough of them
+    /// asked that the silence was the defect. Now the question is put once, with what each
+    /// answer does, and the first thing it says is that nothing is lost either way.
+    /// </para>
+    /// </summary>
     [RelayCommand]
     private async Task StopAsync()
     {
+        var choice = StopPromptAsked is null
+            ? StopChoice.StopOnly
+            : StopPromptAsked(Snapshot.MonitoredTime, Snapshot.UpstreamIncidentCount);
+
+        if (choice == StopChoice.Cancel)
+        {
+            return;
+        }
+
         await _host.StopSessionAsync(CancellationToken.None);
         IsRunning = false;
+
+        if (choice == StopChoice.StopAndReport)
+        {
+            // The same path the "Izveštaj" button takes, so there is one way a report gets
+            // built and one place that says why it could not be.
+            OpenReportCommand.Execute(null);
+        }
     }
 
     [RelayCommand]

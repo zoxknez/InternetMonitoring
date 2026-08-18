@@ -52,9 +52,25 @@ public partial class App : Application
             ? new ServiceMonitorHost(outputRoot)
             : new InProcessMonitorHost(outputRoot);
 
-        _shell = new ShellViewModel(host, outputRoot);
+        MainWindow? window = null;
 
-        var window = new MainWindow { DataContext = _shell };
+        _shell = new ShellViewModel(host, outputRoot)
+        {
+            // The dialog is owned by the window, so it centres on it and cannot be lost behind
+            // it. Resolved lazily because the window does not exist yet at this line.
+            StopPromptAsked = (monitored, incidents) =>
+            {
+                var dialog = new StopWindow(monitored, incidents)
+                {
+                    Owner = window is { IsVisible: true } visible ? visible : null,
+                };
+
+                dialog.ShowDialog();
+                return dialog.Choice;
+            },
+        };
+
+        window = new MainWindow { DataContext = _shell };
         MainWindow = window;
         window.Show();
 
