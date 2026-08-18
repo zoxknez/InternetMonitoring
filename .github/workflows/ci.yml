@@ -43,15 +43,16 @@ jobs:
       - name: Baseline artefakti su u repozitorijumu
         shell: pwsh
         run: |
-          $missing = Get-ChildItem baseline -Recurse -File |
-            Where-Object { (git ls-files --error-unmatch $_.FullName 2>$null; $LASTEXITCODE) -ne 0 }
+          $tracked = git ls-files baseline | ForEach-Object { (Resolve-Path $_).Path }
+          $onDisk = Get-ChildItem baseline -Recurse -File | Select-Object -ExpandProperty FullName
+          $missing = $onDisk | Where-Object { $tracked -notcontains $_ }
 
           if ($missing) {
-            $missing | ForEach-Object { Write-Host "::error::Nije u gitu: $($_.FullName)" }
+            $missing | ForEach-Object { Write-Host "::error::Nije u gitu: $_" }
             exit 1
           }
 
-          Write-Host "Svi baseline artefakti su praćeni."
+          Write-Host "Svi baseline artefakti su praceni: $($tracked.Count)"
 
       - name: Testovi
         run: dotnet test InternetEvidenceMonitor.slnx -c Release --no-build --nologo
