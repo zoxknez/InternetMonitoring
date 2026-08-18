@@ -484,7 +484,7 @@ ovog programa neko će poslati svom operateru; sve u kodu služi tome da taj dok
 
 | | |
 |---|---|
-| **Verzija** | 2.7.2 |
+| **Verzija** | 2.8.0-beta.4 · beta izdanje, otvoreno za testiranje |
 | **Autor** | **o0o0o0o** ([GitHub](https://github.com/zoxknez)) |
 | **Licenca** | [MIT](LICENSE) |
 | **Platforma** | Windows 10/11, x64 i ARM64. Ne traži instaliran .NET - objavljene arhive nose svoj runtime. |

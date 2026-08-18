@@ -1,19 +1,67 @@
 # Šta je preostalo
 
-Stanje na dan **18.08.2026.**, verzija **2.7.2**, ime aplikacije
-**Internet Monitoring**, **578 testova prolazi** (554 u jezgru, 24 u prozoru), nula upozorenja
-pri gradnji, zaključane zavisnosti prolaze. Projekat je objavljen kao open source
-(MIT, GitHub Actions CI zelen).
+Stanje na dan **18.08.2026.**, verzija **2.8.0-beta.4**, ime aplikacije **Internet Monitoring**,
+**618 testova prolazi** (586 u jezgru, 32 u prozoru), nula upozorenja pri gradnji, zaključane
+zavisnosti prolaze. Projekat je objavljen kao open source (MIT, GitHub Actions CI zelen), sa
+sajtom na `internet-monitoring.vercel.app` i beta izdanjem otvorenim za testiranje.
 
 Ovaj dokument je popis nezavršenog, a ne plan. Pisan je da bi se sutra znalo šta nije urađeno
-i **zašto**, jer je to podatak koji se najbrže gubi. Sve što je ranije bilo ovde, a urađeno je
-17.08., ukratko je potvrđeno na kraju dokumenta.
+i **zašto**, jer je to podatak koji se najbrže gubi.
 
 Redosled je po važnosti.
 
 ---
 
-## 0b. 2.7.x je zamrznut, 3.0-0 je počeo
+## 0. Otvoreno danas
+
+Ovo je jedini deo dokumenta koji opisuje sadašnjost. Sve ispod njega je istorija odluka.
+
+### 0.1 Beli ekran nije potvrđeno rešen
+
+Nekoliko testera je prijavilo da posle nekoliko minuta rada sadržaj dve velike kartice nestane -
+ostane bela površina, dok četiri male kartice iznad nastavljaju da se osvežavaju. Uhvaćeno
+stanje pokazuje da su **svi elementi tu i tačno raspoređeni**; otkazuje samo iscrtavanje. Ni
+jedan izuzetak nije zabeležen, pa program nije ni znao da nešto nije u redu.
+
+Najbolje objašnjenje koje odgovara svemu: svaka kartica je nosila `DropShadowEffect`, a WPF
+efekat iscrtava element i ceo njegov sadržaj u među-površinu na GPU-u. Kad ta alokacija zakaže -
+što zavisi od drajvera - sadržaj ne osvane, bez greške. Najveće među-površine otkazuju prve, što
+objašnjava i redosled. U 2.8.0-beta.4 su svi efekti uklonjeni i test prolazi kroz sav XAML da se
+ne vrate.
+
+**Nije reprodukovano ovde**, pa je to hipoteza a ne nalaz. Ako se u narednim danima ne javi ni
+kod koga, to je najbliže potvrdi što se može dobiti bez mašine koja greši. Ako se javi -
+sledeći korak je dijagnostika koja pri toj pojavi zapisuje stvarne veličine kontrola koje crtaju
+i `RenderCapability.Tier`, jer to razdvaja „nešto je preraslo svoj okvir" od „drajver je odustao".
+
+### 0.2 Fiksna veličina prozora ne staje na ekran 1366 × 768
+
+Prozor je od 2.8.0-beta.4 fiksiran na **1280 × 900**, jer je slobodan da se razvlači mogao da
+dođe u oblik u koji pregled ne staje - a onda je izbor bio između teksta preko teksta i teksta
+koji je odsečen. Oba su prijavljena.
+
+Na ekranu nižem od 900 piksela radne površine (tipično laptop 1366 × 768) prozor se steže na
+radnu površinu i donji deo pregleda ne staje. Skrola nema, jer je izričito uklonjen. Rešenje
+kad se neko takav javi je **proređivanje sadržaja za tu meru**, ne vraćanje skrola.
+
+### 0.3 Primer izveštaja je iz 2.7.0
+
+`docs/primer-izvestaja.html` i `.pdf` su iz 2.7.0 i nemaju redove „Veze merenja" ni „Dodeljeni
+DNS server". Nisu obnovljeni jer bi svež primer nosio ime računara sa kog je snimljen, a ručno
+brisanje imena iz dokumenta koji je po formi dokaz je loš presedan baš u ovom projektu.
+
+Pravo rešenje je **redigovan paket za deljenje** (P1 ispod): kad on postoji, primer se pravi
+njime i pitanje nestaje.
+
+### 0.4 Sledeća faza koda: 3.0-1b
+
+`Forced` putanja merenja - `MeasurementIntent { ObserveSystemPath, MeasureRequestedInterface }`,
+soket vezan za izabrani adapter, i `MeasurementStatus = NotExecuted` sa razlogom
+`NoRouteFromRequestedInterface` umesto „0 Mbps". Opisano u `ROADMAP-3.0.md`.
+
+---
+
+## Kako se stiglo dovde: 2.7.x zamrznut, 3.0 počeo
 
 Grana 2.7.x je od 18.08. samo za održavanje. Osnova za 3.0 je postavljena, bez ijedne izmene
 ponašanja:
@@ -25,7 +73,12 @@ ponašanja:
 - `docs/INVARIJANTE.md` - sedamnaest pravila, sa mestom gde svako ima test
 - `baseline/v2.7.2/` - prava sesija ove verzije, koju characterization testovi čitaju
 
-## 0a. Šta je audit 2.7.0 našao (i 2.7.1 zatvorila)
+Posle toga je **3.0-1a** zatvorena: merenje beleži endpointe svake veze koju otvori i adapter
+kome ta adresa pripada, pa se opažanje o putanji vodi odvojeno od predviđanja iz tabele ruta.
+Objavljeno u seriji 2.8.0-beta, jer oblik dokaza nije menjan - promenilo se ono što korisnik
+vidi, a to je po pravilu numeracije druga cifra.
+
+## Kako se stiglo dovde: šta je audit 2.7.0 našao
 
 Nezavisan audit objavljenog taga našao je tri mesta koja su promakla, sva tri iste vrste:
 ispravke iz 2.7.0 nisu dopirale do **fajla koji je već bio na disku**. Testovi grade podatke u
@@ -38,7 +91,7 @@ invarijante - `LEGACY_DERIVED_CONCLUSION_IS_NEVER_TRUSTED_AS_RAW_EVIDENCE` i
 koje testovi čitaju. Isti pristup treba proširiti u 3.0: svaki izvedeni zaključak koji se
 upisuje mora nositi verziju pravila po kojima je donet.
 
-## 0. Šta 2.7.0 svesno nije uradila
+## Kako se stiglo dovde: šta je 2.7.0 svesno ostavila
 
 Izdanje 2.7.0 je svelo tvrdnje na ono što je izmereno. Tri stvari su pri tome **namerno**
 ostavljene za 3.0.0, i vredi znati zašto:
@@ -129,24 +182,27 @@ konstrukcija prozora pada - a najlakši način je test koji taj prozor otvori.
 
 ## 5. Distribucija
 
-Odluka vlasnika 16.08. ostaje: **bez digitalnog potpisa** (hobi za uži krug). Provera prenosa
-ide SHA-256 zbirom uz svaku arhivu, SmartScreen zaobilaznica (`Unblock-File`) mora se reći uz
-svaki link. Ako se ikad menja namena, polazna tačka je Azure Artifact Signing (~$10/mes, za
-pojedince van USA/Kanade ne postoji).
+Urađeno u seriji 2.8.0-beta:
 
-U `artifacts/` stoje `InternetMonitoring-2.5.0-*.zip` (tekuće izdanje, x64 i arm64, sa
-kontrolnim zbirovima) i prethodna izdanja 2.4.0, 2.3.0 i 2.2.0. Duplikati pod starim imenom za
-2.3.0 su obrisani.
+- **portabl izdanje** - jedan samostalan `.exe` za interfejs i jedan za konzolu, uz arhivu sa
+  servisom; gradi se svaki put, jer oblik koji se gradi samo kad se neko seti da ga traži je
+  oblik koji se objavi pokvaren
+- **sajt** `internet-monitoring.vercel.app` - opis, slike, preuzimanje, spisak verzija sa
+  opisom svake, uputstvo za PowerShell, i odeljak o granicama alata
+- izdanja na GitHub-u sa SHA-256 uz svaki fajl
 
-Objavljivanje oba RID-a jedno za drugim sada prolazi bez ijedne dodatne komande. Do 17.08. nije:
-`IEM.App.csproj` je sam za sebe deklarisao `SelfContained`, zbog čega je SDK pri obnavljanju
-paketa dodavao `Microsoft.NET.ILLink.Tasks` u zaključani spisak - u verziji koju nosi
-instalirani SDK. Zaključani spisak je time postao vezan za jednu zakrpu SDK-a, pa je svaka
-mašina sa malo novijim SDK-om (uključujući CI) padala na proveri, na paketu koji ovde niko nije
-tražio. Kako se objavljuje odlučuje `build\publish.ps1` preko komandne linije, kao i za servis
-i konzolu, pa je iz projekta uklonjeno.
+Ostaje:
 
----
+**Potpis.** Program nije digitalno potpisan, pa SmartScreen upozorava na nepoznatog izdavača i
+jedino što stoji umesto potpisa je provera otiska. Polazna tačka je Azure Trusted Signing.
+
+**Redigovan paket za deljenje.** Folder sesije nosi ime računara, naziv adaptera, IP rutera i
+SSID. Za slanje operateru to je ispravno - deo je dokaza. Za prilaganje uz javnu prijavu greške
+nije, a upravo to se od testera traži. Treba izvoz koji te vrednosti zamenjuje oznakama, uz
+zapis šta je zamenjeno, da izveštaj i dalje bude proverljiv.
+
+**Instalater.** Danas je to arhiva i PowerShell skripta. Radi, ali traži da čovek zna šta je
+`-ExecutionPolicy Bypass`.
 
 ## Potvrđeno zatvoreno u 2.7.0 (uveče 17.08.)
 

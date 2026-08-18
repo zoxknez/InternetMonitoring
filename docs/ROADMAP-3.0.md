@@ -41,6 +41,20 @@ Bez ijedne izmene ponašanja.
 **Kriterijum:** 3.0 kod ne sme da učini nijedan artefakt iz 2.7.2 nečitljivim, i to se vidi kao
 pad testa a ne kao primedba u pregledu.
 
+### Beleška uz redosled, 18.08.2026.
+
+Posle 3.0-1a projekat je otvoren za testiranje (serija 2.8.0-beta), i to je promenilo izvor
+posla. Tri od četiri ispravke u beta.3 i beta.4 došle su iz prijava, ne iz plana:
+
+- **DNS nalaz iz cele grupe i iz uporedive kontrole** (invarijanta 15) - pitao se samo prvi
+  resolver, a odgovor se poredio sa javnim resolverom druge adresne familije
+- **beli ekran** - GPU efekti uklonjeni; najverovatniji uzrok, ali nije potvrđen
+- **prozor jedne veličine** - slobodan da se razvlači dolazio je u oblik u koji pregled ne staje
+
+Zaključak za redosled: dok testeri rade, njihove prijave imaju prednost nad fazama ispod. Faza
+se ne prekida zbog svake sitnice, ali nalaz koji obara neku tvrdnju programa ide odmah - to je
+i razlog zašto ovaj projekat postoji.
+
 ### 3.0-1 · Stvarna putanja merenja
 
 Danas: tabela ruta se slaže sa izabranim adapterom. Sutra: **ovaj soket je išao ovim
@@ -62,7 +76,7 @@ putanju" i „nametnuo sam putanju".
   pa bi svako IPv4 merenje na ovoj mašini bilo zavedeno kao IPv6 - a mešovita familija je
   upravo ono zbog čega se familija i beleži
 
-**3.0-1b · `Forced`** - merenje koje se namerno vezuje za izabrani adapter.
+**3.0-1b · `Forced`** - **sledeće na redu.** Merenje koje se namerno vezuje za izabrani adapter.
 
 - `MeasurementIntent { ObserveSystemPath, MeasureRequestedInterface }` - dva različita pitanja,
   pa i dva različita nalaza; rezultat sa nametnutom putanjom ne dokazuje kojim putem ide
