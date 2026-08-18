@@ -373,4 +373,53 @@ public sealed class ShellViewModelTests : IDisposable
 
         Assert.True(host.Disposed);
     }
+
+    /// <summary>
+    /// Run without the service - which is what the portable executable is - the window must
+    /// not promise that monitoring outlives it.
+    /// <para>
+    /// It did. "Prozor možete zatvoriti. Nadzor se nastavlja kao Windows servis" and
+    /// "Preživljava restart" were fixed text with a tick beside each, so someone starting a
+    /// two-day test from a single downloaded file was told they could close it. Missed until
+    /// the portable build was run and its own screen read, because the machine it is
+    /// developed on has the service installed.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public void Without_the_service_the_window_promises_nothing_it_cannot_keep()
+    {
+        var window = Shell(new StubMonitorHost(HostKind.InProcess));
+
+        Assert.False(window.SurvivesClosing);
+
+        var promises = string.Join(
+            " ",
+            window.BackgroundClaimLabel,
+            window.BackgroundClaimDetail,
+            window.RestartClaimLabel,
+            window.RestartClaimDetail,
+            window.HostDescription);
+
+        Assert.DoesNotContain("Prozor možete zatvoriti", promises, StringComparison.Ordinal);
+        Assert.DoesNotContain("nastavlja kao Windows servis", promises, StringComparison.Ordinal);
+        Assert.DoesNotContain("sesija se nastavlja tamo gde je stala", promises, StringComparison.Ordinal);
+
+        Assert.Contains("test se zaustavlja", promises, StringComparison.Ordinal);
+        Assert.Contains("restart računara prekida test", promises, StringComparison.Ordinal);
+
+        // A tick beside "ne preživljava restart" would be the picture arguing with the words.
+        Assert.NotEqual("M 4.5,9.2 L 7.6,12.2 L 13.5,5.8", window.ClaimGlyph);
+    }
+
+    /// <summary>Attached to the service, the same two claims are true and are made.</summary>
+    [Fact]
+    public void With_the_service_the_window_says_the_test_outlives_it()
+    {
+        var window = Shell(new StubMonitorHost(HostKind.Service));
+
+        Assert.True(window.SurvivesClosing);
+        Assert.Contains("Prozor možete zatvoriti", window.BackgroundClaimDetail, StringComparison.Ordinal);
+        Assert.Contains("tamo gde je stala", window.RestartClaimDetail, StringComparison.Ordinal);
+        Assert.Equal("M 4.5,9.2 L 7.6,12.2 L 13.5,5.8", window.ClaimGlyph);
+    }
 }

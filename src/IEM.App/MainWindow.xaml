@@ -244,12 +244,12 @@
                                         </Grid.ColumnDefinitions>
                                         <Border Style="{StaticResource RowBadge}">
                                             <Path Style="{StaticResource Glyph}" Width="13" Height="13"
-                                                  StrokeThickness="2" Data="M 4.5,9.2 L 7.6,12.2 L 13.5,5.8" />
+                                                  StrokeThickness="2" Data="{Binding ClaimGlyph}" />
                                         </Border>
                                         <TextBlock Grid.Column="1" Style="{StaticResource RowFlow}">
-                                            <Run Text="Radi u pozadini" FontWeight="SemiBold" Foreground="{StaticResource Text}" />
+                                            <Run Text="{Binding BackgroundClaimLabel, Mode=OneWay}" FontWeight="SemiBold" Foreground="{StaticResource Text}" />
                                             <Run Text=" · " Foreground="{StaticResource Faint}" />
-                                            <Run Text="Prozor možete zatvoriti. Nadzor se nastavlja kao Windows servis." />
+                                            <Run Text="{Binding BackgroundClaimDetail, Mode=OneWay}" />
                                         </TextBlock>
                                     </Grid>
                                 </Border>
@@ -261,12 +261,12 @@
                                         </Grid.ColumnDefinitions>
                                         <Border Style="{StaticResource RowBadge}">
                                             <Path Style="{StaticResource Glyph}" Width="13" Height="13"
-                                                  StrokeThickness="2" Data="M 4.5,9.2 L 7.6,12.2 L 13.5,5.8" />
+                                                  StrokeThickness="2" Data="{Binding ClaimGlyph}" />
                                         </Border>
                                         <TextBlock Grid.Column="1" Style="{StaticResource RowFlow}">
-                                            <Run Text="Preživljava restart" FontWeight="SemiBold" Foreground="{StaticResource Text}" />
+                                            <Run Text="{Binding RestartClaimLabel, Mode=OneWay}" FontWeight="SemiBold" Foreground="{StaticResource Text}" />
                                             <Run Text=" · " Foreground="{StaticResource Faint}" />
-                                            <Run Text="Posle restarta računara sesija se nastavlja tamo gde je stala." />
+                                            <Run Text="{Binding RestartClaimDetail, Mode=OneWay}" />
                                         </TextBlock>
                                     </Grid>
                                 </Border>

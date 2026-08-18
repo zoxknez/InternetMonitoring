@@ -43,7 +43,7 @@
       "iem.storage": {
         "type": "Project",
         "dependencies": {
-          "IEM.Core": "[2.7.0, )",
+          "IEM.Core": "[2.8.0-beta.1, )",
           "Microsoft.Data.Sqlite": "[10.0.11, )"
         }
       },

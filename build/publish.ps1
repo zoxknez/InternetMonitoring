@@ -149,9 +149,66 @@ $zipHash | Set-Content -Path "$zip.sha256" -Encoding ascii
 
 $size = [math]::Round((Get-Item $zip).Length / 1MB, 1)
 
+# One file, nothing to unpack, nothing to install. Built every time rather than behind a
+# switch, because it is the form most people will actually use and a form that only gets
+# built when somebody remembers to ask for it is a form that ships broken.
+#
+# The cost is real and worth stating: everything is packed into the executable and unpacked
+# into a temporary folder on first run, so the first start is slow and the file is large.
+# Monitoring runs only while the window is open - a service that survives a restart has to be
+# installed, and that is what the archive above is for.
+Write-Step 'Portabl izdanje'
+
+$portable = @(
+    @{ Name = 'interfejs'; Path = 'src\IEM.App'; Built = 'InternetEvidenceMonitor.exe'; Ships = "InternetMonitoring-$version-$Runtime.exe" }
+    @{ Name = 'konzola';   Path = 'src\IEM.Cli'; Built = 'iem.exe';                     Ships = "iem-$version-$Runtime.exe" }
+)
+
+foreach ($single in $portable) {
+    $staging = Join-Path $outputRoot "portable-$($single.Name)"
+
+    & dotnet publish (Join-Path $repoRoot $single.Path) `
+        -c $Configuration `
+        -r $Runtime `
+        --self-contained true `
+        -p:PublishSingleFile=true `
+        -p:IncludeNativeLibrariesForSelfExtract=true `
+        -p:EnableCompressionInSingleFile=true `
+        -o $staging `
+        --nologo
+
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "  Portabl izdanje nije uspelo: $($single.Name)" -ForegroundColor Red
+        exit 1
+    }
+
+    $shipped = Join-Path $repoRoot "artifacts\$($single.Ships)"
+    if (Test-Path $shipped) { Remove-Item $shipped -Force }
+    Move-Item (Join-Path $staging $single.Built) $shipped
+
+    # The staging folder holds the debug symbols the single file left behind; they have no
+    # business in the distribution folder that gets zipped.
+    Remove-Item $staging -Recurse -Force
+
+    $singleHash = (Get-FileHash $shipped -Algorithm SHA256).Hash.ToLower()
+    $singleHash | Set-Content -Path "$shipped.sha256" -Encoding ascii
+
+    $singleSize = [math]::Round((Get-Item $shipped).Length / 1MB, 1)
+
+    $single.Result = "$shipped  ($singleSize MB)"
+    $single.Hash = $singleHash
+}
+
 Write-Host ''
 Write-Host "  GOTOVO" -ForegroundColor Green
 Write-Host "  Folder:  $outputRoot"
 Write-Host "  Arhiva:  $zip  ($size MB)"
 Write-Host "  SHA-256: $zipHash"
+Write-Host ''
+
+foreach ($single in $portable) {
+    Write-Host "  Portabl ($($single.Name)): $($single.Result)"
+    Write-Host "  SHA-256: $($single.Hash)"
+}
+
 Write-Host ''

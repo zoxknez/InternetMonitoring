@@ -116,6 +116,44 @@ public sealed partial class ShellViewModel : ObservableObject, IAsyncDisposable
     /// </summary>
     public bool SurvivesClosing => _host.Kind == HostKind.Service;
 
+    /// <summary>
+    /// The two promises the preparation card makes about a running test, told either way.
+    /// <para>
+    /// They used to be fixed text in the window: "Prozor možete zatvoriti" and "Preživljava
+    /// restart", with a tick beside each. On a machine with the service installed both are
+    /// true. Run as a portable executable - one file, nothing installed - both are false, and
+    /// the window was telling someone about to start a two-day test that they could close it.
+    /// </para>
+    /// <para>
+    /// Found by running the portable build and reading its own screen. It did not show up
+    /// before because the development machine has the service installed, so the window was
+    /// telling the truth here and nowhere else.
+    /// </para>
+    /// </summary>
+    public string BackgroundClaimLabel => SurvivesClosing
+        ? "Radi u pozadini"
+        : "Radi dok je prozor otvoren";
+
+    public string BackgroundClaimDetail => SurvivesClosing
+        ? "Prozor možete zatvoriti. Nadzor se nastavlja kao Windows servis."
+        : "Nadzor radi u ovom prozoru. Ako ga zatvorite, test se zaustavlja i sesija se zatvara.";
+
+    public string RestartClaimLabel => SurvivesClosing
+        ? "Preživljava restart"
+        : "Ne preživljava restart";
+
+    public string RestartClaimDetail => SurvivesClosing
+        ? "Posle restarta računara sesija se nastavlja tamo gde je stala."
+        : "Servis nije instaliran, pa restart računara prekida test. Za dvodnevni nadzor instalirajte servis.";
+
+    /// <summary>
+    /// A tick where the claim holds, a plain dash where it does not. A tick beside "ne
+    /// preživljava restart" would be the picture contradicting the sentence beside it.
+    /// </summary>
+    public string ClaimGlyph => SurvivesClosing
+        ? "M 4.5,9.2 L 7.6,12.2 L 13.5,5.8"
+        : "M 5,9 L 13,9";
+
     public string HostDescription => _host.Kind == HostKind.Service
         ? "Nadzor radi kao Windows servis. Možete zatvoriti prozor - test se nastavlja, i nastavlja se i posle restarta računara."
         : "Nadzor radi u ovom prozoru. Ako ga zatvorite, test se zaustavlja. Za dvodnevni test instalirajte servis.";
