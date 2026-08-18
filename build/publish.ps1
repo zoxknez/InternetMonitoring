@@ -164,6 +164,23 @@ $portable = @(
     @{ Name = 'konzola';   Path = 'src\IEM.Cli'; Built = 'iem.exe';                     Ships = "iem-$version-$Runtime.exe" }
 )
 
+# The lock files are put back byte for byte after this step, because a single-file
+# self-contained publish makes the SDK add Microsoft.NET.ILLink.Tasks during *restore* - at
+# whatever version the installed SDK carries. Left in, the committed lock file becomes
+# specific to one SDK patch, and the next machine to restore it fails with NU1004 on a package
+# nobody asked for. That is written up in IEM.App.csproj because it already happened once, on
+# the first CI run after the repository was published; it happened again the first time this
+# step existed, and cost the arm64 build of the same release.
+#
+# Telling restore not to write them is not an option: NU1005 refuses outright while a lock
+# file exists. So they are written, and then restored.
+$locks = @{}
+foreach ($lock in Get-ChildItem (Join-Path $repoRoot 'src') -Recurse -Filter 'packages.lock.json') {
+    $locks[$lock.FullName] = [System.IO.File]::ReadAllBytes($lock.FullName)
+}
+
+try {
+
 foreach ($single in $portable) {
     $staging = Join-Path $outputRoot "portable-$($single.Name)"
 
@@ -197,6 +214,13 @@ foreach ($single in $portable) {
 
     $single.Result = "$shipped  ($singleSize MB)"
     $single.Hash = $singleHash
+}
+
+}
+finally {
+    foreach ($path in $locks.Keys) {
+        [System.IO.File]::WriteAllBytes($path, $locks[$path])
+    }
 }
 
 Write-Host ''
