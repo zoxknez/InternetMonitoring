@@ -268,15 +268,39 @@ je komentar u kodu tvrdio da hoće, a na mašini sa starijom sesijom u istom fol
 
 ---
 
+## 15. NALAZ SE IZVODI IZ CELE GRUPE I IZ UPOREDIVE KONTROLE
+
+**Zaključak o grupi sme se doneti samo ako je pitana cela grupa, i samo poređenjem sa nečim
+istorodnim.**
+
+Dve zabrane, jer su dva puta ista greška:
+
+1. Pitati **jednog** člana grupe pa zaključiti o svima. „Dodeljeni DNS server ne odgovara" sme
+   se reći tek kad nijedan dodeljeni resolver ne odgovori, ne kad ćuti prvi iz spiska.
+2. Porediti nalaz sa **kontrolom druge vrste**. Upit ka IPv6 adresi i upit ka IPv4 adresi idu
+   kroz dva različita steka; razlika između njih opisuje stekove, ne zdravlje servera.
+
+**Kako je otkriveno:** prijavio tester 18.08.2026. Ruter mu je dostupan preko IPv6 link-local
+adrese i ujedno je prvi DNS server; jedini javni resolver bio je 1.1.1.1, dakle IPv4. Program mu
+je celu sesiju prijavljivao kvar DNS-a operatera, dok su mu sistemski DNS, HTTP, TCP i ping
+radili bez greške. Nijedan izuzetak nije zabeležen - program nije ni znao da nešto nije u redu.
+
+**Gde se proverava:** `StateClassifierTests.A_silent_ipv6_resolver_is_not_judged_against_an_ipv4_one`,
+`...A_silent_ipv6_resolver_is_judged_against_the_ipv6_public_one`,
+`...One_silent_resolver_out_of_several_is_not_all_of_them`,
+`...Every_assigned_resolver_silent_is_the_finding`.
+
+---
+
 ## Za 3.0: one koje još nemaju kod
 
-## 15. SIGNATURE_PROVES_INTEGRITY_NOT_TRUTH
+## 16. SIGNATURE_PROVES_INTEGRITY_NOT_TRUTH
 
 Potpis dokazuje da paket odgovara potpisanom sadržaju, da nije neprimetno menjan posle
 potpisivanja, i da je potpisan ključem te instalacije. **Ne dokazuje** da ulaz nije fabrikovan
 pre potpisivanja, da host nije bio kompromitovan, niti da je incident nastao kod operatera.
 
-## 16. TRUSTED_TIMESTAMP_PROVES_EXISTENCE_NOT_EVENT_TIME
+## 17. TRUSTED_TIMESTAMP_PROVES_EXISTENCE_NOT_EVENT_TIME
 
 Vremenski žig treće strane dokazuje da je određeni podatak **postojao pre** određenog trenutka.
 Ne dokazuje da se mrežni događaj desio tada, niti da je sadržaj istinit.

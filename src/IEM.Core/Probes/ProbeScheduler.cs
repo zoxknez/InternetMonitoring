@@ -297,13 +297,37 @@ public sealed class ProbeScheduler : IAsyncDisposable
             _httpClient, _options.HttpProbeUrl, _options.ExpectedHttpBody, _options.HttpTimeout, cancellationToken),
             ProbePath.Unresolved));
 
-        if (link.DnsServers.FirstOrDefault() is { } ispResolver)
+        // Every resolver the machine was given, not only the first.
+        //
+        // The first entry used to stand for all of them, and on an IPv6 network that entry is
+        // the router's own link-local address. A tester's connection worked perfectly - system
+        // DNS, HTTP, TCP, ping all fine - while the program reported his operator's DNS as
+        // broken for the whole session, because one address we could not get an answer from
+        // spoke for every resolver he had.
+        var assigned = link.DnsServers
+            .Where(server => IPAddress.TryParse(server, out _))
+            .Take(Math.Max(1, _options.MaxAssignedResolvers))
+            .ToArray();
+
+        foreach (var resolver in assigned)
         {
-            var ispPath = PathTo(ispResolver);
+            var assignedPath = PathTo(resolver);
 
             work.Add(Tag(DeepProbes.DnsAsync(
-                ispResolver, DnsResolverRole.IspAssigned, _options.DnsQueryName, _options.DnsTimeout,
-                cancellationToken, SourceOf(ispPath)), ispPath, bound: SourceOf(ispPath) is not null));
+                resolver, DnsResolverRole.IspAssigned, _options.DnsQueryName, _options.DnsTimeout,
+                cancellationToken, SourceOf(assignedPath)), assignedPath, bound: SourceOf(assignedPath) is not null));
+        }
+
+        // A public resolver on the other stack too, whenever an assigned one lives there.
+        // Without it the comparison crosses address families, and the verdict describes the
+        // difference between two stacks rather than the health of one resolver.
+        if (assigned.Any(r => IPAddress.Parse(r).AddressFamily == AddressFamily.InterNetworkV6))
+        {
+            var publicV6Path = PathTo(_options.PublicResolverV6);
+
+            work.Add(Tag(DeepProbes.DnsAsync(
+                _options.PublicResolverV6, DnsResolverRole.Public, _options.DnsQueryName, _options.DnsTimeout,
+                cancellationToken, SourceOf(publicV6Path)), publicV6Path, bound: SourceOf(publicV6Path) is not null));
         }
 
         var results = await Task.WhenAll(work).ConfigureAwait(false);

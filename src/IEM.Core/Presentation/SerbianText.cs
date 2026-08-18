@@ -38,7 +38,7 @@ public static class SerbianText
         NetworkState.CpeUpstreamUnreachable => "Ruter radi, veza ka internetu ne radi",
         NetworkState.CpeReboot => "Ruter se restartovao",
         NetworkState.InternetDown => "Internet nedostupan",
-        NetworkState.DnsIspFailure => "DNS server operatera ne radi",
+        NetworkState.DnsIspFailure => "Dodeljeni DNS server ne odgovara",
         NetworkState.DnsGlobalFailure => "Nijedan DNS server ne odgovara",
         NetworkState.IcmpFiltered => "Ping je filtriran (nije prekid)",
         NetworkState.CaptivePortalSuspected => "Sumnja na portal za prijavu na mrežu",
@@ -76,9 +76,10 @@ public static class SerbianText
         NetworkState.InternetDown =>
             "Nijedna internet meta nije dostupna, a stanje rutera nije poznato.",
         NetworkState.DnsIspFailure =>
-            "DNS server koji vam je dodelio operater ne odgovara, dok javni DNS kroz istu " +
-            "mrežnu putanju radi. Veza postoji, ali sajtovi se ne otvaraju. Kvar je na " +
-            "razrešavanju imena, a ne na samoj vezi.",
+            "Nijedan DNS server koji vam je dodeljen ne odgovara, dok javni DNS istog tipa " +
+            "adrese kroz istu mrežnu putanju radi. Veza postoji, kvar je na razrešavanju " +
+            "imena. Ta adresa je po pravilu vaš ruter, koji upite prosleđuje dalje, pa ovo " +
+            "samo po sebi ne pokazuje gde je dalje na putanji uzrok.",
         NetworkState.DnsGlobalFailure =>
             "Nijedan DNS server ne odgovara iako veza radi.",
         NetworkState.IcmpFiltered =>

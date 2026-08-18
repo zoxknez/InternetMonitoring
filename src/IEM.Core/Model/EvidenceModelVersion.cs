@@ -46,7 +46,7 @@ public static class EvidenceModelVersion
     /// queried reported equipment failure it had never established.
     /// </para>
     /// </summary>
-    public const string ClassifierVersion = "2.3.0";
+    public const string ClassifierVersion = "2.4.0";
 
     /// <summary>
     /// Rules mapping a state to a <see cref="FaultDomain"/>.

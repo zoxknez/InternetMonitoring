@@ -5,6 +5,8 @@ using IEM.App.Controls;
 using IEM.App.ViewModels;
 using IEM.Core.Presentation;
 
+using IEM.Core.Model;
+
 namespace IEM.App;
 
 public partial class MainWindow : Window
@@ -74,13 +76,26 @@ public partial class MainWindow : Window
 
         var verdict = _shell.Verdict;
 
-        StateText.Foreground = _shell.IsOnline ? Palette.Ok : Palette.Outage;
+        // Three steps, not two. Coloured by "is it an outage" alone, a degraded state - a
+        // resolver that will not answer, a filtered ping, latency through the roof - got the
+        // same green tick as a connection with nothing wrong with it, directly above a
+        // headline saying something did not work. The outage strip drew those same moments
+        // amber, so the window disagreed with itself.
+        var severity = _shell.CurrentSeverity;
 
-        // A tick when everything answers, an exclamation when it does not. Shape as well as
-        // colour, so the tile still reads at a glance to someone who cannot separate the two.
-        StateIcon.Background = _shell.IsOnline ? Frozen("#E8F6EE") : Frozen("#FCEBE9");
-        StateGlyph.Stroke = _shell.IsOnline ? Palette.Ok : Palette.Outage;
-        StateGlyph.Data = Geometry.Parse(_shell.IsOnline
+        StateText.Foreground = Palette.ForSeverity(severity);
+        StateGlyph.Stroke = Palette.ForSeverity(severity);
+
+        // Shape as well as colour, so the tile still reads to someone who cannot separate
+        // the two: a tick when everything answers, an exclamation when it does not.
+        StateIcon.Background = severity switch
+        {
+            Severity.Outage => Frozen("#FCEBE9"),
+            Severity.Degraded => Frozen("#FDF4E2"),
+            _ => Frozen("#E8F6EE"),
+        };
+
+        StateGlyph.Data = Geometry.Parse(severity is Severity.Ok or Severity.Info
             ? "M 5,10.4 L 8.6,14 L 15,6.6"
             : "M 10,4.5 L 10,11.4 M 10,14.6 L 10,14.7");
 

@@ -137,17 +137,26 @@ public sealed class StateClassifier(ClassifierOptions? options = null)
         var pub = cycle.DnsPublic;
         var system = cycle.DnsSystem;
 
-        // Operator resolver broken while a public one answers. The service is degraded and
-        // it is the operator's doing, but the line itself is up.
+        // Every assigned resolver of a family silent, while a public resolver *of that same
+        // family* answered. Name resolution is degraded and the line itself is up.
         //
-        // The public answer must be fresh, and both queries go out bound to the same source
-        // address - otherwise this says nothing about which resolver is at fault, only that
-        // two different queries took two different paths.
-        if (isp.AllFailed && pub.AnyFreshSuccess)
+        // Judged one family at a time, and that is the whole point. A tester on an IPv6
+        // network had the router's link-local address as his first resolver; the only public
+        // resolver was IPv4. Comparing across the two stacks, the program reported his
+        // operator's DNS as broken for a whole session while his connection worked perfectly.
+        //
+        // The public answer must also be fresh, and both queries go out bound to the same
+        // source address - otherwise this says nothing about which resolver is at fault, only
+        // that two different queries took two different paths.
+        foreach (var family in cycle.AssignedResolverFamilies)
         {
-            return new SampleVerdict(
-                NetworkState.DnsIspFailure,
-                "Operator-assigned resolver failed while a public resolver answered over the same path.");
+            if (cycle.DnsAssignedOf(family).AllFailed && cycle.DnsPublicOf(family).AnyFreshSuccess)
+            {
+                return new SampleVerdict(
+                    NetworkState.DnsIspFailure,
+                    $"Every assigned {Describe(family)} resolver failed while a public {Describe(family)} " +
+                    "resolver answered over the same path.");
+            }
         }
 
         var attempted = isp.Attempted + pub.Attempted + system.Attempted;
@@ -161,6 +170,9 @@ public sealed class StateClassifier(ClassifierOptions? options = null)
         }
 
         return null;
+
+        static string Describe(System.Net.Sockets.AddressFamily family) =>
+            family == System.Net.Sockets.AddressFamily.InterNetworkV6 ? "IPv6" : "IPv4";
     }
 
     /// <summary>Everything still working, but not working well.</summary>

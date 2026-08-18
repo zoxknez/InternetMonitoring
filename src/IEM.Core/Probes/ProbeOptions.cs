@@ -25,8 +25,29 @@ public sealed record ProbeOptions
     /// <summary>Name resolved during DNS probes. Short TTL and universally reachable.</summary>
     public string DnsQueryName { get; init; } = "www.msftconnecttest.com";
 
-    /// <summary>Queried directly over UDP so a broken operator resolver can be told apart from broken DNS.</summary>
+    /// <summary>Queried directly over UDP so a broken assigned resolver can be told apart from broken DNS.</summary>
     public string PublicResolver { get; init; } = "1.1.1.1";
+
+    /// <summary>
+    /// The same comparison over IPv6, used when the machine's assigned resolvers include one.
+    /// <para>
+    /// Without it the only public resolver was IPv4, so on an IPv6 network the program
+    /// compared a query to an IPv6 address against a query to an IPv4 address and blamed the
+    /// first for the difference. Cloudflare, same operator as the IPv4 one, so the two
+    /// comparisons differ in stack and in nothing else.
+    /// </para>
+    /// </summary>
+    public string PublicResolverV6 { get; init; } = "2606:4700:4700::1111";
+
+    /// <summary>
+    /// How many assigned resolvers are queried per cycle.
+    /// <para>
+    /// A machine usually carries two to four. Querying only the first and then reporting
+    /// that "the assigned resolver failed" made one unreachable entry speak for all of them.
+    /// Capped so a machine with a long list does not turn every cycle into a DNS flood.
+    /// </para>
+    /// </summary>
+    public int MaxAssignedResolvers { get; init; } = 3;
 
     /// <summary>The endpoint Windows itself uses to decide whether it has internet.</summary>
     public string HttpProbeUrl { get; init; } = "http://www.msftconnecttest.com/connecttest.txt";

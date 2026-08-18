@@ -422,4 +422,40 @@ public sealed class ShellViewModelTests : IDisposable
         Assert.Contains("tamo gde je stala", window.RestartClaimDetail, StringComparison.Ordinal);
         Assert.Equal("M 4.5,9.2 L 7.6,12.2 L 13.5,5.8", window.ClaimGlyph);
     }
+
+    /// <summary>
+    /// A degraded state is neither green nor red, and the tile must not round it to either.
+    /// <para>
+    /// A tester saw "Dodeljeni DNS server ne odgovara" written in green under a green tick,
+    /// because the tile was coloured by "is this an outage" alone. The outage strip drew the
+    /// same moment amber - the window was disagreeing with itself on one screen.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public void A_degraded_state_is_neither_the_ok_colour_nor_the_outage_one()
+    {
+        var host = new StubMonitorHost();
+        var shell = Shell(host);
+
+        host.Push(shell.Snapshot with { CurrentState = NetworkState.DnsIspFailure });
+
+        Assert.Equal(Severity.Degraded, shell.CurrentSeverity);
+
+        // Still "online" - the line works, name resolution does not - which is exactly why
+        // that flag alone could never carry the tile's colour.
+        Assert.True(shell.IsOnline);
+    }
+
+    [Fact]
+    public void An_outage_and_a_clean_state_keep_their_own_severities()
+    {
+        var host = new StubMonitorHost();
+        var shell = Shell(host);
+
+        host.Push(shell.Snapshot with { CurrentState = NetworkState.CpeUpstreamUnreachable });
+        Assert.Equal(Severity.Outage, shell.CurrentSeverity);
+
+        host.Push(shell.Snapshot with { CurrentState = NetworkState.Ok });
+        Assert.Equal(Severity.Ok, shell.CurrentSeverity);
+    }
 }

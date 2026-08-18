@@ -10,6 +10,37 @@ izveštaj pravi.
 
 ---
 
+## 2.8.0-beta.3 - 18.08.2026.
+
+Format zapisa 3, **klasifikacija 2.4.0**. Prva greška koju je prijavio tester, i pokazala je
+dve stvari odjednom.
+
+### DNS nalaz se donosi iz cele grupe i iz uporedive kontrole
+
+Program je pitao **samo prvi** DNS server iz spiska, pa zaključivao o svima; a odgovor je
+poredio sa javnim resolverom **1.1.1.1**, uvek IPv4. Na mreži gde je ruter dostupan preko IPv6
+i ujedno je prvi DNS server, to poredi upit kroz jedan stek sa upitom kroz drugi i razliku
+pripiše prvom serveru. Testeru je celu sesiju pisalo da mu DNS operatera ne radi, dok su mu
+sistemski DNS, HTTP, TCP i ping radili bez greške.
+
+Sada se pita svaki dodeljeni resolver (najviše tri po ciklusu), uz javni resolver **istog tipa
+adrese** kad među dodeljenima ima IPv6. Nalaz se donosi po familiji, i tek kad nijedan dodeljeni
+resolver te familije ne odgovori.
+
+### Nalaz više ne imenuje operatera
+
+„DNS server operatera ne radi" postalo je **„Dodeljeni DNS server ne odgovara"**, uz objašnjenje
+da je ta adresa po pravilu vaš ruter koji upite prosleđuje dalje. Pripisivanje krivice operateru
+uklonjeno je iz ostatka programa još u 2.7.0; ovo stanje je preživelo.
+
+### Prozor razlikuje pogoršanje od prekida
+
+Kartica stanja bojila se samo po tome da li je prekid, pa je „Dodeljeni DNS server ne odgovara"
+stajalo zelenim slovima ispod zelene kvačice - dok je traka prekida isti trenutak crtala žuto.
+Sada ima tri stanja, sa svojom bojom i svojim znakom.
+
+---
+
 ## 2.8.0-beta.2 - 18.08.2026.
 
 ### Portabl izdanje: jedan exe

@@ -221,6 +221,90 @@ public sealed class StateClassifierTests
         Assert.False(verdict.IsOutage);
     }
 
+    /// <summary>
+    /// An IPv6 resolver that stays silent, with only an IPv4 public resolver to compare it
+    /// against, is not a finding about that resolver.
+    /// <para>
+    /// Reported by a tester on 18.08.2026: his router was reached over IPv6 link-local and was
+    /// also his first DNS server. The only public resolver was 1.1.1.1, over IPv4. Every cycle
+    /// compared a query on one stack against a query on the other and filed the difference as
+    /// a fault of the first, for a whole session, while his connection worked perfectly -
+    /// system DNS, HTTP, TCP and ping all fine.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public void A_silent_ipv6_resolver_is_not_judged_against_an_ipv4_one()
+    {
+        var verdict = _classifier.Classify(CycleBuilder.Wired()
+            .WithResolvers(
+                (DnsResolverRole.IspAssigned, "fe80::8229:94ff:fe1d:d063%10", false),
+                (DnsResolverRole.Public, "1.1.1.1", true),
+                (DnsResolverRole.System, "system", true))
+            .Build());
+
+        Assert.NotEqual(NetworkState.DnsIspFailure, verdict.State);
+    }
+
+    /// <summary>The same silence, once there is a fair comparison, is a finding.</summary>
+    [Fact]
+    public void A_silent_ipv6_resolver_is_judged_against_the_ipv6_public_one()
+    {
+        var verdict = _classifier.Classify(CycleBuilder.Wired()
+            .WithResolvers(
+                (DnsResolverRole.IspAssigned, "fe80::8229:94ff:fe1d:d063%10", false),
+                (DnsResolverRole.Public, "2606:4700:4700::1111", true),
+                (DnsResolverRole.Public, "1.1.1.1", true),
+                (DnsResolverRole.System, "system", true))
+            .Build());
+
+        Assert.Equal(NetworkState.DnsIspFailure, verdict.State);
+    }
+
+    /// <summary>
+    /// One resolver of several does not speak for the rest. Only the first was ever queried
+    /// before, so a single unreachable entry reported every assigned resolver as failed.
+    /// </summary>
+    [Fact]
+    public void One_silent_resolver_out_of_several_is_not_all_of_them()
+    {
+        var verdict = _classifier.Classify(CycleBuilder.Wired()
+            .WithResolvers(
+                (DnsResolverRole.IspAssigned, "192.168.1.1", false),
+                (DnsResolverRole.IspAssigned, "192.168.1.2", true),
+                (DnsResolverRole.Public, "1.1.1.1", true),
+                (DnsResolverRole.System, "system", true))
+            .Build());
+
+        Assert.NotEqual(NetworkState.DnsIspFailure, verdict.State);
+        Assert.Equal(NetworkState.Ok, verdict.State);
+    }
+
+    /// <summary>Every assigned resolver of that family silent is still the finding it was.</summary>
+    [Fact]
+    public void Every_assigned_resolver_silent_is_the_finding()
+    {
+        var verdict = _classifier.Classify(CycleBuilder.Wired()
+            .WithResolvers(
+                (DnsResolverRole.IspAssigned, "192.168.1.1", false),
+                (DnsResolverRole.IspAssigned, "192.168.1.2", false),
+                (DnsResolverRole.Public, "1.1.1.1", true),
+                (DnsResolverRole.System, "system", true))
+            .Build());
+
+        Assert.Equal(NetworkState.DnsIspFailure, verdict.State);
+    }
+
+    /// <summary>The finding never names the operator: that address is normally the router.</summary>
+    [Fact]
+    public void The_finding_does_not_blame_the_operator()
+    {
+        var text = NetworkState.DnsIspFailure.Label() + " " + NetworkState.DnsIspFailure.Explanation();
+
+        Assert.DoesNotContain("operatera", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("ruter", text, StringComparison.OrdinalIgnoreCase);
+    }
+
+
     // ---- False positives that must not become incidents --------------------
 
     [Fact]

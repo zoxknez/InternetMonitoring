@@ -254,6 +254,35 @@ internal sealed class CycleBuilder
     /// <summary>Only the Windows resolver answers. It cannot prove which link carried the query.</summary>
     public CycleBuilder OnlySystemDnsAnswers() => ReplaceDns(isp: false, pub: false, system: true);
 
+    /// <summary>
+    /// The exact set of resolvers a machine was given, and what each of them answered.
+    /// <para>
+    /// The fixed three-resolver shape above cannot express the case a tester actually hit:
+    /// several assigned resolvers, on two address families, only one of them silent.
+    /// </para>
+    /// </summary>
+    public CycleBuilder WithResolvers(params (DnsResolverRole Role, string Target, bool Ok)[] resolvers)
+    {
+        ArgumentNullException.ThrowIfNull(resolvers);
+
+        _results.RemoveAll(r => r.Kind == ProbeKind.Dns);
+
+        foreach (var (role, target, ok) in resolvers)
+        {
+            _results.Add(Measured(new ProbeResult(
+                ProbeKind.Dns,
+                ProbeScope.External,
+                target,
+                ok ? ProbeOutcome.Success : ProbeOutcome.Failed,
+                ok ? TimeSpan.FromMilliseconds(15) : null)
+            {
+                DnsRole = role,
+            }));
+        }
+
+        return this;
+    }
+
     // ---- Misc -------------------------------------------------------------
 
     public CycleBuilder DuringSelfTest()

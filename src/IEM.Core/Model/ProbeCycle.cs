@@ -1,3 +1,6 @@
+using System.Net;
+using System.Net.Sockets;
+
 namespace IEM.Core.Model;
 
 /// <param name="Attempted">Probes of this family that were actually sent.</param>
@@ -131,6 +134,36 @@ public sealed record ProbeCycle(
     public ProbeTally DnsPublic => Tally(r => r.Kind == ProbeKind.Dns && r.DnsRole == DnsResolverRole.Public);
 
     public ProbeTally DnsSystem => Tally(r => r.Kind == ProbeKind.Dns && r.DnsRole == DnsResolverRole.System);
+
+    /// <summary>
+    /// The assigned resolvers of one address family, counted on their own.
+    /// <para>
+    /// Needed because "the assigned resolver failed while a public one answered" only means
+    /// something when both questions went over the same stack. A tester on an IPv6 network
+    /// had the router's own IPv6 address as his first resolver, compared against a public
+    /// IPv4 resolver - two different stacks, and the difference between them was filed as a
+    /// fault of the first one, permanently, on a connection that worked perfectly.
+    /// </para>
+    /// </summary>
+    public ProbeTally DnsAssignedOf(AddressFamily family) => Tally(r =>
+        r.Kind == ProbeKind.Dns && r.DnsRole == DnsResolverRole.IspAssigned && FamilyOf(r.Target) == family);
+
+    /// <summary>The public resolver of one address family - the only fair comparison.</summary>
+    public ProbeTally DnsPublicOf(AddressFamily family) => Tally(r =>
+        r.Kind == ProbeKind.Dns && r.DnsRole == DnsResolverRole.Public && FamilyOf(r.Target) == family);
+
+    /// <summary>Which families the machine's assigned resolvers actually cover.</summary>
+    public IReadOnlyList<AddressFamily> AssignedResolverFamilies =>
+    [
+        .. Results
+            .Where(r => r.Kind == ProbeKind.Dns && r.DnsRole == DnsResolverRole.IspAssigned && r.WasAttempted)
+            .Select(r => FamilyOf(r.Target))
+            .Where(f => f is AddressFamily.InterNetwork or AddressFamily.InterNetworkV6)
+            .Distinct(),
+    ];
+
+    private static AddressFamily FamilyOf(string target) =>
+        IPAddress.TryParse(target, out var address) ? address.AddressFamily : AddressFamily.Unknown;
 
     /// <summary>
     /// Whether anything proved, <em>right now</em>, that packets are reaching the internet.

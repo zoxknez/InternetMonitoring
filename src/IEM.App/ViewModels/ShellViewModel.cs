@@ -169,6 +169,17 @@ public sealed partial class ShellViewModel : ObservableObject, IAsyncDisposable
 
     public bool IsOnline => !Snapshot.CurrentState.IsOutage();
 
+    /// <summary>
+    /// How bad the current state is, in three steps rather than two.
+    /// <para>
+    /// The tile used to be coloured by <see cref="IsOnline"/> alone, so anything short of an
+    /// outage got the green tick - including "Dodeljeni DNS server ne odgovara", which then
+    /// appeared as a green headline under a green check mark. The strip below it drew the
+    /// same moment amber, because that control knew about severity and the tile did not.
+    /// </para>
+    /// </summary>
+    public Severity CurrentSeverity => Snapshot.CurrentState.SeverityOf();
+
     public string LatencyText => Snapshot.CurrentLatency is { } latency
         ? $"{latency.TotalMilliseconds:F0} ms"
         : "-";
@@ -1073,6 +1084,7 @@ public sealed partial class ShellViewModel : ObservableObject, IAsyncDisposable
         OnPropertyChanged(nameof(StateLabel));
         OnPropertyChanged(nameof(StateExplanation));
         OnPropertyChanged(nameof(IsOnline));
+        OnPropertyChanged(nameof(CurrentSeverity));
         OnPropertyChanged(nameof(LatencyText));
         OnPropertyChanged(nameof(ElapsedText));
         OnPropertyChanged(nameof(AvailabilityText));

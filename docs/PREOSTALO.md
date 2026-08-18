@@ -22,7 +22,7 @@ ponašanja:
 - `docs/EVIDENCE-MODEL-4.md` - razdvajanje FACT / INFERENCE / ASSESSMENT i `InterpretationRef`
 - `docs/THREAT-MODEL-3.0.md` - šta potpis i vremenski žig ne dokazuju, na prvoj strani
 - `docs/MIGRATION-2.x-TO-3.0.md` - šta se dešava sa već snimljenim
-- `docs/INVARIJANTE.md` - šesnaest pravila, sa mestom gde svako ima test
+- `docs/INVARIJANTE.md` - sedamnaest pravila, sa mestom gde svako ima test
 - `baseline/v2.7.2/` - prava sesija ove verzije, koju characterization testovi čitaju
 
 ## 0a. Šta je audit 2.7.0 našao (i 2.7.1 zatvorila)
