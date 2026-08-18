@@ -4,7 +4,8 @@
         xmlns:controls="clr-namespace:IEM.App.Controls"
         xmlns:tb="clr-namespace:H.NotifyIcon;assembly=H.NotifyIcon.Wpf"
         Title="Internet Monitoring"
-        Width="1180" Height="840" MinWidth="940" MinHeight="620"
+        Width="1280" Height="900" MinWidth="1280" MinHeight="900"
+        SizeChanged="OnWindowSizeChanged"
         Background="{StaticResource Page}"
         FontFamily="Segoe UI"
         Foreground="{StaticResource Text}"
@@ -13,17 +14,18 @@
         WindowStartupLocation="CenterScreen">
 
     <!--
-        A dashboard sized to the window, and nothing is ever clipped.
+        A dashboard laid out for one size. Nothing scrolls and nothing is clipped, and those
+        two hold together only because the window no longer changes shape.
 
-        It used to hold a second rule too - nothing scrolls - and the two were kept together by
-        laying every block out with UniformGrid, which divides the height it is given into equal
-        cells. That works only while the text fits the cell. On a smaller screen it does not:
-        the cells shrink, the wrapped lines run over each other, and the card becomes unreadable
-        until the window is dragged wider. A tester hit exactly that.
+        The rules used to be the same, held together by laying every block out with UniformGrid,
+        which divides the height it is given into equal cells. That works while the text fits
+        the cell. Dragged smaller it does not: the cells shrink, wrapped lines run over each
+        other, and the card is unreadable until the window is pulled wide again. A tester hit
+        exactly that.
 
-        So the rows size to their content now, and the whole dashboard scrolls when the window
-        is too short to hold it. Between text that cannot be read and a scrollbar, the scrollbar
-        wins - and on a normal window there is nothing to scroll anyway.
+        So rows size to their own content, and the window is fixed at 1280 by 900 - the shape
+        this is laid out for. Maximising is still allowed, because more room never hurt anything
+        here.
     -->
 
     <Window.Resources>
@@ -147,10 +149,7 @@
             </Grid>
         </Border>
 
-        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto"
-                      HorizontalScrollBarVisibility="Disabled" Padding="0"
-                      Focusable="False">
-        <Grid MaxWidth="1300" Margin="22,14,22,14">
+        <Grid Grid.Row="1" MaxWidth="1300" Margin="22,14,22,14">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
@@ -251,7 +250,7 @@
                                 </ItemsControl.ItemsPanel>
 
                                 <Border BorderBrush="{StaticResource Hairline}" BorderThickness="0,0,0,1">
-                                    <Grid VerticalAlignment="Center" Margin="0,0,0,8">
+                                    <Grid VerticalAlignment="Center" Margin="0,7,0,11">
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="Auto" />
                                             <ColumnDefinition Width="*" />
@@ -268,7 +267,7 @@
                                     </Grid>
                                 </Border>
                                 <Border BorderBrush="{StaticResource Hairline}" BorderThickness="0,0,0,1">
-                                    <Grid VerticalAlignment="Center" Margin="0,0,0,8">
+                                    <Grid VerticalAlignment="Center" Margin="0,7,0,11">
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="Auto" />
                                             <ColumnDefinition Width="*" />
@@ -285,7 +284,7 @@
                                     </Grid>
                                 </Border>
                                 <Border>
-                                    <Grid VerticalAlignment="Center" Margin="0,0,0,8">
+                                    <Grid VerticalAlignment="Center" Margin="0,7,0,11">
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="Auto" />
                                             <ColumnDefinition Width="*" />
@@ -410,13 +409,17 @@
                              from the top they bunched up and left the lower third blank. -->
                         <ItemsControl Grid.Row="1">
                             <ItemsControl.ItemsPanel>
+                                <!-- Redovi dele visinu kartice, pa se popunjava do dna.
+                                     Bezbedno je otkako prozor ima jednu velicinu: ranije se,
+                                     kad se prozor smanji, celija stisne ispod svog teksta i
+                                     redovi se preklope. -->
                                 <ItemsPanelTemplate>
-                                    <StackPanel />
+                                    <UniformGrid Columns="1" />
                                 </ItemsPanelTemplate>
                             </ItemsControl.ItemsPanel>
 
                             <Border BorderBrush="{StaticResource Hairline}" BorderThickness="0,0,0,1">
-                                <Grid VerticalAlignment="Center" Margin="0,0,0,8">
+                                <Grid VerticalAlignment="Center" Margin="0,7,0,11">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="Auto" />
                                         <ColumnDefinition Width="*" />
@@ -432,7 +435,7 @@
                                 </Grid>
                             </Border>
                             <Border BorderBrush="{StaticResource Hairline}" BorderThickness="0,0,0,1">
-                                <Grid VerticalAlignment="Center" Margin="0,0,0,8">
+                                <Grid VerticalAlignment="Center" Margin="0,7,0,11">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="Auto" />
                                         <ColumnDefinition Width="*" />
@@ -448,7 +451,7 @@
                                 </Grid>
                             </Border>
                             <Border BorderBrush="{StaticResource Hairline}" BorderThickness="0,0,0,1">
-                                <Grid VerticalAlignment="Center" Margin="0,0,0,8">
+                                <Grid VerticalAlignment="Center" Margin="0,7,0,11">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="Auto" />
                                         <ColumnDefinition Width="*" />
@@ -464,7 +467,7 @@
                                 </Grid>
                             </Border>
                             <Border BorderBrush="{StaticResource Hairline}" BorderThickness="0,0,0,1">
-                                <Grid VerticalAlignment="Center" Margin="0,0,0,8">
+                                <Grid VerticalAlignment="Center" Margin="0,7,0,11">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="Auto" />
                                         <ColumnDefinition Width="*" />
@@ -480,7 +483,7 @@
                                 </Grid>
                             </Border>
                             <Border>
-                                <Grid VerticalAlignment="Center" Margin="0,0,0,8">
+                                <Grid VerticalAlignment="Center" Margin="0,7,0,11">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="Auto" />
                                         <ColumnDefinition Width="*" />
@@ -520,13 +523,17 @@
 
                         <ItemsControl Grid.Row="1">
                             <ItemsControl.ItemsPanel>
+                                <!-- Redovi dele visinu kartice, pa se popunjava do dna.
+                                     Bezbedno je otkako prozor ima jednu velicinu: ranije se,
+                                     kad se prozor smanji, celija stisne ispod svog teksta i
+                                     redovi se preklope. -->
                                 <ItemsPanelTemplate>
-                                    <StackPanel />
+                                    <UniformGrid Columns="1" />
                                 </ItemsPanelTemplate>
                             </ItemsControl.ItemsPanel>
 
                             <Border BorderBrush="{StaticResource Hairline}" BorderThickness="0,0,0,1">
-                                <Grid VerticalAlignment="Center" Margin="0,0,0,8">
+                                <Grid VerticalAlignment="Center" Margin="0,7,0,11">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="Auto" />
                                         <ColumnDefinition Width="*" />
@@ -543,7 +550,7 @@
                                 </Grid>
                             </Border>
                             <Border BorderBrush="{StaticResource Hairline}" BorderThickness="0,0,0,1">
-                                <Grid VerticalAlignment="Center" Margin="0,0,0,8">
+                                <Grid VerticalAlignment="Center" Margin="0,7,0,11">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="Auto" />
                                         <ColumnDefinition Width="*" />
@@ -560,7 +567,7 @@
                                 </Grid>
                             </Border>
                             <Border BorderBrush="{StaticResource Hairline}" BorderThickness="0,0,0,1">
-                                <Grid VerticalAlignment="Center" Margin="0,0,0,8">
+                                <Grid VerticalAlignment="Center" Margin="0,7,0,11">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="Auto" />
                                         <ColumnDefinition Width="*" />
@@ -577,7 +584,7 @@
                                 </Grid>
                             </Border>
                             <Border>
-                                <Grid VerticalAlignment="Center" Margin="0,0,0,8">
+                                <Grid VerticalAlignment="Center" Margin="0,7,0,11">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="Auto" />
                                         <ColumnDefinition Width="*" />
@@ -980,7 +987,6 @@
                 </Border>
             </Grid>
         </Grid>
-        </ScrollViewer>
 
         <Border Grid.Row="2" Background="{StaticResource Sunken}" BorderBrush="{StaticResource Border}"
                 BorderThickness="0,1,0,0" Padding="22,11">

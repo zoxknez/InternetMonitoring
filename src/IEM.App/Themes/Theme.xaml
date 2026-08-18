@@ -244,11 +244,17 @@
         and a hole between them. Run together, the text reaches both margins and the bold
         opening still reads as the heading it is.
     -->
+    <!--
+        Bigger than it was, and the reason is the room. These rows used to divide the card's
+        height between them, so the text had to be small enough to fit whatever cell it got.
+        Now the rows size to their own content and the card has space to spare, which showed
+        up as three columns of small grey text with a third of each card empty under it.
+    -->
     <Style TargetType="TextBlock" x:Key="RowFlow">
-        <Setter Property="FontSize" Value="12.5" />
+        <Setter Property="FontSize" Value="13.5" />
         <Setter Property="Foreground" Value="{StaticResource Muted}" />
         <Setter Property="TextWrapping" Value="Wrap" />
-        <Setter Property="LineHeight" Value="18.5" />
+        <Setter Property="LineHeight" Value="20.5" />
         <Setter Property="VerticalAlignment" Value="Center" />
     </Style>
 

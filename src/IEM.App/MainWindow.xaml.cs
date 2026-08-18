@@ -232,6 +232,46 @@ public partial class MainWindow : Window
         _about.Show();
     }
 
+    /// <summary>
+    /// The window has one size, and the only other size it takes is the whole screen.
+    /// <para>
+    /// Left free to resize, it could be dragged to a shape the dashboard does not fit, and
+    /// then the choice was between text laid over itself and text cut off. Neither is a size
+    /// anybody chose on purpose; both were reported. So the shape is decided here - 1280 by
+    /// 900, the height everything on it is laid out to fit - and maximising is left alone,
+    /// because a bigger window only ever helps.
+    /// </para>
+    /// <para>
+    /// Clamped to the work area first: on a screen smaller than that, the fixed size would put
+    /// the bottom of the window under the taskbar and the footer out of reach.
+    /// </para>
+    /// </summary>
+    private void OnWindowSizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        if (WindowState != WindowState.Normal)
+        {
+            return;
+        }
+
+        var work = SystemParameters.WorkArea;
+        var width = Math.Min(FixedWidth, work.Width);
+        var height = Math.Min(FixedHeight, work.Height);
+
+        if (Math.Abs(ActualWidth - width) > 0.5)
+        {
+            Width = width;
+        }
+
+        if (Math.Abs(ActualHeight - height) > 0.5)
+        {
+            Height = height;
+        }
+    }
+
+    private const double FixedWidth = 1280;
+
+    private const double FixedHeight = 900;
+
     private AboutWindow? _about;
 
     private void OnExit(object sender, RoutedEventArgs e)
