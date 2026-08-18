@@ -9,7 +9,7 @@
     <InvariantGlobalization>false</InvariantGlobalization>
     <Product>Internet Monitoring</Product>
     <Company>Internet Monitoring</Company>
-    <Version>2.8.0-beta.1</Version>
+    <Version>2.8.0-beta.2</Version>
     <NeutralLanguage>sr-Latn-RS</NeutralLanguage>
   </PropertyGroup>
 

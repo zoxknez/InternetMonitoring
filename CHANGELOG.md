@@ -10,6 +10,26 @@ izveštaj pravi.
 
 ---
 
+## 2.8.0-beta.2 - 18.08.2026.
+
+### Portabl izdanje: jedan exe
+
+Pored arhive sa folderima, izdanje sada nosi i samostalne exe fajlove - interfejs i konzolu.
+Jedan fajl, ništa se ne raspakuje i ništa ne instalira. Nadzor tada radi dok je prozor otvoren;
+za test koji preživljava restart i dalje se instalira servis.
+
+### Prozor više ne obećava servis kog nema
+
+Kartica „Priprema testa" tvrdila je nepromenljivim tekstom „Prozor možete zatvoriti. Nadzor se
+nastavlja kao Windows servis" i „Preživljava restart", sa kvačicom uz oba. Bez instaliranog
+servisa oba su netačna - a to je upravo portabl oblik. Čoveku koji kreće u dvodnevni test
+pisalo je da sme da zatvori prozor.
+
+Nije se videlo ranije jer mašina na kojoj se program razvija ima instaliran servis. Obe tvrdnje
+su sada vezane za stvarno stanje, a kvačica postaje crtica kad tvrdnja ne stoji.
+
+---
+
 ## 2.8.0-beta.1 - 18.08.2026.
 
 Format zapisa 3, pravila nepromenjena. Prvo izdanje otvoreno za testiranje van autorovog
