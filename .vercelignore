@@ -1,0 +1,12 @@
+# Sajt je jedini deo repozitorijuma koji se objavljuje. Sve ostalo je izvor,
+# testovi i gradnja - a artifacts/ nosi stotine megabajta po izdanju.
+artifacts
+baseline
+build
+docs
+src
+tests
+**/bin
+**/obj
+*.slnx
+*.md

@@ -1,0 +1,744 @@
+<!doctype html>
+<html lang="sr">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Internet Monitoring</title>
+<meta name="description" content="Beleži prekide i kvalitet internet veze i pravi dokumentaciju upotrebljivu za prigovor operateru. Radi lokalno, bez naloga i bez servera." />
+<meta property="og:title" content="Internet Monitoring" />
+<meta property="og:description" content="Beleži prekide i kvalitet internet veze i pravi dokumentaciju upotrebljivu za prigovor operateru." />
+<meta property="og:type" content="website" />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%231B4DD8'/%3E%3Cg fill='none' stroke='white' stroke-width='2.6' stroke-linecap='round'%3E%3Cpath d='M8 14.5a11 11 0 0 1 16 0'/%3E%3Cpath d='M11.5 18.5a6.5 6.5 0 0 1 9 0'/%3E%3C/g%3E%3Ccircle cx='16' cy='23' r='1.8' fill='white'/%3E%3C/svg%3E" />
+<style>
+  /* ---- Tokens -------------------------------------------------------------
+     Light is complete on bare :root. Dark redefines only tokens, twice: once
+     for the un-stamped system setting, once for an explicit toggle. No colour
+     is ever declared for the first time inside a media or [data-theme] block. */
+  :root {
+    --paper:   #EDF0F5;
+    --surface: #FFFFFF;
+    --sunken:  #E4E9F1;
+    --ink:     #0D1626;
+    --muted:   #56657E;
+    --faint:   #7E8CA3;
+    --line:    #D5DCE7;
+    --accent:  #1B4DD8;
+    --accent-ink: #FFFFFF;
+    --accent-soft: #E5EBFB;
+
+    /* The outage strip's own four states. They mean here exactly what they
+       mean on the program's screen, which is why they are named for it. */
+    --ok:         #2E9E5B;
+    --degraded:   #E0A33E;
+    --down:       #D14343;
+    --unmeasured: #9AA7BC;
+    --planned:    #C7CFDC;
+
+    --shadow: 0 1px 2px rgba(13, 22, 38, .06), 0 8px 24px -12px rgba(13, 22, 38, .18);
+
+    --display: Georgia, "Iowan Old Style", "Source Serif Pro", "Times New Roman", serif;
+    --body: "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+    --data: "Cascadia Mono", Consolas, "SF Mono", ui-monospace, "Liberation Mono", monospace;
+
+    --col: 68ch;
+    --gutter: clamp(20px, 5vw, 56px);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper:   #0A101D;
+      --surface: #121D33;
+      --sunken:  #0E1728;
+      --ink:     #E6EDF9;
+      --muted:   #9BAAC4;
+      --faint:   #76869F;
+      --line:    #22314F;
+      --accent:  #6E96FF;
+      --accent-ink: #08101F;
+      --accent-soft: #16264A;
+      --ok:         #45BE77;
+      --degraded:   #E8B65C;
+      --down:       #F0655F;
+      --unmeasured: #5B6C88;
+      --planned:    #2A3A59;
+      --shadow: 0 1px 2px rgba(0, 0, 0, .5), 0 14px 34px -18px rgba(0, 0, 0, .8);
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --paper:   #0A101D;
+    --surface: #121D33;
+    --sunken:  #0E1728;
+    --ink:     #E6EDF9;
+    --muted:   #9BAAC4;
+    --faint:   #76869F;
+    --line:    #22314F;
+    --accent:  #6E96FF;
+    --accent-ink: #08101F;
+    --accent-soft: #16264A;
+    --ok:         #45BE77;
+    --degraded:   #E8B65C;
+    --down:       #F0655F;
+    --unmeasured: #5B6C88;
+    --planned:    #2A3A59;
+    --shadow: 0 1px 2px rgba(0, 0, 0, .5), 0 14px 34px -18px rgba(0, 0, 0, .8);
+  }
+
+  /* ---- Base ---------------------------------------------------------------- */
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--body);
+    font-size: 17px;
+    line-height: 1.62;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 0 var(--gutter); }
+  .col  { max-width: var(--col); }
+
+  h1, h2, h3 {
+    font-family: var(--display);
+    font-weight: 600;
+    line-height: 1.16;
+    text-wrap: balance;
+    margin: 0;
+    letter-spacing: -.005em;
+  }
+  h1 { font-size: clamp(2.1rem, 5.2vw, 3.15rem); }
+  h2 { font-size: clamp(1.5rem, 3.2vw, 1.95rem); }
+  h3 { font-size: 1.06rem; font-family: var(--body); font-weight: 600; }
+
+  p { margin: 0; }
+  a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: 2px; }
+  a:focus-visible, .btn:focus-visible, summary:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 3px;
+    border-radius: 3px;
+  }
+
+  .lede { font-size: 1.14rem; color: var(--muted); }
+  .eyebrow {
+    font-family: var(--data);
+    font-size: .705rem;
+    letter-spacing: .13em;
+    text-transform: uppercase;
+    color: var(--faint);
+  }
+  .mono { font-family: var(--data); font-variant-numeric: tabular-nums; }
+
+  section { padding: clamp(46px, 7vw, 78px) 0; }
+  .stack  { display: flex; flex-direction: column; gap: 20px; }
+  .stack-s { display: flex; flex-direction: column; gap: 10px; }
+
+  /* ---- The outage strip ----------------------------------------------------
+     The program draws this across the bottom of its window: one segment per
+     slice of monitored time. Reused here as the page's divider, with the same
+     four meanings, because it is the one picture that says what the tool is. */
+  .strip {
+    position: relative;
+    height: 22px;
+    border-radius: 3px;
+    overflow: hidden;
+    background:
+      repeating-linear-gradient(90deg,
+        var(--ok) 0 5px, transparent 5px 7px);
+    background-color: var(--sunken);
+  }
+  .strip .seg {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    background: repeating-linear-gradient(90deg,
+      var(--c) 0 5px, transparent 5px 7px);
+    background-color: var(--sunken);
+  }
+  .strip .cover {
+    position: absolute;
+    inset: 0;
+    background: var(--sunken);
+    transform-origin: right center;
+  }
+
+  .strip-hero { height: 34px; border-radius: 4px; }
+  .strip-hero .cover { animation: record 2.1s cubic-bezier(.22, .68, .3, 1) forwards; }
+  @keyframes record { from { transform: scaleX(1); } to { transform: scaleX(0); } }
+
+  .strip-rule { height: 9px; opacity: .5; margin: 0; border: 0; }
+
+  .legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 18px;
+    font-size: .78rem;
+    color: var(--faint);
+  }
+  .legend span { display: inline-flex; align-items: center; gap: 7px; }
+  .legend i {
+    width: 9px; height: 9px; border-radius: 2px;
+    background: var(--c);
+    display: inline-block;
+  }
+
+  /* ---- Hero ---------------------------------------------------------------- */
+  header.top {
+    padding: 26px 0 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 20px;
+    flex-wrap: wrap;
+  }
+  .brand { display: flex; align-items: center; gap: 11px; font-weight: 600; }
+  .brand svg { display: block; }
+  .top nav { display: flex; gap: 20px; font-size: .9rem; }
+  .top nav a { color: var(--muted); text-decoration: none; }
+  .top nav a:hover { color: var(--ink); text-decoration: underline; }
+
+  .hero { padding-top: clamp(38px, 6vw, 62px); }
+  .hero h1 { margin-bottom: 18px; }
+
+  .cta { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 9px;
+    padding: 12px 20px;
+    border-radius: 4px;
+    border: 1px solid var(--accent);
+    background: var(--accent);
+    color: var(--accent-ink);
+    font: inherit;
+    font-weight: 600;
+    font-size: .95rem;
+    text-decoration: none;
+    transition: transform .12s ease, box-shadow .12s ease;
+  }
+  .btn:hover { transform: translateY(-1px); box-shadow: var(--shadow); }
+  .btn.ghost {
+    background: transparent;
+    color: var(--ink);
+    border-color: var(--line);
+  }
+  .cta-note { font-size: .84rem; color: var(--faint); }
+
+  /* ---- Cards & grids ------------------------------------------------------- */
+  .grid { display: grid; gap: 18px; }
+  @media (min-width: 720px) { .grid.two { grid-template-columns: 1fr 1fr; } }
+  @media (min-width: 860px) { .grid.four { grid-template-columns: repeat(4, 1fr); } }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 22px;
+  }
+  .card p { color: var(--muted); font-size: .95rem; }
+
+  figure { margin: 0; }
+  figure img {
+    display: block;
+    width: 100%;
+    height: auto;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    box-shadow: var(--shadow);
+    background: var(--surface);
+  }
+  figcaption { margin-top: 11px; font-size: .85rem; color: var(--faint); }
+
+  /* ---- Ledger table -------------------------------------------------------- */
+  .ledger-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); }
+  table { border-collapse: collapse; width: 100%; min-width: 620px; font-size: .9rem; }
+  th, td { text-align: left; padding: 13px 16px; border-bottom: 1px solid var(--line); vertical-align: baseline; }
+  thead th {
+    font-family: var(--data);
+    font-size: .69rem;
+    letter-spacing: .11em;
+    text-transform: uppercase;
+    color: var(--faint);
+    font-weight: 400;
+    background: var(--sunken);
+  }
+  tbody tr:last-child td { border-bottom: 0; }
+  td.num { font-family: var(--data); font-variant-numeric: tabular-nums; white-space: nowrap; color: var(--muted); }
+  td .file { display: block; font-family: var(--data); font-size: .84rem; word-break: break-all; }
+  td .what { display: block; margin-bottom: 3px; }
+
+  /* ---- Platform status ----------------------------------------------------- */
+  .plat {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .plat svg { color: var(--ink); }
+  .plat .name { font-weight: 600; }
+  .plat.soon svg, .plat.soon .name { color: var(--faint); }
+  .chip {
+    align-self: flex-start;
+    font-family: var(--data);
+    font-size: .68rem;
+    letter-spacing: .09em;
+    text-transform: uppercase;
+    padding: 4px 9px;
+    border-radius: 3px;
+    background: var(--accent-soft);
+    color: var(--accent);
+  }
+  .chip.wait { background: var(--sunken); color: var(--faint); }
+  .plat p { font-size: .85rem; color: var(--muted); margin: 0; }
+
+  /* ---- Notices ------------------------------------------------------------- */
+  .notice {
+    border-left: 3px solid var(--degraded);
+    padding: 4px 0 4px 18px;
+  }
+  .notice h3 { margin-bottom: 4px; }
+  .notice p { color: var(--muted); font-size: .95rem; }
+
+  details {
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    background: var(--surface);
+    padding: 0 18px;
+  }
+  summary { cursor: pointer; padding: 15px 0; font-weight: 600; font-size: .95rem; }
+  details[open] summary { border-bottom: 1px solid var(--line); }
+  details .body { padding: 16px 0 18px; }
+  pre {
+    margin: 0;
+    overflow-x: auto;
+    background: var(--sunken);
+    border-radius: 5px;
+    padding: 14px 16px;
+    font-family: var(--data);
+    font-size: .82rem;
+    line-height: 1.7;
+  }
+
+  footer {
+    border-top: 1px solid var(--line);
+    padding: 34px 0 56px;
+    color: var(--muted);
+    font-size: .88rem;
+  }
+  footer .links { display: flex; flex-wrap: wrap; gap: 8px 22px; }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { animation-duration: .001ms !important; transition-duration: .001ms !important; }
+    .strip-hero .cover { transform: scaleX(0); }
+  }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header class="top">
+    <div class="brand">
+      <svg width="26" height="26" viewBox="0 0 32 32" aria-hidden="true">
+        <rect width="32" height="32" rx="7" fill="#1B4DD8" />
+        <g fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round">
+          <path d="M8 14.5a11 11 0 0 1 16 0" />
+          <path d="M11.5 18.5a6.5 6.5 0 0 1 9 0" />
+        </g>
+        <circle cx="16" cy="23" r="1.8" fill="#fff" />
+      </svg>
+      Internet Monitoring
+    </div>
+    <nav>
+      <a href="#kako">Kako radi</a>
+      <a href="#preuzimanje">Preuzimanje</a>
+      <a href="#platforme">Platforme</a>
+      <a href="#granice">Granice</a>
+    </nav>
+  </header>
+</div>
+
+<div class="wrap">
+  <section class="hero">
+    <div class="col stack">
+      <p class="eyebrow">Windows · slobodan softver · 2.8.0-beta.2</p>
+      <h1>Dokaz da veza pada, napisan tako da operater nema šta da ospori.</h1>
+      <p class="lede">
+        Program beleži prekide i kvalitet internet veze i od toga pravi dokumentaciju
+        upotrebljivu za prigovor operateru. Radi lokalno. Nema naloga, nema servera, ne šalje
+        podatke nigde — snimljeno ostaje u folderu sesije, a vi odlučujete kome ćete ga poslati.
+      </p>
+    </div>
+
+    <div style="margin: 34px 0 14px;">
+      <div class="strip strip-hero" role="img"
+           aria-label="Traka prekida: 48 sati nadzora, dva prekida i jedan period pogoršanja.">
+        <div class="seg" style="--c: var(--degraded); left: 31%; width: 6%;"></div>
+        <div class="seg" style="--c: var(--down); left: 44%; width: 3.5%;"></div>
+        <div class="seg" style="--c: var(--unmeasured); left: 58%; width: 4%;"></div>
+        <div class="seg" style="--c: var(--down); left: 73%; width: 1.6%;"></div>
+        <div class="seg" style="--c: var(--planned); left: 88%; right: 0;"></div>
+        <div class="cover"></div>
+      </div>
+    </div>
+    <div class="legend">
+      <span style="--c: var(--ok)"><i></i>ispravno</span>
+      <span style="--c: var(--degraded)"><i></i>pogoršano</span>
+      <span style="--c: var(--down)"><i></i>prekid</span>
+      <span style="--c: var(--unmeasured)"><i></i>nije mereno</span>
+      <span style="--c: var(--planned)"><i></i>preostalo po planu</span>
+    </div>
+
+    <div class="cta" style="margin-top: 32px;">
+      <a class="btn" href="https://github.com/zoxknez/InternetMonitoring/releases/download/v2.8.0-beta.2/InternetMonitoring-2.8.0-beta.2-win-x64.exe">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+          <path d="M0 2.2 6.4 1.3v5.9H0zM7.3 1.2 16 0v7.2H7.3zM0 8.1h6.4V14L0 13.1zM7.3 8.1H16V16l-8.7-1.2z" />
+        </svg>
+        Preuzmi za Windows
+      </a>
+      <a class="btn ghost" href="#preuzimanje">Ostale verzije</a>
+      <span class="cta-note">Jedan fajl, 65 MB. Ništa se ne instalira.</span>
+    </div>
+  </section>
+</div>
+
+<div class="wrap"><hr class="strip strip-rule" /></div>
+
+<div class="wrap">
+  <section id="kako">
+    <div class="col stack" style="margin-bottom: 30px;">
+      <p class="eyebrow">Kako radi</p>
+      <h2>Sitne provere, svakih nekoliko sekundi, danima.</h2>
+      <p class="lede">
+        Program stalno pita ruter, pa spoljne mete, pa DNS i HTTP. Iz razlike između tih
+        odgovora zaključuje dokle je problem izolovan — i to je jedina stvar koju operater ne
+        može da odbije rečenicom „proverite svoj Wi-Fi".
+      </p>
+    </div>
+
+    <figure>
+      <img src="ui-nadzor.png" width="1166" height="833"
+           alt="Prozor programa tokom nadzora: stanje veze, kašnjenje, grafik kašnjenja kroz vreme i traka prekida." />
+      <figcaption>Nadzor u toku. Traka prekida na dnu je isti prikaz koji stoji na vrhu ove stranice.</figcaption>
+    </figure>
+
+    <div class="grid two" style="margin-top: 34px;">
+      <div class="card">
+        <h3>Razlikuje dokle je problem izolovan</h3>
+        <p>
+          Razdvaja kvar na vašem računaru, na Wi-Fi vezi, na ruteru i iza njega. Prigovor nosi
+          samo ono poslednje — a program nikada ne tvrdi da je kriv operater, jer se to sa
+          vašeg računara ne može dokazati.
+        </p>
+      </div>
+      <div class="card">
+        <h3>Ne izmišlja prekide</h3>
+        <p>
+          Ako ping padne a TCP i TLS prolaze, to je filtriran ping, ne prekid. Mnoge mreže
+          namerno blokiraju ping, i to ne znači da veza ne radi.
+        </p>
+      </div>
+      <div class="card">
+        <h3>Ne broji spavanje računara</h3>
+        <p>
+          Dok je računar spavao ništa nije mereno, pa se to ne računa ni kao prekid ni kao
+          ispravan rad. Takav period se u izveštaju vidi kao nenadzirano vreme.
+        </p>
+      </div>
+      <div class="card">
+        <h3>Ne izmišlja preciznost</h3>
+        <p>
+          Svaki prekid nosi donju granicu trajanja koja se ne može osporiti, gornju granicu i
+          procenu između njih. Nikada jedan broj koji se pravi da zna više nego što je izmereno.
+        </p>
+      </div>
+    </div>
+  </section>
+</div>
+
+<div class="wrap"><hr class="strip strip-rule" /></div>
+
+<div class="wrap">
+  <section>
+    <div class="col stack" style="margin-bottom: 30px;">
+      <p class="eyebrow">Šta dobijate na kraju</p>
+      <h2>Folder koji se pošalje operateru bez ijedne dopune.</h2>
+    </div>
+
+    <div class="grid two" style="align-items: start;">
+      <figure>
+        <img src="ui-priprema.png" width="1180" height="840"
+             alt="Ekran pripreme testa: izbor trajanja nadzora, spisak fajlova koji nastaju i po čemu se program razlikuje." />
+        <figcaption>Priprema testa. Za prigovor je uobičajeno 48 sati — nijedan propis ne traži određeno trajanje.</figcaption>
+      </figure>
+
+      <div class="stack">
+        <div class="card stack-s">
+          <h3>Izvestaj.pdf i Izvestaj.html</h3>
+          <p>Za štampu i za čitanje na ekranu. Fontovi su ugrađeni, pa naša slova izgledaju isto na svakoj mašini.</p>
+        </div>
+        <div class="card stack-s">
+          <h3>Prekidi.csv i Merenja.csv</h3>
+          <p>Tabele za Excel, sa donjom i gornjom granicom trajanja svakog prekida.</p>
+        </div>
+        <div class="card stack-s">
+          <h3>SirovaEvidencija.jsonl</h3>
+          <p>Sam dokaz, sa lancem otisaka: izmena bilo kog reda narušava sve otiske posle njega.</p>
+        </div>
+        <div class="card stack-s">
+          <h3>SHA256SUMS.txt</h3>
+          <p>Otisci svih fajlova u paketu. Proveru može ponoviti bilo ko, običnim alatima.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+</div>
+
+<div class="wrap"><hr class="strip strip-rule" /></div>
+
+<div class="wrap">
+  <section id="preuzimanje">
+    <div class="col stack" style="margin-bottom: 26px;">
+      <p class="eyebrow">Preuzimanje · 2.8.0-beta.2</p>
+      <h2>Jedan fajl je dovoljan. Servis je za dvodnevni test.</h2>
+      <p class="lede">
+        Portabl fajl pokrenete i radi — ali nadzor tada traje dok je prozor otvoren. Za test
+        koji preživljava zatvaranje prozora i restart računara instalira se servis iz arhive.
+        Program to kaže i na svom ekranu, umesto da obeća suprotno.
+      </p>
+    </div>
+
+    <div class="ledger-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th scope="col">Šta je</th>
+            <th scope="col">Platforma</th>
+            <th scope="col">Veličina</th>
+            <th scope="col">SHA-256</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>
+              <span class="what"><strong>Portabl program</strong> — pokrenete i radi</span>
+              <a class="file" href="https://github.com/zoxknez/InternetMonitoring/releases/download/v2.8.0-beta.2/InternetMonitoring-2.8.0-beta.2-win-x64.exe">InternetMonitoring-2.8.0-beta.2-win-x64.exe</a>
+            </td>
+            <td class="num">Windows x64</td>
+            <td class="num">65,1 MB</td>
+            <td class="num">64a725df…</td>
+          </tr>
+          <tr>
+            <td>
+              <span class="what"><strong>Portabl program</strong> — pokrenete i radi</span>
+              <a class="file" href="https://github.com/zoxknez/InternetMonitoring/releases/download/v2.8.0-beta.2/InternetMonitoring-2.8.0-beta.2-win-arm64.exe">InternetMonitoring-2.8.0-beta.2-win-arm64.exe</a>
+            </td>
+            <td class="num">Windows ARM64</td>
+            <td class="num">61,3 MB</td>
+            <td class="num">6cd9a720…</td>
+          </tr>
+          <tr>
+            <td>
+              <span class="what"><strong>Puna arhiva</strong> — sa servisom i instalacijom</span>
+              <a class="file" href="https://github.com/zoxknez/InternetMonitoring/releases/download/v2.8.0-beta.2/InternetMonitoring-2.8.0-beta.2-win-x64.zip">InternetMonitoring-2.8.0-beta.2-win-x64.zip</a>
+            </td>
+            <td class="num">Windows x64</td>
+            <td class="num">138,8 MB</td>
+            <td class="num">0b36b859…</td>
+          </tr>
+          <tr>
+            <td>
+              <span class="what"><strong>Puna arhiva</strong> — sa servisom i instalacijom</span>
+              <a class="file" href="https://github.com/zoxknez/InternetMonitoring/releases/download/v2.8.0-beta.2/InternetMonitoring-2.8.0-beta.2-win-arm64.zip">InternetMonitoring-2.8.0-beta.2-win-arm64.zip</a>
+            </td>
+            <td class="num">Windows ARM64</td>
+            <td class="num">130,8 MB</td>
+            <td class="num">75eb69b3…</td>
+          </tr>
+          <tr>
+            <td>
+              <span class="what"><strong>Konzola</strong> — za skripte i proveru tuđeg paketa</span>
+              <a class="file" href="https://github.com/zoxknez/InternetMonitoring/releases/download/v2.8.0-beta.2/iem-2.8.0-beta.2-win-x64.exe">iem-2.8.0-beta.2-win-x64.exe</a>
+            </td>
+            <td class="num">Windows x64</td>
+            <td class="num">38,8 MB</td>
+            <td class="num">dde29b34…</td>
+          </tr>
+          <tr>
+            <td>
+              <span class="what"><strong>Konzola</strong> — za skripte i proveru tuđeg paketa</span>
+              <a class="file" href="https://github.com/zoxknez/InternetMonitoring/releases/download/v2.8.0-beta.2/iem-2.8.0-beta.2-win-arm64.exe">iem-2.8.0-beta.2-win-arm64.exe</a>
+            </td>
+            <td class="num">Windows ARM64</td>
+            <td class="num">38,0 MB</td>
+            <td class="num">f0ef5089…</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div style="margin-top: 18px;">
+      <details>
+        <summary>Program nije digitalno potpisan — kako da proverite šta ste skinuli</summary>
+        <div class="body stack">
+          <p style="color: var(--muted); font-size: .95rem;">
+            SmartScreen će upozoriti na nepoznatog izdavača. Potpis je planiran; do tada je
+            provera otiska ono što stoji umesto njega. Zbir mora odgovarati onom u tabeli i
+            fajlu <span class="mono">.sha256</span> uz preuzimanje.
+          </p>
+          <pre>Get-FileHash .\InternetMonitoring-2.8.0-beta.2-win-x64.exe -Algorithm SHA256
+Unblock-File .\InternetMonitoring-2.8.0-beta.2-win-x64.exe</pre>
+          <p style="color: var(--muted); font-size: .95rem;">
+            Prvo pokretanje traje desetak sekundi jer se sadržaj raspakuje u privremeni folder.
+            Sledeća su odmah.
+          </p>
+        </div>
+      </details>
+    </div>
+  </section>
+</div>
+
+<div class="wrap"><hr class="strip strip-rule" /></div>
+
+<div class="wrap">
+  <section id="platforme">
+    <div class="col stack" style="margin-bottom: 30px;">
+      <p class="eyebrow">Platforme</p>
+      <h2>Danas Windows. Ostalo je u pripremi.</h2>
+      <p class="lede">
+        Nadzor, lanac otisaka i izveštaj ne zavise od Windows-a. Ono što zavisi jeste čitanje
+        Wi-Fi stanja, tabele ruta i rad kao servis — i to je posao koji svaka nova platforma
+        traži iznova.
+      </p>
+    </div>
+
+    <div class="grid four">
+      <div class="plat">
+        <svg width="30" height="30" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+          <path d="M0 2.2 6.4 1.3v5.9H0zM7.3 1.2 16 0v7.2H7.3zM0 8.1h6.4V14L0 13.1zM7.3 8.1H16V16l-8.7-1.2z" />
+        </svg>
+        <span class="name">Windows</span>
+        <span class="chip">Dostupno</span>
+        <p>x64 i ARM64, od Windows 10 naviše. Portabl fajl ili servis.</p>
+      </div>
+
+      <div class="plat soon">
+        <svg width="30" height="30" viewBox="0 0 32 32" fill="none" stroke="currentColor"
+             stroke-width="1.8" stroke-linejoin="round" aria-hidden="true">
+          <path d="M16 3c-3.6 0-5.4 2.6-5.4 6.2 0 2.4.4 4 .1 5.4-.4 1.9-2.5 4.3-3.3 6.6-.8 2.3-.4 4 .6 4.6 1.2.7 2.6-.2 3.6-.2 1.6 0 2.4 1.4 4.4 1.4s2.8-1.4 4.4-1.4c1 0 2.4.9 3.6.2 1-.6 1.4-2.3.6-4.6-.8-2.3-2.9-4.7-3.3-6.6-.3-1.4.1-3 .1-5.4C21.4 5.6 19.6 3 16 3Z" />
+          <circle cx="13.4" cy="10.4" r="1.3" fill="currentColor" stroke="none" />
+          <circle cx="18.6" cy="10.4" r="1.3" fill="currentColor" stroke="none" />
+          <path d="M14.4 13.6c.5.6 2.7.6 3.2 0" stroke-linecap="round" />
+        </svg>
+        <span class="name">Linux</span>
+        <span class="chip wait">U pripremi</span>
+        <p>Nadzor i izveštaj rade bez izmena; ostaje čitanje mreže i rad kao daemon.</p>
+      </div>
+
+      <div class="plat soon">
+        <svg width="30" height="30" viewBox="0 0 32 32" fill="none" stroke="currentColor"
+             stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M12 6.5A2.5 2.5 0 1 0 9.5 9H12v4H9.5A2.5 2.5 0 1 0 12 15.5V13h8v2.5A2.5 2.5 0 1 0 22.5 13H20V9h2.5A2.5 2.5 0 1 0 20 6.5V9h-8V6.5Z" />
+        </svg>
+        <span class="name">macOS</span>
+        <span class="chip wait">U pripremi</span>
+        <p>Isto jezgro; interfejs i pristup mrežnim podacima traže svoj sloj.</p>
+      </div>
+
+      <div class="plat soon">
+        <svg width="30" height="30" viewBox="0 0 32 32" fill="none" stroke="currentColor"
+             stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M9 14a7 7 0 0 1 14 0" />
+          <path d="M9 14h14v8a2 2 0 0 1-2 2H11a2 2 0 0 1-2-2v-8Z" />
+          <path d="m11 6 1.6 2.4M21 6l-1.6 2.4" />
+          <circle cx="13" cy="11.4" r="1" fill="currentColor" stroke="none" />
+          <circle cx="19" cy="11.4" r="1" fill="currentColor" stroke="none" />
+          <path d="M5.5 15v5M26.5 15v5" />
+        </svg>
+        <span class="name">Android</span>
+        <span class="chip wait">U pripremi</span>
+        <p>Nadzor mobilne veze je drugo pitanje od kućne — i drugi dokaz.</p>
+      </div>
+    </div>
+  </section>
+</div>
+
+<div class="wrap"><hr class="strip strip-rule" /></div>
+
+<div class="wrap">
+  <section id="granice">
+    <div class="col stack" style="margin-bottom: 28px;">
+      <p class="eyebrow">Granice ovog alata</p>
+      <h2>Šta ovaj program ne dokazuje.</h2>
+      <p class="lede">
+        Ceo projekat je napisan oko jednog pravila: <em>„nisam mogao da proverim" nikada ne
+        postaje „proverio sam i u redu je"</em>. Zato ove granice stoje ovde, a ne sitnim
+        slovima na dnu.
+      </p>
+    </div>
+
+    <div class="col stack" style="gap: 26px;">
+      <div class="notice">
+        <h3>Ovo nije zvanično merenje brzine</h3>
+        <p>
+          Za dokazivanje ugovorene brzine RATEL traži merenje
+          <a href="https://nettest.ratel.rs/home">NetTest</a> aplikacijom, po propisanoj
+          proceduri, preko kabla direktno na modem. Ovaj alat je dopuna tome — pokazuje kada je
+          i pod kojim uslovima brzina padala — a ne zamena.
+        </p>
+      </div>
+      <div class="notice">
+        <h3>Lanac otisaka je provera doslednosti, ne dokaz porekla</h3>
+        <p>
+          Dokazuje da nijedan zapis nije izmenjen a da to ne pokvari sve otiske posle njega. Ne
+          dokazuje ko ga je napravio ni kada: ko ima pravo upisa u folder sesije mogao bi da
+          preračuna i lanac i zbirove. Nezavisan dokaz vremena traži potpis i vremenski žig
+          treće strane, što ovo izdanje ne radi.
+        </p>
+      </div>
+      <div class="notice">
+        <h3>Rokovi za prigovor nisu pravni savet</h3>
+        <p>
+          Program računa rokove i uz svaki navodi propis iz kog dolazi, sa datumom provere. To
+          je pomoć u snalaženju. Kad podaci ne dozvoljavaju jednoznačan odgovor, program kaže
+          da rok nije utvrđen — umesto da pogodi.
+        </p>
+      </div>
+      <div class="notice">
+        <h3>Folder sesije sadrži vaše podatke</h3>
+        <p>
+          Ime računara, naziv adaptera, IP rutera, SSID. Tako i treba, jer je to deo dokaza —
+          ali šaljite samo ono što ste spremni da objavite.
+        </p>
+      </div>
+    </div>
+  </section>
+</div>
+
+<div class="wrap">
+  <footer>
+    <div class="stack" style="gap: 16px;">
+      <p>
+        Slobodan softver pod MIT licencom. Izvorni kod, istorija izmena i spisak nedovršenog
+        stoje na GitHub-u. Autor: o0o0o0o.
+      </p>
+      <div class="links">
+        <a href="https://github.com/zoxknez/InternetMonitoring">Izvorni kod</a>
+        <a href="https://github.com/zoxknez/InternetMonitoring/issues">Prijava greške</a>
+        <a href="https://github.com/zoxknez/InternetMonitoring/blob/main/CHANGELOG.md">Istorija izmena</a>
+        <a href="https://github.com/zoxknez/InternetMonitoring/blob/main/docs/INVARIJANTE.md">Pravila koja program ne sme da prekrši</a>
+        <a href="https://discord.gg/ZZbtCs942">Discord</a>
+        <a href="mailto:zoxknez@hotmail.com">Mejl</a>
+      </div>
+      <p class="mono" style="font-size: .8rem; color: var(--faint);">
+        Internet Monitoring 2.8.0-beta.2 · beta izdanje, otvoreno za testiranje
+      </p>
+    </div>
+  </footer>
+</div>
+
+</body>
+</html>
