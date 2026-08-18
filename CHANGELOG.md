@@ -25,6 +25,29 @@ Sada iskoči prozor sa tri odgovora, i uz svaki piše šta radi: **zaustavi i na
 kaže jeste da se evidencija ne gubi ni u jednom slučaju. Zatvaranje prozora bilo čim što nije
 odgovor znači „nastavi": sesija zaustavljena slučajnim klikom ne može da se nastavi.
 
+### Prozor ima jednu veličinu, i ništa se ne skroluje ni ne seče
+
+Slobodan da se razvlači, prozor je mogao da dođe u oblik u koji pregled ne staje - a onda je
+izbor bio između teksta preko teksta i teksta koji je odsečen. Nijedno nije veličina koju je
+neko izabrao, a oba su prijavljena. Sada je oblik odlučen: **1280 × 900**, mera za koju je sve i
+raspoređeno. Ceo ekran ostaje dozvoljen, a na manjem ekranu se steže na radnu površinu.
+
+Uzrok preklapanja je bio konkretan: kartice su redove raspoređivale `UniformGrid`-om, koji deli
+raspoloživu visinu na jednake delove. Na nižem prozoru svaki red dobije manje nego što mu treba
+i prelomljeni redovi se popnu jedan na drugi. Redovi sada prate svoj sadržaj, slova su veća
+(12,5 → 13,5), a kartice sa spiskom fajlova i sa razlikama opet dele visinu među redovima pa se
+popunjavaju do dna - što je bezbedno tek otkako prozor ima jednu veličinu.
+
+### Nalaz je traka, a radnje dobijaju punu širinu
+
+Zeleni nalaz je stajao u koloni pored kartice sa dugmadima i rastezao se na njenu visinu, pa je
+najčešći rezultat - „nijedan prekid" - postajao prazan blok preko pola prozora. Sada je jedna
+traka preko cele širine, sa zaustavljanjem na njenom kraju.
+
+Dugmad su bila stisnuta u usku kolonu desno. Sada su četiri imenovane kolone preko cele širine -
+**snimljeno**, **prigovor**, **zabeleži šta se desilo**, **merenje brzine** - razdvojene tankim
+linijama, i svako dugme se rasteže na svoju kolonu.
+
 ### Interfejs više ne traži ništa od grafičkog drajvera
 
 Svaka kartica je nosila `DropShadowEffect`. WPF efekat iscrtava element i ceo njegov sadržaj
