@@ -93,15 +93,18 @@ public static class ComplaintCommand
 
         var complaint = MergeWithJournal(prepared.Case!, journal);
         var letter = ComplaintLetter.ToOperator(complaint, session, today);
-        var timeline = BuildTimeline(complaint, today, prepared.AnchorNote);
 
-        if (outputRoot is not null)
-        {
-            CaseJournalStore.Save(
+        // The timeline is written from the context the journal now holds, not from a fresh
+        // resolution. Re-preparing a complaint for a case that already has one must not
+        // restate deadlines that were settled when it was first prepared.
+        var legal = outputRoot is not null
+            ? CaseJournalStore.Save(
                 outputRoot,
                 new CaseJournal { Case = complaint, Notes = journal?.Notes },
-                today);
-        }
+                today)
+            : journal?.Legal ?? complaint.Resolve(today);
+
+        var timeline = BuildTimeline(complaint, legal, today, prepared.AnchorNote);
 
         Write(Path.Combine(directory, LetterFile), letter);
         Write(Path.Combine(directory, TimelineFile), timeline);
@@ -156,10 +159,13 @@ public static class ComplaintCommand
     // and one finding the first upstream outage - both duplicating ComplaintPreparation with
     // wording that had already drifted apart from it. Neither was called.
 
-    private static string BuildTimeline(ComplaintCase complaint, DateOnly today, string? anchorNote = null)
+    private static string BuildTimeline(
+        ComplaintCase complaint,
+        ResolvedLegalContext legal,
+        DateOnly today,
+        string? anchorNote = null)
     {
         var builder = new StringBuilder();
-        var legal = complaint.Resolve(today);
         var stage = complaint.StageOn(today, legal);
 
         builder.AppendLine("  ROKOVI");

@@ -151,7 +151,9 @@ public sealed partial class ShellViewModel : ObservableObject, IAsyncDisposable
     /// The share of external destinations that went quiet on the last sample - not packet
     /// loss, and no longer labelled as it. One probe per destination cannot measure loss.
     /// </summary>
-    public string UnreachableTargetsText => SerbianText.Percent(Snapshot.UnreachableTargetShare, decimals: 1);
+    public string UnreachableTargetsText => Snapshot.UnreachableTargetShare is { } share
+        ? SerbianText.Percent(share, decimals: 1)
+        : "nije mereno";
 
     /// <summary>
     /// Warns when a speed claim is being built on a wireless link, up front rather than
@@ -788,11 +790,13 @@ public sealed partial class ShellViewModel : ObservableObject, IAsyncDisposable
 
         text += ". ";
 
-        text += note.BandLabel is { } band
+        var assessment = note.Assess();
+
+        text += assessment.BandLabel is { } band
             ? $"Ocena: {band}. "
             : "Bez ugovorene brzine nema ocene - upišite je u polje pored dugmeta. ";
 
-        if (note.UploadBandLabel is { } uploadBand)
+        if (assessment.UploadBandLabel is { } uploadBand)
         {
             text += $"Ocena slanja: {uploadBand}. ";
         }

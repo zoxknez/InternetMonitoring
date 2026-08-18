@@ -135,7 +135,8 @@ public static class ComplaintPreparation
             return session.Incidents.Count > 0
                 ? $"Zabeleženo je {session.Incidents.Count} prekida, ali nijedan nije bio izolovan " +
                   "iza rutera. Takvi prekidi ne mogu da nose prigovor."
-                : "U ovoj sesiji nije zabeležen nijedan prekid usluge, pa nema osnova za prigovor.";
+                : "U ovoj sesiji nije zabeležen nijedan prekid usluge, pa nema dovoljno " +
+                  "evidentiranih nalaza za automatsku pripremu prigovora.";
         }
 
         return session.MonitoredTime < SessionVerdict.MinimumUsefulDuration

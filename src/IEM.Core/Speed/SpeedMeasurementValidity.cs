@@ -227,6 +227,18 @@ public sealed record SpeedMeasurementValidity(
         return Band(measured / contracted);
     }
 
+    /// <summary>
+    /// The band for a bare pair of figures, with no conditions attached.
+    /// <para>
+    /// Used when re-deriving the band of a measurement recorded by an earlier build: the
+    /// numbers in the file are evidence, the label it stored beside them is not.
+    /// </para>
+    /// </summary>
+    public static SpeedBand? BandFor(double? measuredMbps, double? contractedMbps) =>
+        measuredMbps is { } measured && contractedMbps is { } contracted && contracted > 0
+            ? Band(measured / contracted)
+            : null;
+
     private static SpeedBand Band(double share) => share switch
     {
         >= AdvertisedShare => SpeedBand.AtAdvertised,

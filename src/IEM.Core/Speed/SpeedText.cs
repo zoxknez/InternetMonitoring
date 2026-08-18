@@ -251,6 +251,27 @@ public static class SpeedText
         "Merenje namerno zauzima vezu do kraja, u oba smera. Skok kašnjenja na vremenskoj traci " +
         "u vreme merenja potiče od samog merenja, a ne od smetnje na vezi.";
 
+    /// <summary>
+    /// Said of a measurement recorded before the rules were corrected.
+    /// <para>
+    /// The earlier build wrote its own verdict into the file. It is kept, because throwing it
+    /// away would lose part of the record, and it is not adopted, because it was reached under
+    /// a rule that counted an unchecked measurement path as a verified one.
+    /// </para>
+    /// </summary>
+    public const string LegacyFindingNote =
+        "Ocena je sačuvana iz starije verzije programa. Mrežna putanja merenja tada nije bila " +
+        "proverena, pa se ranija ocena valjanosti ne preuzima kao današnji nalaz. Izmerene " +
+        "vrednosti su onakve kakve su zapisane; pojas je preračunat po važećim pravilima.";
+
+    /// <summary>What a recorded measurement supports today, in one line.</summary>
+    public static string Label(this SpeedAssessmentState state) => state switch
+    {
+        SpeedAssessmentState.MeetsConditions => "Merenje ispunjava uslove za korišćenje uz prigovor.",
+        SpeedAssessmentState.DoesNotMeetConditions => "Merenje NE ispunjava uslove za dokazivanje ugovorene brzine:",
+        _ => "Valjanost ovog merenja se po važećim pravilima ne može utvrditi.",
+    };
+
     /// <summary>Conditions the measurement itself cannot check, so the person has to.</summary>
     public static IReadOnlyList<string> Checklist { get; } =
     [

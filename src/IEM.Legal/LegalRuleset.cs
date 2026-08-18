@@ -167,6 +167,17 @@ public sealed record AppliedRule
 
     /// <summary>Why it could not be settled, when it could not.</summary>
     public string? Impediment { get; init; }
+
+    /// <summary>
+    /// Set when a date this period was counted from has since been given a different value.
+    /// <para>
+    /// The period itself is left exactly as it was resolved. Recomputing it silently would
+    /// change what a case meant on the strength of an edit nobody was shown - so the old
+    /// value stands and the disagreement is stated. Reconciling the two properly needs a
+    /// history of resolutions, which is 3.0 work.
+    /// </para>
+    /// </summary>
+    public string? Conflict { get; init; }
 }
 
 /// <summary>
@@ -201,4 +212,7 @@ public sealed record ResolvedLegalContext
 
     public AppliedRule? For(ComplaintStep step) =>
         AppliedRules.FirstOrDefault(rule => rule.Step == step);
+
+    /// <summary>True when a fact behind an already-settled period has since been changed.</summary>
+    public bool HasConflicts => AppliedRules.Any(rule => rule.Conflict is not null);
 }

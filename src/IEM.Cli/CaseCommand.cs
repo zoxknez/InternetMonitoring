@@ -155,7 +155,9 @@ public static class CaseCommand
         }
 
         var today = DateOnly.FromDateTime(DateTime.Now);
-        var obstacle = RegulatorSubmission.CanSubmit(journal.Case, today);
+        // Judged against the rules the case carries, not against today's registry.
+        var legal = journal.Legal ?? journal.Case.Resolve(today);
+        var obstacle = RegulatorSubmission.CanSubmit(journal.Case, today, legal);
 
         // Refusing before writing is the point of the whole module: a submission filed too
         // early is sent back, and the person has spent effort and part of their window.
@@ -166,7 +168,7 @@ public static class CaseCommand
             return false;
         }
 
-        var submission = RegulatorSubmission.Build(journal.Case, session, today, out var _);
+        var submission = RegulatorSubmission.Build(journal.Case, session, today, out var _, legal);
 
         if (submission is null)
         {

@@ -65,19 +65,20 @@ public static class ComplaintBuilder
         var journal = outputRoot is null ? null : CaseJournalStore.Load(outputRoot);
         var complaint = MergeWithJournal(prepared.Case!, journal);
 
-        if (outputRoot is not null)
-        {
-            CaseJournalStore.Save(
+        // The timeline comes from the context the journal now holds rather than from a fresh
+        // resolution, so a case prepared twice does not restate deadlines already settled.
+        var legal = outputRoot is not null
+            ? CaseJournalStore.Save(
                 outputRoot,
                 new CaseJournal { Case = complaint, Notes = journal?.Notes },
-                today);
-        }
+                today)
+            : journal?.Legal ?? complaint.Resolve(today);
 
         var letterPath = Path.Combine(directory, "Prigovor-operateru.txt");
         var timelinePath = Path.Combine(directory, "Rokovi.txt");
 
         Write(letterPath, ComplaintLetter.ToOperator(complaint, session, today));
-        Write(timelinePath, Timeline(complaint, today, prepared.AnchorNote));
+        Write(timelinePath, Timeline(complaint, legal, today, prepared.AnchorNote));
 
         return new ComplaintOutcome(letterPath, timelinePath, null);
     }
@@ -115,14 +116,15 @@ public static class ComplaintBuilder
         }
 
         var today = DateOnly.FromDateTime(DateTime.Now);
-        var obstacle = RegulatorSubmission.CanSubmit(journal.Case, today);
+        var legal = journal.Legal ?? journal.Case.Resolve(today);
+        var obstacle = RegulatorSubmission.CanSubmit(journal.Case, today, legal);
 
         if (obstacle != RegulatorSubmission.Obstacle.None)
         {
             return new RegulatorOutcome(null, RegulatorSubmission.Explain(obstacle));
         }
 
-        var submission = RegulatorSubmission.Build(journal.Case, session, today, out var _);
+        var submission = RegulatorSubmission.Build(journal.Case, session, today, out var _, legal);
 
         if (submission is null)
         {
@@ -184,10 +186,13 @@ public static class ComplaintBuilder
                     : fresh.SubscriberName,
             };
 
-    private static string Timeline(ComplaintCase complaint, DateOnly today, string? anchorNote = null)
+    private static string Timeline(
+        ComplaintCase complaint,
+        ResolvedLegalContext legal,
+        DateOnly today,
+        string? anchorNote = null)
     {
         var builder = new StringBuilder();
-        var legal = complaint.Resolve(today);
         var stage = complaint.StageOn(today, legal);
 
         builder.AppendLine("ROKOVI");

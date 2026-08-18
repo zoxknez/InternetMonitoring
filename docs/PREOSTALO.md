@@ -1,7 +1,7 @@
 # Šta je preostalo
 
-Stanje na dan **17.08.2026. (uveče)**, verzija **2.7.0**, ime aplikacije
-**Internet Monitoring**, **545 testova prolazi** (521 u jezgru, 24 u prozoru), nula upozorenja
+Stanje na dan **18.08.2026.**, verzija **2.7.1**, ime aplikacije
+**Internet Monitoring**, **559 testova prolazi** (535 u jezgru, 24 u prozoru), nula upozorenja
 pri gradnji, zaključane zavisnosti prolaze. Projekat je objavljen kao open source
 (MIT, GitHub Actions CI zelen).
 
@@ -12,6 +12,19 @@ i **zašto**, jer je to podatak koji se najbrže gubi. Sve što je ranije bilo o
 Redosled je po važnosti.
 
 ---
+
+## 0a. Šta je audit 2.7.0 našao (i 2.7.1 zatvorila)
+
+Nezavisan audit objavljenog taga našao je tri mesta koja su promakla, sva tri iste vrste:
+ispravke iz 2.7.0 nisu dopirale do **fajla koji je već bio na disku**. Testovi grade podatke u
+kodu, pa su nova pravila proveravali sami na sebi.
+
+Pouka koja ostaje: **zaključak zapisan u fajl je podatak sa rokom trajanja.** Ako se pravilo
+po kom je donet promeni, zapisani zaključak postaje istorijski podatak, ne nalaz. Otud dve nove
+invarijante - `LEGACY_DERIVED_CONCLUSION_IS_NEVER_TRUSTED_AS_RAW_EVIDENCE` i
+`UNKNOWN_NEVER_BECOMES_ZERO` - i folder `baseline/legacy-2.6/` sa stvarnim starim artefaktima
+koje testovi čitaju. Isti pristup treba proširiti u 3.0: svaki izvedeni zaključak koji se
+upisuje mora nositi verziju pravila po kojima je donet.
 
 ## 0. Šta 2.7.0 svesno nije uradila
 

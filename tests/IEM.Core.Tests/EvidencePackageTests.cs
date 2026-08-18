@@ -152,7 +152,7 @@ public sealed class EvidencePackageTests : IDisposable
         var html = await File.ReadAllTextAsync(Path.Combine(paths.Directory, "Izvestaj.html"));
 
         Assert.Contains("class=\"verdict good\"", html, StringComparison.Ordinal);
-        Assert.Contains("Veza je bila stabilna", html, StringComparison.Ordinal);
+        Assert.Contains("Nije zabeležen nijedan prekid", html, StringComparison.Ordinal);
     }
 
     /// <summary>

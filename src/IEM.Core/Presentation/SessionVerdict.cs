@@ -83,10 +83,18 @@ public sealed record SessionVerdict(VerdictKind Kind, string Headline, string De
                 "prekidima najverovatnije ne bi bio prihvaćen - rešite ih prvo.");
         }
 
+        // Not "veza je bila stabilna". That is a statement about the connection; what was
+        // established is a statement about the period that was watched, and the two come
+        // apart precisely in the case people run this tool for - a fault that appears in the
+        // evening, on a line that measures perfectly all afternoon. The duration is named for
+        // the same reason: a clean quarter of an hour and a clean three days are not the same
+        // finding, and a headline that reads identically for both invites the wrong reading.
         return new SessionVerdict(
             VerdictKind.Stable,
-            "Veza je bila stabilna",
-            "Tokom nadziranog perioda nije zabeležen nijedan prekid.");
+            "Nije zabeležen nijedan prekid",
+            $"Tokom ove sesije ({SerbianText.Duration(monitoredTime)}) nisu zabeleženi događaji " +
+            "koji ukazuju na prekid veze. Rezultat opisuje samo posmatrani period i ne govori " +
+            "o vremenu koje nije nadzirano.");
     }
 
     /// <summary>Serbian has three plural forms; getting this wrong reads as machine output.</summary>

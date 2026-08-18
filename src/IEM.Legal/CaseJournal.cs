@@ -89,20 +89,34 @@ public static class CaseJournalStore
     /// </para>
     /// </summary>
     /// <param name="asOf">The day the position is being recorded on.</param>
-    public static void Save(string outputRoot, CaseJournal journal, DateOnly asOf)
+    /// <returns>The rules as they now apply, so the caller writes the same ones it stored.</returns>
+    public static ResolvedLegalContext Save(string outputRoot, CaseJournal journal, DateOnly asOf)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(outputRoot);
         ArgumentNullException.ThrowIfNull(journal);
 
+        // The baseline comes from the file rather than from the caller. Every caller used to
+        // assemble a fresh journal from the case alone, dropping the frozen rules on the
+        // floor - and the save then re-resolved the whole case, so recording an answer under
+        // a corrected registry restated deadlines computed months earlier. A caller cannot
+        // forget what it never has to remember.
+        var recorded = Load(outputRoot)?.Legal;
+
+        var legal = recorded is null
+            ? journal.Case.Resolve(asOf)
+            : LegalRegistry.Extend(journal.Case.Facts, recorded, asOf);
+
         var stamped = journal with
         {
             SchemaVersion = CaseJournal.CurrentSchemaVersion,
-            Legal = journal.Case.Resolve(asOf),
+            Legal = legal,
             RegulatorFiledDate = null,
         };
 
         Directory.CreateDirectory(outputRoot);
         File.WriteAllText(PathOf(outputRoot), JsonSerializer.Serialize(stamped, Json));
+
+        return legal;
     }
 
     /// <summary>

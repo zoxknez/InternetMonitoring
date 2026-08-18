@@ -46,7 +46,12 @@ public sealed record MonitorSnapshot
     /// of packets that survived.
     /// </para>
     /// </summary>
-    public double UnreachableTargetShare { get; init; }
+    /// <remarks>
+    /// Null until a sample has been taken. UNKNOWN_NEVER_BECOMES_ZERO: before the first
+    /// cycle this was reported as <c>0 d</c> and the tile read "0 %", which is the reassuring
+    /// answer to a question nobody had asked yet.
+    /// </remarks>
+    public double? UnreachableTargetShare { get; init; }
 
     // ---- Totals -------------------------------------------------------------
 
@@ -114,7 +119,7 @@ public sealed record MonitorSnapshot
             CurrentState = latest?.Verdict.State ?? NetworkState.Ok,
             CurrentLatency = cycle?.AverageExternalRoundTrip,
             SampleCount = engine.LastSampleSequence,
-            UnreachableTargetShare = cycle?.ExternalIcmp.UnreachableShare ?? 0d,
+            UnreachableTargetShare = cycle?.ExternalIcmp.UnreachableShare,
 
             MonitoredTime = statistics.MonitoredTime,
             GapTime = statistics.GapTime,

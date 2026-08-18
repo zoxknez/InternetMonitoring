@@ -29,6 +29,61 @@ public sealed record SpeedMeasurementNote(
     /// <summary>The file name inside the session directory.</summary>
     public const string FileName = "MerenjeBrzine.json";
 
+    /// <summary>
+    /// The rules the conclusions in this file were drawn under.
+    /// <para>
+    /// 1 is the first build whose <see cref="ValidForComplaint"/> and <see cref="BandLabel"/>
+    /// can be taken at face value. A file without it - everything written up to 2.7.0 - was
+    /// written when an unchecked measurement path counted as verified and the bands carried
+    /// the regulator's terms, so its conclusions are history rather than findings.
+    /// </para>
+    /// </summary>
+    public const int CurrentFindingSchemaVersion = 1;
+
+    /// <summary>Zero for every file written before 2.7.1, which is what marks it as legacy.</summary>
+    public int FindingSchemaVersion { get; init; }
+
+    public bool IsLegacyFinding => FindingSchemaVersion < CurrentFindingSchemaVersion;
+
+    /// <summary>
+    /// What can be said about this measurement today.
+    /// <para>
+    /// Every surface asks this rather than reading <see cref="ValidForComplaint"/> and
+    /// <see cref="BandLabel"/> directly, because those two fields are whatever the build that
+    /// wrote them concluded. For a file from 2.6 the report used to print "ispunjava uslove za
+    /// korišćenje uz prigovor" directly beneath "putanja merenja nije proverena" - the old
+    /// rule speaking through the new presentation.
+    /// </para>
+    /// </summary>
+    public SpeedFindingAssessment Assess()
+    {
+        if (!IsLegacyFinding)
+        {
+            return new SpeedFindingAssessment
+            {
+                State = ValidForComplaint
+                    ? SpeedAssessmentState.MeetsConditions
+                    : SpeedAssessmentState.DoesNotMeetConditions,
+                BandLabel = BandLabel,
+                UploadBandLabel = UploadBandLabel,
+                Defects = Defects,
+            };
+        }
+
+        // The numbers stay exactly as recorded - they are the measurement. Everything derived
+        // from them is derived again, under the rules that apply now.
+        return new SpeedFindingAssessment
+        {
+            State = SpeedAssessmentState.Undetermined,
+            BandLabel = SpeedMeasurementValidity.BandFor(DownloadMbps, ContractedMbps)?.Label(),
+            UploadBandLabel = SpeedMeasurementValidity
+                .BandFor(UploadMbps, ContractedUploadMbps)?.UploadLabel(),
+            RecordedAssessment = ValidForComplaint,
+            Reason = SpeedText.LegacyFindingNote,
+            Defects = Defects,
+        };
+    }
+
     // Added after the first release of this file, and therefore as properties with defaults
     // rather than as constructor parameters: a note written by an earlier build has to keep
     // reading, and a measurement whose upload half never ran must say "not measured" rather
@@ -119,6 +174,7 @@ public sealed record SpeedMeasurementNote(
             LatencyIncreaseMs = increase?.TotalMilliseconds,
             LoadedLatencyLabel = result.LoadedLatencyGrade?.Label(),
             RouteState = conditions.RouteState,
+            FindingSchemaVersion = CurrentFindingSchemaVersion,
         };
     }
 

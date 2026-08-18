@@ -243,7 +243,7 @@ public sealed class SpeedWorker(
             DownloadMbps: note.DownloadMbps,
             UploadMbps: note.UploadMbps,
             LatencyIncreaseMs: note.LatencyIncreaseMs,
-            BandLabel: note.BandLabel,
+            BandLabel: note.Assess().BandLabel,
             Directory: directory,
             Message: null);
     }

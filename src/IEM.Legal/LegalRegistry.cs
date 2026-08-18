@@ -194,13 +194,7 @@ public static class LegalRegistry
         var applied = new List<AppliedRule>();
         var derived = new Dictionary<LegalAnchor, AnchoredDate>();
 
-        foreach (var step in new[]
-                 {
-                     ComplaintStep.ComplaintDue,
-                     ComplaintStep.OperatorResponseDue,
-                     ComplaintStep.RegulatorDisputeDue,
-                     ComplaintStep.RegulatorDecisionTarget,
-                 })
+        foreach (var step in Steps)
         {
             var rule = Resolve(step, facts, derived);
 
@@ -249,14 +243,154 @@ public static class LegalRegistry
         };
     }
 
+    /// <param name="within">
+    /// When given, the only body of rules this step may be settled under - the one the case
+    /// was already decided by. Without it the regime is chosen from the calendar, which is
+    /// right for a new case and wrong for one that already has an answer.
+    /// </param>
+    /// <summary>
+    /// Settles what has become settleable since a case was last looked at, and changes
+    /// nothing else.
+    /// <para>
+    /// A period that has already been resolved is carried over exactly as it was - not
+    /// recomputed, not re-cited, not re-dated. A newer registry is not a new fact about the
+    /// case, and until 2.7.1 any write at all re-resolved the whole thing, so recording the
+    /// operator's answer under a corrected registry would quietly restate every deadline that
+    /// had been computed months earlier.
+    /// </para>
+    /// <para>
+    /// New facts are answered only within the body of rules the case already ran on. Reaching
+    /// for today's registry because the frozen one has no answer would be the same defect
+    /// wearing a better disguise: half the case under one set of rules and half under another,
+    /// with a single identifier claiming otherwise.
+    /// </para>
+    /// </summary>
+    public static ResolvedLegalContext Extend(
+        CaseFacts facts,
+        ResolvedLegalContext existing,
+        DateOnly asOf)
+    {
+        ArgumentNullException.ThrowIfNull(facts);
+        ArgumentNullException.ThrowIfNull(existing);
+
+        var frozen = Find(existing.Ruleset);
+        var applied = new List<AppliedRule>();
+        var derived = new Dictionary<LegalAnchor, AnchoredDate>();
+
+        foreach (var step in Steps)
+        {
+            var previous = existing.For(step);
+
+            if (previous is { State: not LegalContextState.Unresolved })
+            {
+                applied.Add(previous with { Conflict = ConflictOn(previous, facts, derived) });
+                Carry(step, previous);
+                continue;
+            }
+
+            if (frozen is null)
+            {
+                // The rules this case was decided under are no longer in the registry, so
+                // nothing new can be settled the way the rest of it was.
+                applied.Add(previous ?? new AppliedRule
+                {
+                    Step = step,
+                    State = LegalContextState.Unresolved,
+                    Impediment =
+                        $"pravila pod kojima je predmet razrešen ({existing.Ruleset}) nisu " +
+                        "više u registru, pa se nov rok ne može izvesti na isti način",
+                });
+
+                continue;
+            }
+
+            if (Resolve(step, facts, derived, frozen) is { } resolved)
+            {
+                applied.Add(resolved);
+                Carry(step, resolved);
+            }
+            else if (previous is not null)
+            {
+                applied.Add(previous);
+            }
+        }
+
+        return existing with
+        {
+            AppliedRules = applied,
+            ResolvedAt = asOf,
+        };
+
+        void Carry(ComplaintStep step, AppliedRule rule)
+        {
+            if (step == ComplaintStep.OperatorResponseDue &&
+                rule.Due is { } due &&
+                rule.AnchoredOn is { } from)
+            {
+                derived[LegalAnchor.ProviderResponseDue] =
+                    new AnchoredDate(due, from.Origin, "rok za odgovor izračunat iz datuma podnošenja");
+            }
+        }
+    }
+
+    /// <summary>The published rules with exactly this identity, or null when there are none.</summary>
+    public static LegalRuleset? Find(LegalRulesetRef reference)
+    {
+        ArgumentNullException.ThrowIfNull(reference);
+
+        return All.FirstOrDefault(set =>
+            set.Id == reference.Id &&
+            set.Version == reference.Version &&
+            set.ContentHash == reference.ContentHash);
+    }
+
+    /// <summary>
+    /// Whether the date an already-settled period was counted from has since changed.
+    /// <para>
+    /// Someone correcting the day their service failed is doing something legitimate, and the
+    /// deadlines really do move with it - but not silently, and not by this path. The stated
+    /// disagreement is the honest interim answer until a case can carry a history of
+    /// resolutions.
+    /// </para>
+    /// </summary>
+    private static string? ConflictOn(
+        AppliedRule resolved,
+        CaseFacts facts,
+        IReadOnlyDictionary<LegalAnchor, AnchoredDate> derived)
+    {
+        if (resolved.Anchor is not { } anchor || resolved.AnchoredOn is not { } was)
+        {
+            return null;
+        }
+
+        var now = facts.On(anchor) ?? (derived.TryGetValue(anchor, out var value) ? value : null);
+
+        return now is not null && now.Date != was.Date
+            ? $"Datum od kog je ovaj rok računat promenjen je sa {was.Date:dd.MM.yyyy.} na " +
+              $"{now.Date:dd.MM.yyyy.}. Rok je ostavljen onakav kakav je razrešen; proverite ga " +
+              "i, ako treba, pokrenite nov predmet."
+            : null;
+    }
+
+    /// <summary>In the order the procedure runs, because later steps count from earlier ones.</summary>
+    private static readonly ComplaintStep[] Steps =
+    [
+        ComplaintStep.ComplaintDue,
+        ComplaintStep.OperatorResponseDue,
+        ComplaintStep.RegulatorDisputeDue,
+        ComplaintStep.RegulatorDecisionTarget,
+    ];
+
     private static AppliedRule? Resolve(
         ComplaintStep step,
         CaseFacts facts,
-        IReadOnlyDictionary<LegalAnchor, AnchoredDate> derived)
+        IReadOnlyDictionary<LegalAnchor, AnchoredDate> derived,
+        LegalRuleset? within = null)
     {
         // Both regimes anchor a given step on the same event, so either rule can say what to
         // look for before the regime itself has been settled.
         var reference =
+            within?.RuleFor(step, facts.CustomerType, facts.ServiceKind, facts.ComplaintKind) ??
             Current.RuleFor(step, facts.CustomerType, facts.ServiceKind, facts.ComplaintKind) ??
             Legacy.RuleFor(step, facts.CustomerType, facts.ServiceKind, facts.ComplaintKind);
 
@@ -285,7 +419,7 @@ public static class LegalRegistry
                 };
         }
 
-        var governing = Governing(reference, anchored, facts);
+        var governing = within ?? Governing(reference, anchored, facts);
 
         if (governing is null)
         {

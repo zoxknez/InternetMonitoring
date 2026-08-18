@@ -275,6 +275,8 @@ public static class PdfReportBuilder
             _ => "nepoznat tip veze",
         };
 
+        var assessment = speed.Assess();
+
         var contracted = speed.ContractedMbps is { } c
             ? $"{c.ToString("0.##", SerbianText.Culture)} Mbit/s"
             : "nije navedeno";
@@ -285,7 +287,7 @@ public static class PdfReportBuilder
         Fact("Datum merenja", SerbianText.DateTime(speed.MeasuredAtUtc));
         Fact("Preuzimanje - izmereno", $"{speed.DownloadMbps.ToString("0.##", SerbianText.Culture)} Mbit/s");
         Fact("Preuzimanje - ugovoreno", contracted);
-        Fact("Ocena preuzimanja", speed.BandLabel ?? "nema ugovorene brzine za poređenje");
+        Fact("Ocena preuzimanja", assessment.BandLabel ?? "nema ugovorene brzine za poređenje");
 
         // Stated only when that half ran. A row reading "0 Mbit/s" for a measurement that
         // never sent anything would be a finding this tool did not make.
@@ -297,7 +299,7 @@ public static class PdfReportBuilder
                 speed.ContractedUploadMbps is { } cu
                     ? $"{cu.ToString("0.##", SerbianText.Culture)} Mbit/s"
                     : "nije navedeno");
-            Fact("Ocena slanja", speed.UploadBandLabel ?? "nema ugovorene brzine slanja za poređenje");
+            Fact("Ocena slanja", assessment.UploadBandLabel ?? "nema ugovorene brzine slanja za poređenje");
         }
 
         var transferred = speed.BytesTransferred + speed.UploadBytesTransferred;
@@ -310,7 +312,9 @@ public static class PdfReportBuilder
 
         layout.Y += 6;
 
-        if (speed.ValidForComplaint)
+        // Asked of the finding rather than read out of it: a file written before 2.7.1 carries
+        // a verdict reached under rules that have since been corrected.
+        if (assessment.State == SpeedAssessmentState.MeetsConditions)
         {
             layout.Note(
                 "Merenje je izvršeno pod uslovima koje propis traži: preko kabla, na mirnoj vezi, " +
@@ -319,9 +323,14 @@ public static class PdfReportBuilder
         }
         else
         {
-            layout.Note("Merenje NE ispunjava uslove za dokazivanje ugovorene brzine:");
+            layout.Note(assessment.State.Label());
 
-            foreach (var defect in speed.Defects)
+            if (assessment.Reason is { } reason)
+            {
+                layout.Note(reason);
+            }
+
+            foreach (var defect in assessment.Defects)
             {
                 layout.Lines(layout.Wrap($"•  {defect}", Fonts.Body, layout.Width), Fonts.Body, Brushes.Ink,
                     layout.Left, layout.Y, layout.Width, 11.5);
@@ -811,7 +820,7 @@ public static class PdfReportBuilder
         // The speed item says one thing when no measurement is attached and another when a
         // valid one is, mirroring the HTML report: a document with a properly measured figure
         // beside it should not claim it proves nothing about the rate.
-        var speedItem = speed?.ValidForComplaint == true
+        var speedItem = speed?.Assess().State == SpeedAssessmentState.MeetsConditions
             ? "Priloženo merenje brzine ispunjava propisane uslove, ali je jedno merenje i ne " +
               "zamenjuje postupak propisan propisom: merenje RATEL NetTest aplikacijom, na " +
               "Ethernetskom portu modema, po proceduri od tri dana."

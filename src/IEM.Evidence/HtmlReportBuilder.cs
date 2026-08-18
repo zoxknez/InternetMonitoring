@@ -568,6 +568,8 @@ public static class HtmlReportBuilder
             _ => "nepoznat tip veze",
         };
 
+        var assessment = speed.Assess();
+
         var contracted = speed.ContractedMbps is { } c
             ? $"{c.ToString("0.##", SerbianText.Culture)} Mbit/s"
             : "nije navedeno";
@@ -583,7 +585,7 @@ public static class HtmlReportBuilder
               <tr><th>Datum merenja</th><td>{Escape(SerbianText.DateTime(speed.MeasuredAtUtc))}</td></tr>
               <tr><th>Preuzimanje - izmereno</th><td>{speed.DownloadMbps.ToString("0.##", SerbianText.Culture)} Mbit/s</td></tr>
               <tr><th>Preuzimanje - ugovoreno</th><td>{Escape(contracted)}</td></tr>
-              <tr><th>Ocena preuzimanja</th><td>{Escape(speed.BandLabel ?? "nema ugovorene brzine za poređenje")}</td></tr>
+              <tr><th>Ocena preuzimanja</th><td>{Escape(assessment.BandLabel ?? "nema ugovorene brzine za poređenje")}</td></tr>
             </table>
             """);
 
@@ -596,7 +598,7 @@ public static class HtmlReportBuilder
                 <table class="facts">
                   <tr><th>Slanje - izmereno</th><td>{upload.ToString("0.##", SerbianText.Culture)} Mbit/s</td></tr>
                   <tr><th>Slanje - ugovoreno</th><td>{Escape(contractedUpload)}</td></tr>
-                  <tr><th>Ocena slanja</th><td>{Escape(speed.UploadBandLabel ?? "nema ugovorene brzine slanja za poređenje")}</td></tr>
+                  <tr><th>Ocena slanja</th><td>{Escape(assessment.UploadBandLabel ?? "nema ugovorene brzine slanja za poređenje")}</td></tr>
                 </table>
                 """);
         }
@@ -614,7 +616,9 @@ public static class HtmlReportBuilder
 
         AppendLoadedLatency(builder, speed);
 
-        if (speed.ValidForComplaint)
+        // Asked of the finding rather than read out of it: a file written before 2.7.1 carries
+        // a verdict reached under rules that have since been corrected.
+        if (assessment.State == SpeedAssessmentState.MeetsConditions)
         {
             builder.Append(
                 """
@@ -625,14 +629,24 @@ public static class HtmlReportBuilder
         }
         else
         {
-            builder.Append("<p class=\"note\">Merenje NE ispunjava uslove za dokazivanje ugovorene brzine:</p><ul class=\"limits\">");
+            builder.Append($"<p class=\"note\">{Escape(assessment.State.Label())}</p>");
 
-            foreach (var defect in speed.Defects)
+            if (assessment.Reason is { } reason)
             {
-                builder.Append($"<li>{Escape(defect)}</li>");
+                builder.Append($"<p class=\"note\">{Escape(reason)}</p>");
             }
 
-            builder.Append("</ul>");
+            if (assessment.Defects.Count > 0)
+            {
+                builder.Append("<ul class=\"limits\">");
+
+                foreach (var defect in assessment.Defects)
+                {
+                    builder.Append($"<li>{Escape(defect)}</li>");
+                }
+
+                builder.Append("</ul>");
+            }
         }
 
         builder.Append($"<p class=\"note\">{Escape(SpeedText.SaturationNote)}</p>");
@@ -678,7 +692,7 @@ public static class HtmlReportBuilder
         // The speed item says one thing when no measurement is attached and another when a
         // valid one is: "this document does not prove the contracted rate" is simply not
         // true of a report that carries a properly measured figure beside it.
-        var speedItem = speed?.ValidForComplaint == true
+        var speedItem = speed?.Assess().State == SpeedAssessmentState.MeetsConditions
             ? "Priloženo merenje brzine ispunjava propisane uslove, ali je jedno merenje i ne " +
               "zamenjuje postupak propisan propisom: merenje RATEL NetTest aplikacijom, na " +
               "Ethernetskom portu modema, po proceduri od tri dana."

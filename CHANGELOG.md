@@ -10,6 +10,79 @@ izveštaj pravi.
 
 ---
 
+## 2.7.1 - 18.08.2026.
+
+Format zapisa 3, pravila nepromenjena (klasifikacija 2.3.0, pripisivanje 2.1).
+
+Nezavisan audit taga `v2.7.0` - na čistom checkout-u, ne na radnom stablu - našao je tri
+propuštena mesta. Sva tri su ista greška koju 2.7.0 lovi, samo na putu kojim nijedan test nije
+išao: **kroz fajl koji je već na disku.** Testovi grade podatke u kodu, pa su ispravljena
+pravila proveravali sami na sebi.
+
+### Zaključak iz 2.6 više ne govori kroz 2.7 prikaz
+
+Nalaz merenja (`MerenjeBrzine.json`) čuva i **zaključke**, ne samo brojeve. Nalaz iz 2.6 nosi
+`ValidForComplaint: true` - ocenu donetu po pravilu koje je neproverenu putanju računalo kao
+proverenu - i `BandLabel` kao tekst, sa regulatornim izrazom koji je 2.7 ukinula. Izveštaj je
+zato u istoj tabeli pisao „putanja merenja nije proverena" i, tri reda niže, „ispunjava uslove
+za korišćenje uz prigovor".
+
+- Nalaz sada nosi `FindingSchemaVersion`. Bez nje je stariji, pa se njegovi **brojevi uzimaju
+  onakvi kakvi su zapisani**, a svaki zaključak izvodi iznova.
+- Ranija ocena se ne usvaja niti obrće u „ne ispunjava" - i to bi bio gubitak podatka. Čuva se
+  kao istorijska, uz rečenicu zašto se ne preuzima.
+- Nova invarijanta: `LEGACY_DERIVED_CONCLUSION_IS_NEVER_TRUSTED_AS_RAW_EVIDENCE`. Ono što je
+  ranija verzija **izmerila** jeste dokaz; ono što je **zaključila** nije.
+
+### „Veza je bila stabilna" - popravljeno na sve tri površine
+
+U 2.7.0 sam ovo ispravio u konzoli i prijavio kao zatvoreno. `SessionVerdict` je i dalje vraćao
+taj naslov, pa su ga prozor i oba izveštaja i dalje pisali - i piše na snimku ekrana u README-u
+iz 2.7.0, posle dva minuta nadzora. Sada:
+
+> **Nije zabeležen nijedan prekid.** Tokom ove sesije (2m 0s) nisu zabeleženi događaji koji
+> ukazuju na prekid veze. Rezultat opisuje samo posmatrani period i ne govori o vremenu koje
+> nije nadzirano.
+
+Konzola više nema svoju kopiju te odluke nego koristi isti `SessionVerdict`. Regresioni test
+koristi baš scenario koji je rupu otkrio - vrlo kratku čistu sesiju - i proverava naslov u
+izveštaju, ne samo u funkciji.
+
+### Zamrznut pravni kontekst se više ne odmrzava pri upisu
+
+`CaseJournalStore.Save` je pri **svakom** upisu ponovo razrešavao ceo predmet. Invariant je
+držao pri čitanju, a padao pri pisanju: dovoljno je bilo zabeležiti odgovor operatera pod
+novijim registrom pa da se preračunaju i rokovi razrešeni mesecima ranije.
+
+- Razrešen rok se prenosi **nepromenjen**. Nov podatak razrešava samo korak koji ranije nije
+  mogao biti razrešen, i to **unutar zamrznutih pravila** predmeta - nikad posezanjem za
+  današnjim registrom.
+- Ako pravila pod kojima je predmet razrešen više nisu u registru, nov rok se ne izvodi;
+  predmet to kaže umesto da napravi mešavinu dva režima pod jednim identifikatorom.
+- Ako se promeni datum od kog je rok već računat, rok **ostaje** takav kakav je, uz zabeležen
+  konflikt. Tiho preračunavanje bi promenilo značenje predmeta na osnovu izmene koju niko nije
+  video.
+- `Rokovi.txt` i prijava RATEL-u više ne razrešavaju sami; izvor istine je kontekst iz dnevnika.
+- Četiri imenovana testa: `LEGAL_RESOLVED_MILESTONE_NEVER_CHANGES_ON_SAVE`,
+  `NEW_ANCHOR_ONLY_RESOLVES_DEPENDENT_MILESTONE`, `REGISTRY_UPDATE_ALONE_NEVER_CHANGES_CASE_MEANING`
+  i slučaj sa promenjenim uporišnim datumom.
+
+Puna istorija pravnih razrešenja - svako sa svojim poreklom, umesto jednog konteksta koji se
+dopunjava - ostaje za 3.0.
+
+### Sitnije, ali iste vrste
+
+- **Nemereno nije nula.** Pločica „Mete bez odgovora" pisala je `0 %` pre prvog uzorka. Sada
+  „nije mereno". `UNKNOWN_NEVER_BECOMES_ZERO`.
+- „nema osnova za prigovor" pri odbijanju automatske pripreme → „nema dovoljno evidentiranih
+  nalaza za automatsku pripremu prigovora". Program ne daje negativan pravni zaključak zato što
+  njegov automat nema dovoljno podataka.
+
+### baseline/legacy-2.6/
+
+Stvarni artefakti iz 2.6 sada stoje u repozitorijumu i testovi ih čitaju. Obe greške iz F1 bile
+su nevidljive dok su svi testovi gradili podatke u kodu.
+
 ## 2.7.0 - 17.08.2026.
 
 Format zapisa **3** (nepromenjen). Pravila: klasifikacija **2.3.0**, pripisivanje **2.1**,

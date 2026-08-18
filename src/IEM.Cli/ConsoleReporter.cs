@@ -258,38 +258,27 @@ public sealed class ConsoleReporter
     {
         Console.WriteLine();
 
-        if (stats.MonitoredTime < TimeSpan.FromMinutes(1))
-        {
-            Write(ConsoleColor.DarkGray, "  Test je prekratak da bi se izveo zaključak.");
-            return;
-        }
+        // The same verdict the window and the report show, from the same place. The console
+        // used to reach its own conclusion from the same three numbers, and the two drifted:
+        // this line still said "veza je bila stabilna" after 2.7 had already stopped saying
+        // it everywhere else. One implementation cannot drift from itself.
+        var verdict = SessionVerdict.Evaluate(
+            stats.MonitoredTime, stats.UpstreamIncidentCount, stats.LocalDowntime);
 
-        if (stats.UpstreamIncidentCount > 0)
+        var colour = verdict.Kind switch
         {
-            // Says what was measured rather than who is to blame: the router answered
-            // throughout, the outside world did not. That is the finding, and it is one an
-            // operator has to answer to without being able to point at the customer's router.
-            Write(ConsoleColor.Red,
-                $"  Prekida izolovanih iza vaše opreme: {stats.UpstreamIncidentCount}. Tokom njih je " +
-                "ruter odgovarao, a spoljne mete nisu. Imate osnov za prigovor.");
-            return;
-        }
+            VerdictKind.UpstreamFault => ConsoleColor.Red,
+            VerdictKind.LocalFault => ConsoleColor.Yellow,
+            VerdictKind.Stable => ConsoleColor.Green,
+            _ => ConsoleColor.DarkGray,
+        };
 
-        if (stats.LocalDowntime > TimeSpan.Zero)
+        Write(colour, $"  {verdict.Headline}");
+
+        foreach (var line in ConsoleText.Wrap(verdict.Detail))
         {
-            Write(ConsoleColor.Yellow,
-                "  Prekidi postoje, ali su lokalni (računar, Wi-Fi ili ruter). Rešite to pre prigovora.");
-            return;
+            Console.WriteLine($"  {line}");
         }
-
-        // Says what this session found, not what the connection is like. A clean three-hour
-        // run is not evidence that the line is sound - the outages somebody is complaining
-        // about happen when the monitor is not running, which is the whole reason to run it
-        // for days rather than an afternoon.
-        Write(ConsoleColor.Green,
-            $"  Tokom ovog nadzora ({SerbianText.Duration(stats.MonitoredTime)}) nije zabeležen nijedan prekid. " +
-            "To ne dokazuje da ih nema u drugim periodima - ako se smetnja javlja povremeno, " +
-            "pustite nadzor duže.");
     }
 
     private static void Write(DateTimeOffset when, ConsoleColor color, string message) =>

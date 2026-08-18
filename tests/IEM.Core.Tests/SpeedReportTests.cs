@@ -39,8 +39,15 @@ public sealed class SpeedReportTests : IDisposable
         BytesTransferred: 523_000_000,
         Duration: TimeSpan.FromSeconds(10),
         valid,
-        BandLabel: valid ? "Na nivou koji se uobičajeno očekuje" : "Ispod minimuma",
-        Defects: defects);
+        BandLabel: valid ? "90 % ugovorene ili više" : "ISPOD 70 % UGOVORENE",
+        Defects: defects)
+    {
+        // Written the way this build writes them. Without the version the finding is read as
+        // one from 2.6, whose stored verdict is history rather than a conclusion - which is
+        // the whole point of the field, and worth being reminded of here.
+        FindingSchemaVersion = SpeedMeasurementNote.CurrentFindingSchemaVersion,
+        RouteState = MeasurementRouteState.AllResolvedRoutesMatch,
+    };
 
     private static SessionSnapshot Session() => new(
         "S1",
@@ -125,12 +132,12 @@ public sealed class SpeedReportTests : IDisposable
             UploadMbps = 8.4,
             UploadBytesTransferred = 10_000_000,
             ContractedUploadMbps = 20,
-            UploadBandLabel = "ISPOD MINIMALNE (slanje)",
+            UploadBandLabel = "ISPOD 70 % UGOVORENE (slanje)",
         });
 
         Assert.Contains("Slanje - izmereno", html, StringComparison.Ordinal);
         Assert.Contains("8,4 Mbit/s", html, StringComparison.Ordinal);
-        Assert.Contains("ISPOD MINIMALNE (slanje)", html, StringComparison.Ordinal);
+        Assert.Contains("ISPOD 70 % UGOVORENE (slanje)", html, StringComparison.Ordinal);
     }
 
     /// <summary>
