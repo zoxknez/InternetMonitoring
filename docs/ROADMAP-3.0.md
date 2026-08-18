@@ -46,18 +46,31 @@ pad testa a ne kao primedba u pregledu.
 Danas: tabela ruta se slaže sa izabranim adapterom. Sutra: **ovaj soket je išao ovim
 interfejsom.**
 
-- `SocketsHttpHandler.ConnectCallback`, sa zapisanim `LocalEndpoint`, `RemoteEndpoint`,
-  interfejsom i adresnom familijom
-- `PathSelection { Observed, Forced }` — merenje koje je **bindovano** na adapter dokazuje
-  kvalitet tog adaptera, ali ne dokazuje kojim putem ide korisnikov obični saobraćaj. To su
-  dve različite tvrdnje i zapisuju se kao dve
-- `RequestedInterface` i `ActualInterface`, oba, uvek
-- `TunnelIndication { Detected, NotDetected, Unknown }` sa signalima i verzijom detektora —
-  „ovo liči na VPN" je zaključak, ne činjenica, i `PathAgreement` ne sme da zavisi od njega
+Dve podfaze, i namerno razdvojene — da testovi nikada ne zamute razliku između „posmatrao sam
+putanju" i „nametnuo sam putanju".
+
+**3.0-1a · `Observed`** — jedini cilj je pouzdano uhvatiti stvarnu putanju.
+
+- `SocketsHttpHandler.ConnectCallback` beleži `LocalEndpoint`, `RemoteEndpoint` i adresnu
+  familiju za svaku konekciju merenja
+- lokalna adresa se preslikava u interfejs, pa nastaje `ConnectionAttempt` — **činjenica**
+- `PathAgreement { Match, Mismatch, Unknown }` je **zaključak** iz te činjenice i traženog
+  adaptera, sa vezom na zapise iz kojih je izveden
+- ništa se ne forsira: pita se šta bi sistem uradio, i zapisuje šta jeste
+
+**3.0-1b · `Forced`** — merenje koje se namerno vezuje za izabrani adapter.
+
+- `MeasurementIntent { ObserveSystemPath, MeasureRequestedInterface }` — dva različita pitanja,
+  pa i dva različita nalaza; rezultat sa nametnutom putanjom ne dokazuje kojim putem ide
+  korisnikov obični saobraćaj
 - bindovan soket bez rute → `MeasurementStatus = NotExecuted`, razlog
   `NoRouteFromRequestedInterface`. Nikada `0 Mbps` ni „spora veza"
 
-Tek posle ovoga sme da postoji `ActualMeasurementPathConfirmed`.
+**Kasnije, uz njih:** `TunnelIndication { Detected, NotDetected, Unknown }` sa signalima i
+verzijom detektora. Tunel je zaključak, ne činjenica, i `PathAgreement` ne sme da zavisi od
+njega — poređenje interfejsa je opažanje, „ovo liči na VPN" nije.
+
+Tek posle svega ovoga sme da postoji `ActualMeasurementPathConfirmed`.
 
 ### 3.0-2 · Potpisan manifest
 

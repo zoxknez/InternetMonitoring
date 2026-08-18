@@ -119,9 +119,58 @@ problem se ne bi ni desio.
 **Gde se proverava:** `CharacterizationTests`, `LegacyArtefactTests`,
 `LegalTransitionTests.A_published_ruleset_is_never_edited_in_place`.
 
+### 5a. INTERPRETATION_IS_BOUND_TO_CLAIM_NOT_SESSION
+
+Identitet semantike pripada **tvrdnji**, ne sesiji. Sesija sme da nosi katalog tumačenja i da
+svaka tvrdnja pokazuje na unos u njemu — to je fizička deduplikacija, ne semantička.
+
+Pretpostavka „jedna sesija = jedna verzija tumačenja" ne stoji: dvodnevni nadzor može preživeti
+nadogradnju servisa. Kada se tumačenje promeni usred sesije, to je zabeležen događaj
+(`InterpretationContextChanged`) i naredne tvrdnje nose novu referencu.
+
+`FACT` nema referencu na tumačenje. Nema šta da tumači.
+
 ---
 
-## 6. RAW_EVIDENCE_IS_APPEND_ONLY
+## 6. RAW_CHAIN_RECORDS_OBSERVATIONS
+
+**Sirovi lanac beleži šta je posmatrano, ne šta je to značilo.**
+
+Opažanja i operativni događaji: proba poslata, meta odgovorila, soket povezan sa ovih na one
+adrese, sistem zaspao, sistem se restartovao, naša proba se srušila. Ništa od toga ne zastareva
+kad se promeni pravilo.
+
+## 7. DERIVED_LEDGER_RECORDS_INTERPRETATIONS
+
+**Zaključci i ocene idu u odvojen, takođe append-only dnevnik**, sa vezom na zapise iz lanca na
+koje se oslanjaju i na tumačenje koje ih je proizvelo.
+
+Manifest hešira oba i potpis štiti oba — ali se više nikada ne mešaju. Zaključak se uvek može
+napraviti iznova iz lanca; opažanje ne može ni iz čega.
+
+**Zašto:** danas stoje u istom redu, i to je izvor nalaza 4. Kad se pravilo promeni, mora se
+moći reći koji deo zapisa je i dalje tačan — a to se ne može ako su izmešani.
+
+**Stari lanac se ne popravlja.** Zapis iz 2.x sadrži i opažanje i tadašnje tumačenje; čita se i
+verifikuje po svojoj originalnoj verziji, bez retroaktivnog prevođenja.
+
+---
+
+## 8. LEGACY_PACKETLOSS_IS_NEVER_INTERPRETED_AS_PACKET_LOSS
+
+**Vrednost `PacketLoss` iz 2.x zauvek znači ono što je istorijski značila** — udeo meta koje
+nisu odgovorile, tri destinacije po jedna proba. Nikada se ne prikazuje kao pravi gubitak
+paketa, ne preračunava se i ne preslikava na nov model.
+
+Kada 3.0 uvede pravo merenje, to je **nov tip sa novim imenom**, i između njih nema automatskog
+preslikavanja ni u jednom smeru.
+
+**Zašto ovako izričito:** imena su slična i nekome će za dve godine delovati kao suvišna
+komplikacija. Ova invarijanta postoji da taj „pojednostavljeni" mapper ne bude napisan.
+
+---
+
+## 9. RAW_EVIDENCE_IS_APPEND_ONLY
 
 **Sirova evidencija se samo dopisuje.** Nijedan zapis se ne menja ni briše posle upisa; lanac
 otisaka to i čini proverljivim.
@@ -131,7 +180,7 @@ verifikuje zamrznuti lanac iz prethodne verzije.
 
 ---
 
-## 7. DERIVED_OUTPUT_NEVER_MUTATES_SOURCE_EVIDENCE
+## 10. DERIVED_OUTPUT_NEVER_MUTATES_SOURCE_EVIDENCE
 
 **Pravljenje izveštaja, izvoza, prigovora ili redigovane kopije ne dira izvor.** Indeks je
 izvedeni podatak i može se obrisati i pregraditi iz lanca; izveštaj se pravi iznova bez ijedne
@@ -142,7 +191,7 @@ U 3.0 dobija i ACL koji to sprovodi, ne samo poštuje.
 
 ---
 
-## 8. BASELINE_FIXTURES_ARE_RELEASE_ARTIFACTS
+## 11. BASELINE_FIXTURES_ARE_RELEASE_ARTIFACTS
 
 **Fixture na disku, fixture u repozitorijumu i fixture u tagu su tri različite stvari.**
 
@@ -158,15 +207,15 @@ koji proverava da je svaki fajl iz `baseline/` praćen u gitu.
 
 ---
 
-## Za 3.0: dve koje još nemaju kod
+## Za 3.0: one koje još nemaju kod
 
-## 9. SIGNATURE_PROVES_INTEGRITY_NOT_TRUTH
+## 12. SIGNATURE_PROVES_INTEGRITY_NOT_TRUTH
 
 Potpis dokazuje da paket odgovara potpisanom sadržaju, da nije neprimetno menjan posle
 potpisivanja, i da je potpisan ključem te instalacije. **Ne dokazuje** da ulaz nije fabrikovan
 pre potpisivanja, da host nije bio kompromitovan, niti da je incident nastao kod operatera.
 
-## 10. TRUSTED_TIMESTAMP_PROVES_EXISTENCE_NOT_EVENT_TIME
+## 13. TRUSTED_TIMESTAMP_PROVES_EXISTENCE_NOT_EVENT_TIME
 
 Vremenski žig treće strane dokazuje da je određeni podatak **postojao pre** određenog trenutka.
 Ne dokazuje da se mrežni događaj desio tada, niti da je sadržaj istinit.
