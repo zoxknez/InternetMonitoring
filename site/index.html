@@ -279,10 +279,25 @@
     padding: 20px;
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: 14px;
   }
-  .plat svg { color: var(--ink); }
-  .plat .name { font-weight: 600; }
+
+  /* The mark sits in a badge beside the name rather than loose in the corner,
+     so four cards of different glyph shapes still line up as one row. */
+  .plat-head { display: flex; align-items: center; gap: 13px; }
+  .plat-badge {
+    flex: 0 0 auto;
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+    background: var(--sunken);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .plat-id { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+  .plat svg { color: var(--ink); display: block; }
+  .plat .name { font-weight: 600; line-height: 1.2; }
   .plat.soon svg, .plat.soon .name { color: var(--faint); }
   .chip {
     align-self: flex-start;
@@ -459,7 +474,7 @@
     </div>
 
     <div class="cta" style="margin-top: 32px;">
-      <a class="btn" href="https://github.com/zoxknez/InternetMonitoring/releases/download/v2.8.0-beta.2/InternetMonitoring-2.8.0-beta.2-win-x64.zip">
+      <a class="btn" href="https://github.com/zoxknez/InternetMonitoring/releases/download/v2.8.0-beta.2/InternetMonitoring-2.8.0-beta.2-win-x64.exe">
         <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
           <path d="M0 2.2 6.4 1.3v5.9H0zM7.3 1.2 16 0v7.2H7.3zM0 8.1h6.4V14L0 13.1zM7.3 8.1H16V16l-8.7-1.2z" />
         </svg>
@@ -473,7 +488,8 @@
       </a>
       <a class="btn ghost" href="#preuzimanje">Ostale verzije</a>
       <span class="cta-note">
-        Arhiva, 139 MB. Raspakujete i pokrenete.<br />
+        Jedan fajl, 65 MB. Ništa se ne instalira.<br />
+        Pokrenite ga <strong>desnim klikom &rarr; Pokreni kao administrator</strong>.<br />
         Otvoren kod pod MIT licencom - sve što program tvrdi može da se proveri u izvoru.
       </span>
     </div>
@@ -578,15 +594,15 @@
   <section id="preuzimanje">
     <div class="col stack" style="margin-bottom: 26px;">
       <p class="eyebrow">Preuzimanje · 2.8.0-beta.2</p>
-      <h2>Arhiva se raspakuje i pokreće. Servis je za dvodnevni test.</h2>
+      <h2>Jedan fajl je dovoljan. Servis je za dvodnevni test.</h2>
       <p class="lede">
-        Iz arhive se pokreće <span class="mono">app\InternetEvidenceMonitor.exe</span> i nadzor
-        radi dok je prozor otvoren. Za test koji preživljava zatvaranje prozora i restart
-        računara instalira se servis, jednom, uz administratorska prava.
+        Portabl fajl pokrenete i radi - ali nadzor tada traje dok je prozor otvoren. Za test
+        koji preživljava zatvaranje prozora i restart računara instalira se servis iz arhive.
+        Program to kaže i na svom ekranu, umesto da obeća suprotno.
       </p>
       <p class="notice" style="margin-top: 4px;">
-        <strong>Portabl izdanje je povučeno.</strong> U njemu prikaz nadzora pobeli posle oko
-        pola minuta rada. Greška se ispravlja; dok se to ne desi, važi arhiva.
+        <strong>Portabl fajl pokrenite kao administrator.</strong> Desni klik &rarr; Pokreni kao
+        administrator. Bez toga program ne može da čita sve što mu treba od sistema.
       </p>
     </div>
 
@@ -601,6 +617,24 @@
           </tr>
         </thead>
         <tbody>
+          <tr>
+            <td>
+              <span class="what"><strong>Portabl program</strong> - pokrenete i radi</span>
+              <a class="file" href="https://github.com/zoxknez/InternetMonitoring/releases/download/v2.8.0-beta.2/InternetMonitoring-2.8.0-beta.2-win-x64.exe">InternetMonitoring-2.8.0-beta.2-win-x64.exe</a>
+            </td>
+            <td class="num" data-label="Platforma">Windows x64</td>
+            <td class="num" data-label="Veličina">65,1 MB</td>
+            <td class="num" data-label="SHA-256">64a725df…</td>
+          </tr>
+          <tr>
+            <td>
+              <span class="what"><strong>Portabl program</strong> - pokrenete i radi</span>
+              <a class="file" href="https://github.com/zoxknez/InternetMonitoring/releases/download/v2.8.0-beta.2/InternetMonitoring-2.8.0-beta.2-win-arm64.exe">InternetMonitoring-2.8.0-beta.2-win-arm64.exe</a>
+            </td>
+            <td class="num" data-label="Platforma">Windows ARM64</td>
+            <td class="num" data-label="Veličina">61,3 MB</td>
+            <td class="num" data-label="SHA-256">6cd9a720…</td>
+          </tr>
           <tr>
             <td>
               <span class="what"><strong>Puna arhiva</strong> - sa servisom i instalacijom</span>
@@ -650,10 +684,12 @@
             provera otiska ono što stoji umesto njega. Zbir mora odgovarati onom u tabeli i
             fajlu <span class="mono">.sha256</span> uz preuzimanje.
           </p>
-          <pre>Get-FileHash .\InternetMonitoring-2.8.0-beta.2-win-x64.zip -Algorithm SHA256
-Unblock-File .\InternetMonitoring-2.8.0-beta.2-win-x64.zip</pre>
+          <pre>Get-FileHash .\InternetMonitoring-2.8.0-beta.2-win-x64.exe -Algorithm SHA256
+Unblock-File .\InternetMonitoring-2.8.0-beta.2-win-x64.exe</pre>
           <p style="color: var(--muted); font-size: .95rem;">
-            Zbir mora odgovarati fajlu <span class="mono">.sha256</span> uz arhivu.
+            Prvo pokretanje traje desetak sekundi jer se sadržaj raspakuje u privremeni folder;
+            sledeća su odmah. Ako prikaz nadzora ikada pobeli, snimanje se time <em>ne</em>
+            prekida - evidencija nastavlja da se piše, a prijava takvog slučaja mi mnogo znači.
           </p>
         </div>
       </details>
@@ -677,49 +713,73 @@ Unblock-File .\InternetMonitoring-2.8.0-beta.2-win-x64.zip</pre>
 
     <div class="grid four">
       <div class="plat">
-        <svg width="30" height="30" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
-          <path d="M0 2.2 6.4 1.3v5.9H0zM7.3 1.2 16 0v7.2H7.3zM0 8.1h6.4V14L0 13.1zM7.3 8.1H16V16l-8.7-1.2z" />
-        </svg>
-        <span class="name">Windows</span>
-        <span class="chip">Dostupno</span>
-        <p>x64 i ARM64, od Windows 10 naviše. Iz arhive ili kao servis.</p>
+        <div class="plat-head">
+          <span class="plat-badge">
+            <svg width="24" height="24" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                    <path d="M0 2.2 6.4 1.3v5.9H0zM7.3 1.2 16 0v7.2H7.3zM0 8.1h6.4V14L0 13.1zM7.3 8.1H16V16l-8.7-1.2z" />
+                  </svg>
+          </span>
+          <span class="plat-id">
+            <span class="name">Windows</span>
+            <span class="chip">Dostupno</span>
+          </span>
+        </div>
+        <p>x64 i ARM64, od Windows 10 naviše. Portabl fajl ili servis.</p>
       </div>
 
       <div class="plat soon">
-        <svg width="30" height="30" viewBox="0 0 32 32" fill="none" stroke="currentColor"
-             stroke-width="1.8" stroke-linejoin="round" aria-hidden="true">
-          <path d="M16 3c-3.6 0-5.4 2.6-5.4 6.2 0 2.4.4 4 .1 5.4-.4 1.9-2.5 4.3-3.3 6.6-.8 2.3-.4 4 .6 4.6 1.2.7 2.6-.2 3.6-.2 1.6 0 2.4 1.4 4.4 1.4s2.8-1.4 4.4-1.4c1 0 2.4.9 3.6.2 1-.6 1.4-2.3.6-4.6-.8-2.3-2.9-4.7-3.3-6.6-.3-1.4.1-3 .1-5.4C21.4 5.6 19.6 3 16 3Z" />
-          <circle cx="13.4" cy="10.4" r="1.3" fill="currentColor" stroke="none" />
-          <circle cx="18.6" cy="10.4" r="1.3" fill="currentColor" stroke="none" />
-          <path d="M14.4 13.6c.5.6 2.7.6 3.2 0" stroke-linecap="round" />
-        </svg>
-        <span class="name">Linux</span>
-        <span class="chip wait">U pripremi</span>
+        <div class="plat-head">
+          <span class="plat-badge">
+            <svg width="24" height="24" viewBox="0 0 32 32" fill="none" stroke="currentColor"
+                       stroke-width="1.8" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M16 3c-3.6 0-5.4 2.6-5.4 6.2 0 2.4.4 4 .1 5.4-.4 1.9-2.5 4.3-3.3 6.6-.8 2.3-.4 4 .6 4.6 1.2.7 2.6-.2 3.6-.2 1.6 0 2.4 1.4 4.4 1.4s2.8-1.4 4.4-1.4c1 0 2.4.9 3.6.2 1-.6 1.4-2.3.6-4.6-.8-2.3-2.9-4.7-3.3-6.6-.3-1.4.1-3 .1-5.4C21.4 5.6 19.6 3 16 3Z" />
+                    <circle cx="13.4" cy="10.4" r="1.3" fill="currentColor" stroke="none" />
+                    <circle cx="18.6" cy="10.4" r="1.3" fill="currentColor" stroke="none" />
+                    <path d="M14.4 13.6c.5.6 2.7.6 3.2 0" stroke-linecap="round" />
+                  </svg>
+          </span>
+          <span class="plat-id">
+            <span class="name">Linux</span>
+            <span class="chip wait">U pripremi</span>
+          </span>
+        </div>
         <p>Nadzor i izveštaj rade bez izmena; ostaje čitanje mreže i rad kao daemon.</p>
       </div>
 
       <div class="plat soon">
-        <svg width="30" height="30" viewBox="0 0 32 32" fill="none" stroke="currentColor"
-             stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <path d="M12 6.5A2.5 2.5 0 1 0 9.5 9H12v4H9.5A2.5 2.5 0 1 0 12 15.5V13h8v2.5A2.5 2.5 0 1 0 22.5 13H20V9h2.5A2.5 2.5 0 1 0 20 6.5V9h-8V6.5Z" />
-        </svg>
-        <span class="name">macOS</span>
-        <span class="chip wait">U pripremi</span>
+        <div class="plat-head">
+          <span class="plat-badge">
+            <svg width="24" height="24" viewBox="0 0 32 32" fill="none" stroke="currentColor"
+                       stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M12 6.5A2.5 2.5 0 1 0 9.5 9H12v4H9.5A2.5 2.5 0 1 0 12 15.5V13h8v2.5A2.5 2.5 0 1 0 22.5 13H20V9h2.5A2.5 2.5 0 1 0 20 6.5V9h-8V6.5Z" />
+                  </svg>
+          </span>
+          <span class="plat-id">
+            <span class="name">macOS</span>
+            <span class="chip wait">U pripremi</span>
+          </span>
+        </div>
         <p>Isto jezgro; interfejs i pristup mrežnim podacima traže svoj sloj.</p>
       </div>
 
       <div class="plat soon">
-        <svg width="30" height="30" viewBox="0 0 32 32" fill="none" stroke="currentColor"
-             stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <path d="M9 14a7 7 0 0 1 14 0" />
-          <path d="M9 14h14v8a2 2 0 0 1-2 2H11a2 2 0 0 1-2-2v-8Z" />
-          <path d="m11 6 1.6 2.4M21 6l-1.6 2.4" />
-          <circle cx="13" cy="11.4" r="1" fill="currentColor" stroke="none" />
-          <circle cx="19" cy="11.4" r="1" fill="currentColor" stroke="none" />
-          <path d="M5.5 15v5M26.5 15v5" />
-        </svg>
-        <span class="name">Android</span>
-        <span class="chip wait">U pripremi</span>
+        <div class="plat-head">
+          <span class="plat-badge">
+            <svg width="24" height="24" viewBox="0 0 32 32" fill="none" stroke="currentColor"
+                       stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M9 14a7 7 0 0 1 14 0" />
+                    <path d="M9 14h14v8a2 2 0 0 1-2 2H11a2 2 0 0 1-2-2v-8Z" />
+                    <path d="m11 6 1.6 2.4M21 6l-1.6 2.4" />
+                    <circle cx="13" cy="11.4" r="1" fill="currentColor" stroke="none" />
+                    <circle cx="19" cy="11.4" r="1" fill="currentColor" stroke="none" />
+                    <path d="M5.5 15v5M26.5 15v5" />
+                  </svg>
+          </span>
+          <span class="plat-id">
+            <span class="name">Android</span>
+            <span class="chip wait">U pripremi</span>
+          </span>
+        </div>
         <p>Nadzor mobilne veze je drugo pitanje od kućne - i drugi dokaz.</p>
       </div>
     </div>
