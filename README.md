@@ -25,6 +25,9 @@ snimljeni.
 
 Šta je nedovršeno i zašto: [docs/PREOSTALO.md](docs/PREOSTALO.md).
 Istorija izmena: [CHANGELOG.md](CHANGELOG.md).
+Pravila koja program ne sme da prekrši, i gde svako ima test:
+[docs/INVARIJANTE.md](docs/INVARIJANTE.md).
+Šta dolazi u 3.0 i zašto tim redom: [docs/ROADMAP-3.0.md](docs/ROADMAP-3.0.md).
 
 ![Nadzor uživo](docs/ui-nadzor.png)
 

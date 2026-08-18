@@ -1,0 +1,38 @@
+﻿REZIME NADZORA INTERNET VEZE
+
+Sesija:                 S20260818060000
+Računar:                TEST-PC
+Adapter:                Ethernet (žičana veza)
+Početak:                18.08.2026. 08:00:00
+Kraj:                   18.08.2026. 08:02:00
+
+Ukupno vreme:           1m 29s
+Stvarno nadzirano:      1m 29s
+Nenadzirano (pauze):    0,0 s
+Broj uzoraka:           90
+
+Dostupnost:             96,63 %
+Dostupnost bez lokalnih kvarova: 96,63 %
+
+Prekida ukupno:         1
+Izolovano iza rutera:   1
+Nedostupnost iza rutera: 3,0 s
+Lokalna nedostupnost:   0,0 s
+Najduži prekid iza rutera: 3,0 s
+
+KAKO SE ČITAJU TRAJANJA
+
+Merenje je diskretno, pa se tačan početak prekida nalazi između poslednjeg
+ispravnog i prvog neispravnog uzorka. Zato svaki prekid ima tri broja:
+najmanje moguće trajanje (ne može se osporiti), najviše moguće, i središnju
+procenu koja uvek leži između njih.
+
+Dostupnost se računa u odnosu na stvarno nadzirano vreme. Pauze nadzora -
+spavanje ili restart računara - ne računaju se ni kao prekid ni kao ispravan
+rad, jer tada ništa nije mereno.
+
+GRANICE OVOG DOKUMENTA
+
+Ovo je tehnička evidencija prekida, a ne merenje ovlašćene treće strane.
+Za dokazivanje ugovorene brzine potrebno je merenje preko Ethernet kabla
+povezanog direktno na modem, kao i rezultati RATEL NetTest aplikacije.

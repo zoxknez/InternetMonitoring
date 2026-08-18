@@ -36,5 +36,22 @@ jobs:
       - name: Gradnja
         run: dotnet build InternetEvidenceMonitor.slnx -c Release --no-restore --nologo
 
+      # A fixture on the machine that wrote it is not a fixture in the repository. 2.7.1
+      # shipped with baseline/ excluded by an ignore rule meant for real sessions: every test
+      # passed locally and the same tests failed here, on files that were simply not there.
+      # Checked before the tests, so the failure names the cause instead of the symptom.
+      - name: Baseline artefakti su u repozitorijumu
+        shell: pwsh
+        run: |
+          $missing = Get-ChildItem baseline -Recurse -File |
+            Where-Object { (git ls-files --error-unmatch $_.FullName 2>$null; $LASTEXITCODE) -ne 0 }
+
+          if ($missing) {
+            $missing | ForEach-Object { Write-Host "::error::Nije u gitu: $($_.FullName)" }
+            exit 1
+          }
+
+          Write-Host "Svi baseline artefakti su praćeni."
+
       - name: Testovi
         run: dotnet test InternetEvidenceMonitor.slnx -c Release --no-build --nologo

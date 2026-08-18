@@ -1,0 +1,131 @@
+{
+  "SchemaVersion": 2,
+  "Case": {
+    "OperatorName": "Primer Telekom",
+    "SubscriberName": "____________________",
+    "EventDate": "2026-08-18",
+    "EventOrigin": "DerivedFromSession",
+    "EventEvidenceRef": "prekid-1",
+    "ComplaintKind": "ServiceQuality",
+    "CustomerType": "Consumer",
+    "ServiceKind": "Standard",
+    "SubmittedDate": "2026-08-20",
+    "Facts": {
+      "CustomerType": "Consumer",
+      "ServiceKind": "Standard",
+      "ComplaintKind": "ServiceQuality",
+      "ServiceUnavailable": {
+        "Date": "2026-08-18",
+        "Origin": "DerivedFromSession",
+        "EvidenceRef": "prekid-1"
+      },
+      "ComplaintFiled": {
+        "Date": "2026-08-20",
+        "Origin": "DerivedFromSession"
+      }
+    }
+  },
+  "Legal": {
+    "Ruleset": {
+      "Id": "RS-ZEK-2025",
+      "Version": "2026.08.17.1",
+      "ContentHash": "6435e1d3e4c48bab5debb954c6c60989e1314c8be266bfec622d14042009d9a1"
+    },
+    "Regime": "Current",
+    "CustomerType": "Consumer",
+    "ServiceKind": "Standard",
+    "ComplaintKind": "ServiceQuality",
+    "AppliedRules": [
+      {
+        "Step": "ComplaintDue",
+        "State": "Resolved",
+        "RuleId": "current/complaint-due/quality",
+        "Value": 30,
+        "Anchor": "ServiceUnavailableDate",
+        "Resolution": "Resolved",
+        "AnchoredOn": {
+          "Date": "2026-08-18",
+          "Origin": "DerivedFromSession",
+          "EvidenceRef": "prekid-1"
+        },
+        "Due": "2026-09-17",
+        "Citations": [
+          {
+            "SourceId": "RS-ZEK-35-2023-139",
+            "Title": "Zakon o elektronskim komunikacijama",
+            "Gazette": "Sl. glasnik RS 35/2023",
+            "Article": "139",
+            "Url": "https://www.paragraf.rs/propisi/zakon-o-elektronskim-komunikacijama.html",
+            "VerifiedAt": "2026-08-17"
+          }
+        ]
+      },
+      {
+        "Step": "OperatorResponseDue",
+        "State": "Resolved",
+        "RuleId": "current/provider-response/consumer",
+        "Value": 8,
+        "Anchor": "ProviderComplaintFiled",
+        "Resolution": "Resolved",
+        "AnchoredOn": {
+          "Date": "2026-08-20",
+          "Origin": "DerivedFromSession"
+        },
+        "Due": "2026-08-28",
+        "Citations": [
+          {
+            "SourceId": "RS-ZEK-35-2023-139",
+            "Title": "Zakon o elektronskim komunikacijama",
+            "Gazette": "Sl. glasnik RS 35/2023",
+            "Article": "139",
+            "Url": "https://www.paragraf.rs/propisi/zakon-o-elektronskim-komunikacijama.html",
+            "VerifiedAt": "2026-08-17"
+          },
+          {
+            "SourceId": "RS-ZZP-35-2026",
+            "Title": "Zakon o za\u0161titi potro\u0161a\u010Da",
+            "Gazette": "Sl. glasnik RS 35/2026",
+            "AppliesFrom": "2026-08-02",
+            "Url": "https://www.paragraf.rs/propisi/zakon_o_zastiti_potrosaca.html",
+            "VerifiedAt": "2026-08-17"
+          }
+        ]
+      },
+      {
+        "Step": "RegulatorDisputeDue",
+        "State": "Resolved",
+        "RuleId": "current/regulator-dispute",
+        "Value": 60,
+        "Anchor": "ProviderResponseDue",
+        "Resolution": "Provisional",
+        "AnchoredOn": {
+          "Date": "2026-08-28",
+          "Origin": "DerivedFromSession",
+          "EvidenceRef": "rok za odgovor izra\u010Dunat iz datuma podno\u0161enja"
+        },
+        "Due": "2026-10-27",
+        "Citations": [
+          {
+            "SourceId": "RS-ZEK-35-2023-139",
+            "Title": "Zakon o elektronskim komunikacijama",
+            "Gazette": "Sl. glasnik RS 35/2023",
+            "Article": "139",
+            "Url": "https://www.paragraf.rs/propisi/zakon-o-elektronskim-komunikacijama.html",
+            "VerifiedAt": "2026-08-17"
+          },
+          {
+            "SourceId": "RS-PRAVILNIK-58-2024",
+            "Title": "Pravilnik o vansudskom re\u0161avanju sporova izme\u0111u krajnjih korisnika i operatora",
+            "Gazette": "Sl. glasnik RS 58/2024",
+            "AppliesFrom": "2025-01-01",
+            "Url": "https://www.ratel.rs/",
+            "VerifiedAt": "2026-08-17"
+          }
+        ]
+      }
+    ],
+    "ResolvedAt": "2026-08-20",
+    "State": "Resolved",
+    "HasConflicts": false
+  }
+}

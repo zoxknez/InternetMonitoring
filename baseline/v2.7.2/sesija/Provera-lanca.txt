@@ -1,0 +1,15 @@
+﻿PROVERA INTEGRITETA SIROVE EVIDENCIJE
+
+Fajl:            SirovaEvidencija.jsonl
+Sesija:          S20260818060000
+Provereno zapisa: 94
+Rezultat:        ISPRAVAN
+Završni otisak:  beb964ee5f51e4c4572b242e584b4000448f305e3841ec52e67067b5b6ce2a43
+
+Svaki zapis sadrži otisak prethodnog, pa izmena bilo kog ranijeg reda
+narušava sve otiske posle njega.
+
+Ovo je provera doslednosti, a ne dokaz porekla. Ko ima pravo upisa u
+folder sesije mogao bi da preračuna i lanac i kontrolne zbirove.
+Nezavisan dokaz vremena i porekla zahteva potpis i vremenski žig treće
+strane, što ovo izdanje ne radi.

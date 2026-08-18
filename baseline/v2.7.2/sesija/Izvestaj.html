@@ -1,0 +1,171 @@
+﻿<!doctype html>
+<html lang="sr-Latn">
+<head>
+<meta charset="utf-8">
+<title>Evidencija internet veze - S20260818060000</title>
+<style>:root { color-scheme: light; }
+* { box-sizing: border-box; }
+body { margin: 0; background: #f6f6f8; color: #1d1d1f;
+       font: 15px/1.55 "Segoe UI", system-ui, sans-serif; }
+main { max-width: 1040px; margin: 0 auto; padding: 32px 24px 64px; background: #fff; }
+h1 { font-size: 26px; margin: 0 0 4px; }
+h2 { font-size: 18px; margin: 36px 0 12px; padding-bottom: 6px; border-bottom: 2px solid #ececef; }
+/* Below its section rather than above it. Left to the browser's default a subheading
+   came out larger than the h2 it sits under, which reads as the wrong level. */
+h3 { font-size: 15px; margin: 26px 0 8px; }
+.sub { color: #6c6c72; margin: 0 0 24px; }
+.verdict { border-radius: 10px; padding: 18px 20px; margin: 0 0 28px; border-left: 6px solid; }
+.verdict h2 { margin: 0 0 6px; border: 0; padding: 0; font-size: 17px; }
+.verdict p { margin: 0; }
+.verdict.good { background: #eaf7ef; border-color: #2e9e5b; }
+.verdict.warn { background: #fdf5e2; border-color: #e0a800; }
+.verdict.bad  { background: #fdeceb; border-color: #c0392b; }
+/* Label at one edge of the row, value at the other. Set left behind a fixed indent,
+   the value left a channel of blank page running down the whole block - the widest
+   thing in it being an IP address. */
+table.facts { border-collapse: collapse; margin: 0 0 24px; width: 100%;
+              border-top: 1px solid #e3e3e6; }
+table.facts th { text-align: left; font-weight: 400; color: #6c6c72; padding: 7px 16px 7px 0;
+                 white-space: nowrap; vertical-align: top; width: 220px;
+                 border-bottom: 1px solid #f0f0f2; }
+table.facts td { padding: 7px 0; text-align: right; border-bottom: 1px solid #f0f0f2; }
+.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; }
+.card { border: 1px solid #e3e3e6; border-radius: 10px; padding: 14px 16px; }
+.card .label { font-size: 12px; color: #6c6c72; }
+.card .value { font-size: 22px; font-weight: 700; margin: 4px 0 2px; text-align: right; }
+.card .hint { font-size: 12px; color: #8a8a8f; }
+svg.chart { width: 100%; height: auto; border: 1px solid #e3e3e6; border-radius: 8px;
+            background: #fff; display: block; }
+.legend { font-size: 12px; color: #6c6c72; margin: 8px 0 0; }
+.swatch { display: inline-block; width: 11px; height: 11px; border-radius: 2px;
+          margin: 0 4px 0 14px; vertical-align: -1px; }
+.swatch.good { background: #2e9e5b; } .swatch.warn { background: #e0a800; }
+.swatch.bad { background: #c0392b; }
+table.data { width: 100%; border-collapse: collapse; font-size: 14px; }
+table.data th { text-align: left; background: #f4f4f6; padding: 8px 10px;
+                border-bottom: 1px solid #e3e3e6; font-weight: 600; }
+table.data td { padding: 7px 10px; border-bottom: 1px solid #f0f0f2; vertical-align: top; }
+/* Anything a reader compares down a column. Durations set left do not line up on
+   their digits, so "7m 19s" and "48,0 s" sit at different depths and the column
+   cannot be scanned - which is the only reason to put them in a column. */
+table.data th.num, table.data td.num { text-align: right; white-space: nowrap; }
+table.data tr.upstream td { background: #fffafa; }
+table.data tr.flag td { font-size: 12px; color: #a06000; padding-top: 0; border-bottom: 0; }
+.muted { color: #8a8a8f; }
+.note { font-size: 13px; color: #55555b; background: #f7f7f8; border-left: 3px solid #c9c9cf;
+        padding: 10px 14px; margin: 14px 0 0; border-radius: 0 6px 6px 0; }
+.ok { color: #1e7a45; font-weight: 600; }
+.bad-text { color: #a5281c; font-weight: 600; }
+.hash { font-family: Consolas, monospace; font-size: 12px; color: #6c6c72; word-break: break-all; }
+.limits { font-size: 13px; color: #55555b; padding-left: 20px; }
+.limits li { margin-bottom: 6px; }
+@media print {
+  body { background: #fff; }
+  main { max-width: none; padding: 0; }
+  h2 { page-break-after: avoid; }
+  table.data tr { page-break-inside: avoid; }
+}</style>
+</head>
+<body>
+<main>
+<h1>Evidencija kvaliteta internet veze</h1>
+<p class="sub">Sesija S20260818060000 &middot; TEST-PC</p><section class="verdict bad">
+  <h2>Prekidi izolovani iza vaše opreme</h2>
+  <p>Zabeleženo je 1 prekid tokom kojih je vaša lokalna mreža radila, a ništa iza rutera nije bilo dostupno. Putanja između računara i rutera je time isključena kao uzrok - WAN strana samog rutera nije. To je osnov za prigovor operateru, koji na njega mora da odgovori.</p>
+</section><table class="facts">
+  <tr><th>Period</th><td>18.08.2026. 08:00:00 -
+      18.08.2026. 08:02:00</td></tr>
+  <tr><th>Adapter</th><td>Ethernet - žičana veza (Ethernet)</td></tr>
+  <tr><th>Brzina veze adaptera</th><td>1.000 Mbit/s</td></tr>
+  <tr><th>Ruter</th><td>192.168.1.1</td></tr>
+  <tr><th>Broj uzoraka</th><td>90</td></tr>
+</table><div class="cards"><div class="card">
+  <div class="label">Dostupnost</div>
+  <div class="value">96,63&nbsp;%</div>
+  <div class="hint">u odnosu na stvarno nadzirano vreme</div>
+</div><div class="card">
+  <div class="label">Dostupnost bez lokalnih kvarova</div>
+  <div class="value">96,63&nbsp;%</div>
+  <div class="hint">računa se samo ono što nije vaša oprema</div>
+</div><div class="card">
+  <div class="label">Prekida ukupno</div>
+  <div class="value">1</div>
+  <div class="hint">od toga 1 izolovano iza rutera</div>
+</div><div class="card">
+  <div class="label">Nedostupnost iza rutera</div>
+  <div class="value">3,0 s</div>
+  <div class="hint">najduži 3,0 s</div>
+</div><div class="card">
+  <div class="label">Lokalna nedostupnost</div>
+  <div class="value">0,0 s</div>
+  <div class="hint">vaš računar, Wi-Fi ili ruter</div>
+</div><div class="card">
+  <div class="label">Nenadzirano</div>
+  <div class="value">0,0 s</div>
+  <div class="hint">spavanje ili restart - ne računa se nikako</div>
+</div></div><h2>Merenje brzine</h2>
+<table class="facts">
+  <tr><th>Datum merenja</th><td>18.08.2026. 08:01:00</td></tr>
+  <tr><th>Preuzimanje - izmereno</th><td>94,3 Mbit/s</td></tr>
+  <tr><th>Preuzimanje - ugovoreno</th><td>100 Mbit/s</td></tr>
+  <tr><th>Ocena preuzimanja</th><td>90 % ugovorene ili više</td></tr>
+</table><table class="facts">
+  <tr><th>Slanje - izmereno</th><td>18,2 Mbit/s</td></tr>
+  <tr><th>Slanje - ugovoreno</th><td>20 Mbit/s</td></tr>
+  <tr><th>Ocena slanja</th><td>90 % ugovorene ili više (slanje)</td></tr>
+</table><table class="facts">
+  <tr><th>Preneseno</th><td>545 MB za 10,0 s po smeru</td></tr>
+  <tr><th>Način merenja</th><td>Ethernet kabl, tri paralelne veze po smeru, veza mirna pre početka</td></tr>
+  <tr><th>Putanja merenja</th><td>tabela ruta je saglasna sa izabranim adapterom</td></tr>
+</table><h3>Kašnjenje pod opterećenjem</h3>
+<table class="facts">
+  <tr><th>Odziv dok je veza mirna</th><td>12 ms</td></tr>
+  <tr><th>Odziv tokom preuzimanja</th><td>30 ms</td></tr>
+  <tr><th>Odziv tokom slanja</th><td>212 ms</td></tr>
+  <tr><th>Povećanje pod opterećenjem</th><td>200 ms</td></tr>
+  <tr><th>Ocena</th><td>VELIKO</td></tr>
+</table>
+<p class="note">Dok je veza opterećena, odziv se povećava toliko da pozivi, video sastanci i igre postaju neupotrebljivi - iako brzina može biti u redu. Uzrok je po pravilu prevelik bafer na ruteru ili na pristupnoj opremi operatera. Ovo je merljiv osnov za prigovor zbog kvaliteta usluge, odvojen od prigovora zbog brzine.</p>
+<p class="note">Kašnjenje pod opterećenjem meri se kao razlika između odziva dok je veza mirna i odziva dok je namerno opterećena u istom smeru. Meri se HTTP odzivom ka istoj meti u oba slučaja, pa se ono što meta sama dodaje poništava u razlici. Ovo je merenje kvaliteta veze, ne brzine, i ne podleže pravilu o Ethernet kablu - ali preko Wi-Fi veze meri i sopstveni bežični link, pa i ovde kabl daje čistiji nalaz.</p><p class="note">Merenje je izvršeno pod uslovima koje propis traži: preko kabla, na mirnoj vezi,
+sa zapisom uslova. Ispunjava uslove za korišćenje uz prigovor, mada zvanično merenje
+za postupak i dalje treba obaviti RATEL NetTest aplikacijom po propisanoj proceduri.</p><p class="note">Merenje namerno zauzima vezu do kraja, u oba smera. Skok kašnjenja na vremenskoj traci u vreme merenja potiče od samog merenja, a ne od smetnje na vezi.</p><h2>Vremenska traka</h2><svg class="chart" viewBox="0 0 960 44" role="img" aria-label="Traka prekida kroz vreme"><rect x="0.00" y="0" width="10.67" height="44" fill="#2e9e5b"/><rect x="10.67" y="0" width="10.67" height="44" fill="#2e9e5b"/><rect x="21.33" y="0" width="10.67" height="44" fill="#c0392b"/><rect x="32.00" y="0" width="10.67" height="44" fill="#c0392b"/><rect x="42.67" y="0" width="10.67" height="44" fill="#c0392b"/><rect x="53.33" y="0" width="10.67" height="44" fill="#2e9e5b"/><rect x="64.00" y="0" width="10.67" height="44" fill="#2e9e5b"/><rect x="74.67" y="0" width="10.67" height="44" fill="#2e9e5b"/><rect x="85.33" y="0" width="10.67" height="44" fill="#2e9e5b"/><rect x="96.00" y="0" width="10.67" height="44" fill="#2e9e5b"/><rect x="106.67" y="0" width="10.67" height="44" fill="#2e9e5b"/><rect x="117.33" y="0" width="10.67" height="44" fill="#2e9e5b"/><rect x="128.00" y="0" width="10.67" height="44" fill="#2e9e5b"/><rect x="138.67" y="0" width="10.67" height="44" fill="#2e9e5b"/><rect x="149.33" y="0" width="10.67" height="44" fill="#2e9e5b"/><rect x="160.00" y="0" width="10.67" height="44" fill="#2e9e5b"/><rect x="170.67" y="0" width="10.67" height="44" fill="#2e9e5b"/><rect x="181.33" y="0" width="10.67" height="44" fill="#2e9e5b"/><rect x="192.00" y="0" width="10.67" height="44" fill="#2e9e5b"/><rect x="202.67" y="0" width="10.67" height="44" fill="#2e9e5b"/><rect x="213.33" y="0" width="10.67" height="44" fill="#2e9e5b"/><rect x="224.00" y="0" width="10.67" height="44" fill="#2e9e5b"/><rect x="234.67" y="0" width="10.67" height="44" fill="#2e9e5b"/><rect x="245.33" y="0" width="10.67" height="44" fill="#2e9e5b"/><rect x="256.00" y="0" width="10.67" height="44" fill="#2e9e5b"/><rect x="266.67" y="0" width="10.67" height="44" fill="#2e9e5b"/><rect x="277.33" y="0" width="10.67" height="44" fill="#2e9e5b"/><rect x="288.00" y="0" width="10.67" height="44" fill="#2e9e5b"/><rect x="298.67" y="0" width="10.67" height="44" fill="#2e9e5b"/><rect x="309.33" y="0" width="10.67" height="44" fill="#2e9e5b"/><rect x="320.00" y="0" width="10.67" height="44" fill="#2e9e5b"/><rect x="330.67" y="0" width="10.67" height="44" fill="#2e9e5b"/><rect x="341.33" y="0" width="10.67" height="44" fill="#2e9e5b"/><rect x="352.00" y="0" width="10.67" height="44" fill="#2e9e5b"/><rect x="362.67" y="0" width="10.67" height="44" fill="#2e9e5b"/><rect x="373.33" y="0" width="10.67" height="44" fill="#2e9e5b"/><rect x="384.00" y="0" width="10.67" height="44" fill="#2e9e5b"/><rect x="394.67" y="0" width="10.67" height="44" fill="#2e9e5b"/><rect x="405.33" y="0" width="10.67" height="44" fill="#2e9e5b"/><rect x="416.00" y="0" width="10.67" height="44" fill="#2e9e5b"/><rect x="426.67" y="0" width="10.67" height="44" fill="#2e9e5b"/><rect x="437.33" y="0" width="10.67" height="44" fill="#2e9e5b"/><rect x="448.00" y="0" width="10.67" height="44" fill="#2e9e5b"/><rect x="458.67" y="0" width="10.67" height="44" fill="#2e9e5b"/><rect x="469.33" y="0" width="10.67" height="44" fill="#2e9e5b"/><rect x="480.00" y="0" width="10.67" height="44" fill="#2e9e5b"/><rect x="490.67" y="0" width="10.67" height="44" fill="#2e9e5b"/><rect x="501.33" y="0" width="10.67" height="44" fill="#2e9e5b"/><rect x="512.00" y="0" width="10.67" height="44" fill="#2e9e5b"/><rect x="522.67" y="0" width="10.67" height="44" fill="#2e9e5b"/><rect x="533.33" y="0" width="10.67" height="44" fill="#2e9e5b"/><rect x="544.00" y="0" width="10.67" height="44" fill="#2e9e5b"/><rect x="554.67" y="0" width="10.67" height="44" fill="#2e9e5b"/><rect x="565.33" y="0" width="10.67" height="44" fill="#2e9e5b"/><rect x="576.00" y="0" width="10.67" height="44" fill="#2e9e5b"/><rect x="586.67" y="0" width="10.67" height="44" fill="#2e9e5b"/><rect x="597.33" y="0" width="10.67" height="44" fill="#2e9e5b"/><rect x="608.00" y="0" width="10.67" height="44" fill="#2e9e5b"/><rect x="618.67" y="0" width="10.67" height="44" fill="#2e9e5b"/><rect x="629.33" y="0" width="10.67" height="44" fill="#2e9e5b"/><rect x="640.00" y="0" width="10.67" height="44" fill="#2e9e5b"/><rect x="650.67" y="0" width="10.67" height="44" fill="#2e9e5b"/><rect x="661.33" y="0" width="10.67" height="44" fill="#2e9e5b"/><rect x="672.00" y="0" width="10.67" height="44" fill="#2e9e5b"/><rect x="682.67" y="0" width="10.67" height="44" fill="#2e9e5b"/><rect x="693.33" y="0" width="10.67" height="44" fill="#2e9e5b"/><rect x="704.00" y="0" width="10.67" height="44" fill="#2e9e5b"/><rect x="714.67" y="0" width="10.67" height="44" fill="#2e9e5b"/><rect x="725.33" y="0" width="10.67" height="44" fill="#2e9e5b"/><rect x="736.00" y="0" width="10.67" height="44" fill="#2e9e5b"/><rect x="746.67" y="0" width="10.67" height="44" fill="#2e9e5b"/><rect x="757.33" y="0" width="10.67" height="44" fill="#2e9e5b"/><rect x="768.00" y="0" width="10.67" height="44" fill="#2e9e5b"/><rect x="778.67" y="0" width="10.67" height="44" fill="#2e9e5b"/><rect x="789.33" y="0" width="10.67" height="44" fill="#2e9e5b"/><rect x="800.00" y="0" width="10.67" height="44" fill="#2e9e5b"/><rect x="810.67" y="0" width="10.67" height="44" fill="#2e9e5b"/><rect x="821.33" y="0" width="10.67" height="44" fill="#2e9e5b"/><rect x="832.00" y="0" width="10.67" height="44" fill="#2e9e5b"/><rect x="842.67" y="0" width="10.67" height="44" fill="#2e9e5b"/><rect x="853.33" y="0" width="10.67" height="44" fill="#2e9e5b"/><rect x="864.00" y="0" width="10.67" height="44" fill="#2e9e5b"/><rect x="874.67" y="0" width="10.67" height="44" fill="#2e9e5b"/><rect x="885.33" y="0" width="10.67" height="44" fill="#2e9e5b"/><rect x="896.00" y="0" width="10.67" height="44" fill="#2e9e5b"/><rect x="906.67" y="0" width="10.67" height="44" fill="#2e9e5b"/><rect x="917.33" y="0" width="10.67" height="44" fill="#2e9e5b"/><rect x="928.00" y="0" width="10.67" height="44" fill="#2e9e5b"/><rect x="938.67" y="0" width="10.67" height="44" fill="#2e9e5b"/><rect x="949.33" y="0" width="10.67" height="44" fill="#2e9e5b"/></svg><p class="legend">
+  <span class="swatch good"></span> ispravno
+  <span class="swatch warn"></span> pogoršano
+  <span class="swatch bad"></span> prekid
+</p><h2>Kašnjenje</h2><svg class="chart" viewBox="0 0 960 220" role="img" aria-label="Grafikon kašnjenja kroz vreme"><line x1="0" y1="208.00" x2="960" y2="208.00" stroke="#e3e3e6" stroke-width="1"/><text x="4" y="204.00" font-size="11" fill="#8a8a8f">0 ms</text><line x1="0" y1="159.00" x2="960" y2="159.00" stroke="#e3e3e6" stroke-width="1"/><text x="4" y="155.00" font-size="11" fill="#8a8a8f">5 ms</text><line x1="0" y1="110.00" x2="960" y2="110.00" stroke="#e3e3e6" stroke-width="1"/><text x="4" y="106.00" font-size="11" fill="#8a8a8f">10 ms</text><line x1="0" y1="61.00" x2="960" y2="61.00" stroke="#e3e3e6" stroke-width="1"/><text x="4" y="57.00" font-size="11" fill="#8a8a8f">15 ms</text><line x1="0" y1="12.00" x2="960" y2="12.00" stroke="#e3e3e6" stroke-width="1"/><text x="4" y="8.00" font-size="11" fill="#8a8a8f">20 ms</text><polygon points="5.33,12.00 16.00,12.00 58.67,12.00 69.33,12.00 80.00,12.00 90.67,12.00 101.33,12.00 112.00,12.00 122.67,12.00 133.33,12.00 144.00,12.00 154.67,12.00 165.33,12.00 176.00,12.00 186.67,12.00 197.33,12.00 208.00,12.00 218.67,12.00 229.33,12.00 240.00,12.00 250.67,12.00 261.33,12.00 272.00,12.00 282.67,12.00 293.33,12.00 304.00,12.00 314.67,12.00 325.33,12.00 336.00,12.00 346.67,12.00 357.33,12.00 368.00,12.00 378.67,12.00 389.33,12.00 400.00,12.00 410.67,12.00 421.33,12.00 432.00,12.00 442.67,12.00 453.33,12.00 464.00,12.00 474.67,12.00 485.33,12.00 496.00,12.00 506.67,12.00 517.33,12.00 528.00,12.00 538.67,12.00 549.33,12.00 560.00,12.00 570.67,12.00 581.33,12.00 592.00,12.00 602.67,12.00 613.33,12.00 624.00,12.00 634.67,12.00 645.33,12.00 656.00,12.00 666.67,12.00 677.33,12.00 688.00,12.00 698.67,12.00 709.33,12.00 720.00,12.00 730.67,12.00 741.33,12.00 752.00,12.00 762.67,12.00 773.33,12.00 784.00,12.00 794.67,12.00 805.33,12.00 816.00,12.00 826.67,12.00 837.33,12.00 848.00,12.00 858.67,12.00 869.33,12.00 880.00,12.00 890.67,12.00 901.33,12.00 912.00,12.00 922.67,12.00 933.33,12.00 944.00,12.00 954.67,12.00 954.67,12.00 944.00,12.00 933.33,12.00 922.67,12.00 912.00,12.00 901.33,12.00 890.67,12.00 880.00,12.00 869.33,12.00 858.67,12.00 848.00,12.00 837.33,12.00 826.67,12.00 816.00,12.00 805.33,12.00 794.67,12.00 784.00,12.00 773.33,12.00 762.67,12.00 752.00,12.00 741.33,12.00 730.67,12.00 720.00,12.00 709.33,12.00 698.67,12.00 688.00,12.00 677.33,12.00 666.67,12.00 656.00,12.00 645.33,12.00 634.67,12.00 624.00,12.00 613.33,12.00 602.67,12.00 592.00,12.00 581.33,12.00 570.67,12.00 560.00,12.00 549.33,12.00 538.67,12.00 528.00,12.00 517.33,12.00 506.67,12.00 496.00,12.00 485.33,12.00 474.67,12.00 464.00,12.00 453.33,12.00 442.67,12.00 432.00,12.00 421.33,12.00 410.67,12.00 400.00,12.00 389.33,12.00 378.67,12.00 368.00,12.00 357.33,12.00 346.67,12.00 336.00,12.00 325.33,12.00 314.67,12.00 304.00,12.00 293.33,12.00 282.67,12.00 272.00,12.00 261.33,12.00 250.67,12.00 240.00,12.00 229.33,12.00 218.67,12.00 208.00,12.00 197.33,12.00 186.67,12.00 176.00,12.00 165.33,12.00 154.67,12.00 144.00,12.00 133.33,12.00 122.67,12.00 112.00,12.00 101.33,12.00 90.67,12.00 80.00,12.00 69.33,12.00 58.67,12.00 16.00,12.00 5.33,12.00 " fill="#4a90d9" fill-opacity="0.22"/><polyline points="5.33,12.00 16.00,12.00 58.67,12.00 69.33,12.00 80.00,12.00 90.67,12.00 101.33,12.00 112.00,12.00 122.67,12.00 133.33,12.00 144.00,12.00 154.67,12.00 165.33,12.00 176.00,12.00 186.67,12.00 197.33,12.00 208.00,12.00 218.67,12.00 229.33,12.00 240.00,12.00 250.67,12.00 261.33,12.00 272.00,12.00 282.67,12.00 293.33,12.00 304.00,12.00 314.67,12.00 325.33,12.00 336.00,12.00 346.67,12.00 357.33,12.00 368.00,12.00 378.67,12.00 389.33,12.00 400.00,12.00 410.67,12.00 421.33,12.00 432.00,12.00 442.67,12.00 453.33,12.00 464.00,12.00 474.67,12.00 485.33,12.00 496.00,12.00 506.67,12.00 517.33,12.00 528.00,12.00 538.67,12.00 549.33,12.00 560.00,12.00 570.67,12.00 581.33,12.00 592.00,12.00 602.67,12.00 613.33,12.00 624.00,12.00 634.67,12.00 645.33,12.00 656.00,12.00 666.67,12.00 677.33,12.00 688.00,12.00 698.67,12.00 709.33,12.00 720.00,12.00 730.67,12.00 741.33,12.00 752.00,12.00 762.67,12.00 773.33,12.00 784.00,12.00 794.67,12.00 805.33,12.00 816.00,12.00 826.67,12.00 837.33,12.00 848.00,12.00 858.67,12.00 869.33,12.00 880.00,12.00 890.67,12.00 901.33,12.00 912.00,12.00 922.67,12.00 933.33,12.00 944.00,12.00 954.67,12.00 " fill="none" stroke="#1f6fb8" stroke-width="1.6"/></svg><p class="legend">Osenčeno je raspon od najbržeg do najsporijeg odziva, linija je prosek.</p><h2>Prekidi</h2><table class="data">
+<thead><tr>
+  <th class="num">#</th><th>Početak</th><th class="num">Trajanje</th><th class="num">Raspon</th>
+  <th>Stanje</th><th>Problem izolovan na</th><th class="num">Pouzdanost</th>
+</tr></thead><tbody><tr class="upstream">
+  <td class="num">1</td>
+  <td>13.08.2026. 14:00:03</td>
+  <td class="num"><strong>3,0 s</strong></td>
+  <td class="num muted">2,0 s - 4,0 s</td>
+  <td>Ruter radi, veza ka internetu ne radi</td>
+  <td>putanja iza rutera</td>
+  <td class="num">VISOKA</td>
+</tr></tbody></table><p class="note"><strong>Kako se čita trajanje.</strong> Merenje je diskretno, pa se tačan
+početak prekida nalazi između poslednjeg ispravnog i prvog neispravnog uzorka. Kolona
+<em>Trajanje</em> je središnja procena, a <em>Raspon</em> pokazuje najmanje i najviše moguće
+trajanje. Donja granica se ne može osporiti.</p><p class="note"><strong>Kako se čita pouzdanost.</strong> Izražena je kao pojas, ne kao
+procenat, i zavisi od dve stvari: koliko provera ide u prilog zaključku i koliko je
+provera uopšte moglo da se izvede. Malo provera sa savršenim rezultatom ne daje visoku
+ocenu - provere koje nisu mogle da se izvedu ograničavaju koliko visoko ocena sme da ide.</p><h2>Integritet zapisa</h2><p class="ok">Lanac otisaka je unutrašnje dosledan: nijedan zapis nije izmenjen a da to ne pokvari sve otiske posle njega.</p><p class="note">Ovo je provera doslednosti, a ne dokaz porekla. Ko ima pravo upisa u folder sesije mogao bi da preračuna i lanac i kontrolne zbirove. Nezavisan dokaz vremena i porekla zahteva potpis i vremenski žig treće strane, što ovo izdanje ne radi.</p><p class="hash">Završni otisak: beb964ee5f51e4c4572b242e584b4000448f305e3841ec52e67067b5b6ce2a43</p><p class="note">Zaključci u ovom izveštaju izvedeni su sledećim verzijama modela:
+format zapisa 3,
+klasifikacija 2.3.0,
+model pripisivanja 2.1,
+model pouzdanosti 1.1.
+Sirova merenja se ne menjaju, ali pravila koja ih tumače mogu, pa je iz izveštaja
+uvek moguće utvrditi kojom logikom je zaključak donet.</p><p class="note">Izveštaj je napravio Internet Monitoring verzija
+2.7.2.
+Ista verzija programa nad istom sirovom evidencijom uvek daje isti izveštaj.</p><p class="note">Svaki zapis u sirovoj evidenciji sadrži otisak prethodnog, pa izmena bilo kog
+ranijeg reda narušava sve otiske posle njega. Proveru može ponoviti bilo ko, uključujući
+tehničara operatera.</p><h2>Granice ovog dokumenta</h2>
+<ul class="limits">
+  <li>Ovo je tehnička evidencija prekida, a ne merenje ovlašćene treće strane niti zapis
+      potpisan od strane operatera.</li>
+  <li>Ovo je provera doslednosti, a ne dokaz porekla. Ko ima pravo upisa u folder sesije mogao bi da preračuna i lanac i kontrolne zbirove. Nezavisan dokaz vremena i porekla zahteva potpis i vremenski žig treće strane, što ovo izdanje ne radi.</li>
+  <li>Priloženo merenje brzine ispunjava propisane uslove, ali je jedno merenje i ne zamenjuje postupak propisan propisom: merenje RATEL NetTest aplikacijom, na Ethernetskom portu modema, po proceduri od tri dana.</li>
+  <li>Uz prigovor zbog kvaliteta internet usluge RATEL navodi i rezultate merenja aplikacijom
+      RATEL NetTest, po proceduri od tri dana sa po dva merenja pre i posle podne.</li>
+</ul></main></body></html>

@@ -1,7 +1,7 @@
 # Šta je preostalo
 
 Stanje na dan **18.08.2026.**, verzija **2.7.2**, ime aplikacije
-**Internet Monitoring**, **561 test prolazi** (537 u jezgru, 24 u prozoru), nula upozorenja
+**Internet Monitoring**, **578 testova prolazi** (554 u jezgru, 24 u prozoru), nula upozorenja
 pri gradnji, zaključane zavisnosti prolaze. Projekat je objavljen kao open source
 (MIT, GitHub Actions CI zelen).
 
@@ -12,6 +12,18 @@ i **zašto**, jer je to podatak koji se najbrže gubi. Sve što je ranije bilo o
 Redosled je po važnosti.
 
 ---
+
+## 0b. 2.7.x je zamrznut, 3.0-0 je počeo
+
+Grana 2.7.x je od 18.08. samo za održavanje. Osnova za 3.0 je postavljena, bez ijedne izmene
+ponašanja:
+
+- `docs/ROADMAP-3.0.md` - sedamnaest faza, redosled biran tako da prvo raste dokazna vrednost
+- `docs/EVIDENCE-MODEL-4.md` - razdvajanje FACT / INFERENCE / ASSESSMENT i `InterpretationRef`
+- `docs/THREAT-MODEL-3.0.md` - šta potpis i vremenski žig ne dokazuju, na prvoj strani
+- `docs/MIGRATION-2.x-TO-3.0.md` - šta se dešava sa već snimljenim
+- `docs/INVARIJANTE.md` - deset pravila, sa mestom gde svako ima test
+- `baseline/v2.7.2/` - prava sesija ove verzije, koju characterization testovi čitaju
 
 ## 0a. Šta je audit 2.7.0 našao (i 2.7.1 zatvorila)
 
