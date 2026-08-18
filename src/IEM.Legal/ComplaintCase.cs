@@ -211,6 +211,44 @@ public static class CaseText
     };
 
     /// <summary>
+    /// What happened to a period since it was first worked out, in the words a person needs.
+    /// <para>
+    /// Two very different things end up here and must not read alike. A fallback anchor giving
+    /// way to the primary one is the law working as written - the event it counts from finally
+    /// happened - and the new date is the answer. A date that was already used being given a
+    /// different value is a disagreement the program will not resolve on its own.
+    /// </para>
+    /// </summary>
+    public static string? Explain(this ComplaintMilestone milestone, string stepLabel)
+    {
+        ArgumentNullException.ThrowIfNull(milestone);
+
+        if (milestone.Rule is not { } rule)
+        {
+            return null;
+        }
+
+        if (rule.Conflict is { } conflict)
+        {
+            return $"UPOZORENJE - {conflict}";
+        }
+
+        if (rule.Superseded is not { Reason: ResolutionChange.PrimaryAnchorBecameAvailable } was)
+        {
+            return rule.Resolution == ResolutionState.Provisional
+                ? "Rok je privremen: računat je od dana do kog je odgovor bio dužan, jer odgovor " +
+                  "još nije evidentiran. Kada se odgovor unese, rok se računa od dana njegovog prijema."
+                : null;
+        }
+
+        return
+            $"Rok je prvobitno privremeno izračunat do {was.Due:dd.MM.yyyy.} na osnovu roka za " +
+            $"odgovor operatera ({was.AnchoredOn:dd.MM.yyyy.}). Odgovor je naknadno evidentiran " +
+            $"{rule.AnchoredOn?.Date:dd.MM.yyyy.} pa primarno zakonsko uporište daje rok " +
+            $"{rule.Due:dd.MM.yyyy.} Pravila predmeta nisu promenjena.";
+    }
+
+    /// <summary>
     /// What the program could establish about the legal position, said plainly.
     /// <para>
     /// A case file written before 2.7 has no record of which rules were applied to it. The

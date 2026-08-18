@@ -1,7 +1,7 @@
 # Šta je preostalo
 
-Stanje na dan **18.08.2026.**, verzija **2.7.1**, ime aplikacije
-**Internet Monitoring**, **559 testova prolazi** (535 u jezgru, 24 u prozoru), nula upozorenja
+Stanje na dan **18.08.2026.**, verzija **2.7.2**, ime aplikacije
+**Internet Monitoring**, **561 test prolazi** (537 u jezgru, 24 u prozoru), nula upozorenja
 pri gradnji, zaključane zavisnosti prolaze. Projekat je objavljen kao open source
 (MIT, GitHub Actions CI zelen).
 

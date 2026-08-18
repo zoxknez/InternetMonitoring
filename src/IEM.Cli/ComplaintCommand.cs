@@ -203,6 +203,14 @@ public static class ComplaintCommand
             {
                 builder.AppendLine($"  {' ',12}  ↳ {impediment}");
             }
+
+            if (milestone.Explain(milestone.Step.Label()) is { } change)
+            {
+                foreach (var line in ConsoleText.Wrap(change, 62))
+                {
+                    builder.AppendLine($"  {' ',12}  {line}");
+                }
+            }
         }
 
         if (complaint.RegulatorFiledDate is { } filed)

@@ -395,7 +395,7 @@ sam projekat ne vredi. Posledica se vidi odmah - Windows SmartScreen upozorava n
 izdavača, pa se preuzeti ZIP prvo odblokira:
 
 ```bash
-Unblock-File .\InternetMonitoring-2.7.1-win-x64.zip
+Unblock-File .\InternetMonitoring-2.7.2-win-x64.zip
 ```
 
 Ako se namena ikad promeni, polazna tačka je Azure Artifact Signing.
@@ -478,7 +478,7 @@ ovog programa neko će poslati svom operateru; sve u kodu služi tome da taj dok
 
 | | |
 |---|---|
-| **Verzija** | 2.7.1 |
+| **Verzija** | 2.7.2 |
 | **Autor** | **o0o0o0o** ([GitHub](https://github.com/zoxknez)) |
 | **Licenca** | [MIT](LICENSE) |
 | **Platforma** | Windows 10/11, x64 i ARM64. Ne traži instaliran .NET - objavljene arhive nose svoj runtime. |

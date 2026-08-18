@@ -145,6 +145,54 @@ public sealed record CaseFacts
     };
 }
 
+/// <summary>
+/// How settled a period is.
+/// <para>
+/// Separate from <see cref="LegalContextState"/>, which says how good the provenance of the
+/// dates is. This says whether the period is final: a deadline counted from the day an answer
+/// was <em>owed</em> is not the same kind of answer as one counted from the day it actually
+/// arrived, even though both are computed and both have a date.
+/// </para>
+/// </summary>
+public enum ResolutionState
+{
+    /// <summary>Nothing to count from yet.</summary>
+    Unresolved,
+
+    /// <summary>
+    /// Settled from a fallback anchor because the primary one was not available. Correct for
+    /// now and replaceable later: the law counts this period from an event that has not
+    /// happened yet, and when it does the same frozen rules give a different date.
+    /// </summary>
+    Provisional,
+
+    /// <summary>Settled from the anchor the law names first. This does not change by itself.</summary>
+    Resolved,
+
+    /// <summary>
+    /// A date that was already used to count this period has since been given a different
+    /// value. The period keeps the date it had; the disagreement is stated.
+    /// </summary>
+    Conflict,
+}
+
+/// <summary>Why a period stopped being what it was, and what it was.</summary>
+public enum ResolutionChange
+{
+    /// <summary>
+    /// The event the law counts this period from finally happened, so the provisional
+    /// answer taken from the fallback anchor gave way to the real one.
+    /// </summary>
+    PrimaryAnchorBecameAvailable,
+}
+
+/// <param name="Reason">What replaced it.</param>
+public sealed record PreviousResolution(
+    LegalAnchor? Anchor,
+    DateOnly? AnchoredOn,
+    DateOnly? Due,
+    ResolutionChange Reason);
+
 /// <summary>One period as it applied to one case: the rule, what it was counted from, and when it falls.</summary>
 public sealed record AppliedRule
 {
@@ -156,7 +204,26 @@ public sealed record AppliedRule
 
     public int? Value { get; init; }
 
+    /// <summary>
+    /// The event this period was actually counted from - the fallback when the primary one
+    /// had no date yet, not the one the rule names first.
+    /// </summary>
+    /// <remarks>
+    /// It used to record the rule's primary anchor whatever was actually used, so a period
+    /// counted from the day an answer was owed claimed to have been counted from the day it
+    /// arrived. When the answer then arrived, the two disagreed and the case reported a
+    /// conflict where nothing had gone wrong.
+    /// </remarks>
     public LegalAnchor? Anchor { get; init; }
+
+    /// <summary>How settled this period is.</summary>
+    public ResolutionState Resolution { get; init; } = ResolutionState.Unresolved;
+
+    /// <summary>
+    /// The provisional answer this one replaced, kept so the case does not lose what it said
+    /// before. One step back, not a history - that is 3.0 work.
+    /// </summary>
+    public PreviousResolution? Superseded { get; init; }
 
     /// <summary>The date it was counted from, with where that date came from.</summary>
     public AnchoredDate? AnchoredOn { get; init; }
@@ -175,6 +242,10 @@ public sealed record AppliedRule
     /// change what a case meant on the strength of an edit nobody was shown - so the old
     /// value stands and the disagreement is stated. Reconciling the two properly needs a
     /// history of resolutions, which is 3.0 work.
+    /// </para>
+    /// <para>
+    /// A fallback anchor giving way to the primary one is <em>not</em> this. That is the law
+    /// working as written, and it has its own state.
     /// </para>
     /// </summary>
     public string? Conflict { get; init; }

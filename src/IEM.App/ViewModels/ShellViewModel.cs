@@ -475,7 +475,12 @@ public sealed partial class ShellViewModel : ObservableObject, IAsyncDisposable
         // position it had, which is the whole reason they are written into the file.
         var legal = journal.Legal ?? journal.Case.Resolve(today);
         var stage = journal.Case.StageOn(today, legal);
-        var uncertain = legal.State == LegalContextState.Resolved ? string.Empty : " · rokovi nisu potvrđeni";
+        var uncertain = legal switch
+        {
+            { HasConflicts: true } => " · pažnja: promenjen datum iza roka",
+            { State: not LegalContextState.Resolved } => " · rokovi nisu potvrđeni",
+            _ => string.Empty,
+        };
 
         CaseText = $"{stage.Label()} · operater {journal.Case.OperatorName}{uncertain}";
     }

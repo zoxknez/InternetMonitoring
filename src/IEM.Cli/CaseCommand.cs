@@ -252,6 +252,17 @@ public static class CaseCommand
             {
                 Console.WriteLine($"  {' ',12}  ↳ {impediment}");
             }
+
+            // A period that was superseded, is still provisional, or whose facts now
+            // disagree says so here. Recording it in the journal and not showing it left the
+            // screen claiming a settled date the file knew was contested.
+            if (milestone.Explain(milestone.Step.Label()) is { } note)
+            {
+                foreach (var line in ConsoleText.Wrap(note, 62))
+                {
+                    Console.WriteLine($"  {' ',12}  {line}");
+                }
+            }
         }
 
         if (regulatorFiled is { } filed)

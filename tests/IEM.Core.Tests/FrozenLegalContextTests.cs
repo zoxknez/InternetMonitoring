@@ -161,6 +161,88 @@ public sealed class FrozenLegalContextTests : IDisposable
     }
 
     /// <summary>
+    /// PRIMARY_ANCHOR_SUPERSEDES_FALLBACK_WITHIN_FROZEN_RULESET - the scenario the release
+    /// review found.
+    /// <para>
+    /// While no answer had arrived, the window to reach the Regulator was counted from the day
+    /// the answer was owed: 2 August, giving 1 October. That is the law working as written, and
+    /// it is provisional by construction - the event the period actually runs from had not
+    /// happened. When the answer arrives on 5 August the same frozen rules give 4 October, and
+    /// that is the deadline. The provisional one is kept beside it.
+    /// </para>
+    /// <para>
+    /// This is not a conflict. Nothing was corrected and nothing disagrees: a fallback gave way
+    /// to the anchor the law names first. Reporting it as a contradiction - which 2.7.1 did -
+    /// left the case holding a date it already knew was superseded.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public void A_provisional_deadline_gives_way_when_the_answer_actually_arrives()
+    {
+        var before = CaseJournalStore.Save(_root, new CaseJournal { Case = Case() }, Today);
+        var provisional = before.For(ComplaintStep.RegulatorDisputeDue)!;
+
+        Assert.Equal(ResolutionState.Provisional, provisional.Resolution);
+        Assert.Equal(LegalAnchor.ProviderResponseDue, provisional.Anchor);
+        Assert.Equal(new DateOnly(2026, 5, 17), provisional.Due);
+
+        var after = CaseJournalStore.Save(
+            _root,
+            new CaseJournal { Case = Case(responded: new DateOnly(2026, 3, 16)) },
+            new DateOnly(2026, 3, 16));
+
+        var settled = after.For(ComplaintStep.RegulatorDisputeDue)!;
+
+        Assert.Equal(ResolutionState.Resolved, settled.Resolution);
+        Assert.Equal(LegalAnchor.ProviderResponseReceived, settled.Anchor);
+        Assert.Equal(new DateOnly(2026, 3, 16), settled.AnchoredOn!.Date);
+        Assert.Equal(new DateOnly(2026, 5, 15), settled.Due);
+
+        // Not a conflict, and what it replaced is still on file.
+        Assert.Null(settled.Conflict);
+        Assert.False(after.HasConflicts);
+        Assert.Equal(new DateOnly(2026, 5, 17), settled.Superseded!.Due);
+        Assert.Equal(LegalAnchor.ProviderResponseDue, settled.Superseded.Anchor);
+        Assert.Equal(ResolutionChange.PrimaryAnchorBecameAvailable, settled.Superseded.Reason);
+
+        // Under the same rules throughout - this is the law, not a registry change.
+        Assert.Equal(before.Ruleset, after.Ruleset);
+    }
+
+    /// <summary>
+    /// And the other half: once the answer's own date has been used, changing it is a
+    /// contradiction rather than an upgrade, and nothing is recomputed.
+    /// </summary>
+    [Fact]
+    public void Changing_the_answer_date_after_it_was_used_is_a_conflict()
+    {
+        CaseJournalStore.Save(_root, new CaseJournal { Case = Case() }, Today);
+
+        var settled = CaseJournalStore.Save(
+            _root,
+            new CaseJournal { Case = Case(responded: new DateOnly(2026, 3, 16)) },
+            new DateOnly(2026, 3, 16));
+
+        var due = settled.For(ComplaintStep.RegulatorDisputeDue)!.Due;
+
+        var corrected = CaseJournalStore.Save(
+            _root,
+            new CaseJournal { Case = Case(responded: new DateOnly(2026, 3, 18)) },
+            new DateOnly(2026, 3, 18));
+
+        var after = corrected.For(ComplaintStep.RegulatorDisputeDue)!;
+
+        Assert.Equal(due, after.Due);
+        Assert.NotNull(after.Conflict);
+        Assert.True(corrected.HasConflicts);
+
+        // The program says what it noticed and stops there. Whether a new case is needed is a
+        // legal judgement it has neither the facts nor the standing to make.
+        Assert.DoesNotContain("nov predmet", after.Conflict!, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("..", after.Conflict!, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// Someone corrects the day their service failed. The deadlines really do move with it -
     /// but not silently, and not by this path.
     /// </summary>

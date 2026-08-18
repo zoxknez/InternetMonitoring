@@ -228,6 +228,11 @@ public static class ComplaintBuilder
             {
                 builder.AppendLine($"{' ',12}  -> {impediment}");
             }
+
+            if (milestone.Explain(milestone.Step.Label()) is { } change)
+            {
+                builder.AppendLine($"{' ',12}  {change}");
+            }
         }
 
         if (complaint.RegulatorFiledDate is { } filed)

@@ -10,6 +10,55 @@ izveštaj pravi.
 
 ---
 
+## 2.7.2 - 18.08.2026.
+
+Format zapisa 3, pravila nepromenjena. Targeted review taga `v2.7.1` prošao je jedanaest od
+dvanaest tačaka; dvanaesta je otkrila da je F3 zatvoren **pregrubo**.
+
+### Fallback uporište je privremeno, ne konačno
+
+Dok odgovor operatera nije stigao, rok za obraćanje Regulatoru računa se od dana **do kog je
+odgovor bio dužan** - to je fallback uporište, i po prirodi je privremeno: događaj od kog rok
+zaista teče još se nije desio. Kada odgovor stigne, ista zamrznuta pravila daju drugi datum.
+
+2.7.1 je taj slučaj tretirala kao **konflikt** i zadržavala privremeni rok. Predmet je time
+držao kao aktuelan datum za koji je već znao da je izveden iz slabijeg uporišta - a poruka je
+uz to savetovala da se „pokrene nov predmet", što je pravno pogrešan savet.
+
+Uzrok je bio i u modelu: `AppliedRule.Anchor` beležio je **primarno** uporište pravila i onda
+kada je rok bio razrešen iz fallback-a, pa su se dva datuma prividno razilazila.
+
+Sada:
+
+| Slučaj | Ponašanje |
+|---|---|
+| Fallback → primarno uporište postalo dostupno | Rok se ponovo razrešava **istim zamrznutim rulesetom**; nov datum je aktuelan, prethodni se čuva kao `Superseded` sa razlogom |
+| Datum koji je već korišćen se promeni | Konflikt. Rok ostaje, ništa se ne preračunava |
+| Registar se promenio | Nikakva promena; ako zamrznuta pravila nisu dostupna, ostaje `Unresolved` |
+| Nova činjenica razrešava potpuno nerazrešen rok | Razrešava se normalno, opet zamrznutim rulesetom |
+
+Invariant `RESOLVED_MILESTONE_NEVER_CHANGES` razložen je na precizniji par -
+`FINAL_RESOLUTION_NEVER_CHANGES_SILENTLY` i `FALLBACK_RESOLUTION_IS_PROVISIONAL` - uz
+`PRIMARY_ANCHOR_SUPERSEDES_FALLBACK_WITHIN_FROZEN_RULESET`.
+
+Uživo, na predmetu iz 2.6:
+
+```
+pre odgovora:    01.10.2026.  [privremen, računat od 02.08 - roka za odgovor]
+posle odgovora:  04.10.2026.  [konačan, računat od 05.08 - dana prijema]
+                 Pravila predmeta nisu promenjena.
+```
+
+### Konflikt i zamena više nisu nevidljivi
+
+`Conflict` se u 2.7.1 upisivao u dnevnik i **nigde nije prikazivao** - ekran je tvrdio da je
+rok utvrđen dok je zapis znao da je osporen. Sada se i zamena i konflikt vide u `--predmet`, u
+`Rokovi.txt` (konzola i prozor) i u liniji predmeta u prozoru, sa različitim tekstom za dva
+različita slučaja.
+
+Iz poruke o konfliktu uklonjen je savet da se pokrene nov predmet - da li je pravno potreban
+nov predmet nije procena koju ovaj program ima osnova da donese - i ispravljena dupla tačka.
+
 ## 2.7.1 - 18.08.2026.
 
 Format zapisa 3, pravila nepromenjena (klasifikacija 2.3.0, pripisivanje 2.1).

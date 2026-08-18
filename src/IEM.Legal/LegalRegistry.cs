@@ -281,38 +281,63 @@ public static class LegalRegistry
         {
             var previous = existing.For(step);
 
-            if (previous is { State: not LegalContextState.Unresolved })
+            // Nothing settled yet: a new fact may settle it, within the frozen rules.
+            if (previous is null || previous.Resolution == ResolutionState.Unresolved)
+            {
+                if (frozen is null)
+                {
+                    applied.Add(previous ?? Stranded(step, existing));
+                    continue;
+                }
+
+                if (Resolve(step, facts, derived, frozen) is { } settled)
+                {
+                    applied.Add(settled);
+                    Carry(step, settled);
+                }
+                else if (previous is not null)
+                {
+                    applied.Add(previous);
+                }
+
+                continue;
+            }
+
+            // Settled from the anchor the law names first, or already flagged: it stands. The
+            // only thing that can happen to it is that one of the dates behind it changes,
+            // and that is stated rather than applied.
+            if (previous.Resolution != ResolutionState.Provisional)
             {
                 applied.Add(previous with { Conflict = ConflictOn(previous, facts, derived) });
                 Carry(step, previous);
                 continue;
             }
 
-            if (frozen is null)
+            // Settled from a fallback, because the event the law counts from had not happened
+            // yet. If it has now, the same frozen rules give the real date, and that becomes
+            // the answer - the provisional one is kept beside it rather than thrown away.
+            var upgraded = frozen is null ? null : Resolve(step, facts, derived, frozen);
+
+            if (upgraded is { Resolution: ResolutionState.Resolved } &&
+                upgraded.Due != previous.Due)
             {
-                // The rules this case was decided under are no longer in the registry, so
-                // nothing new can be settled the way the rest of it was.
-                applied.Add(previous ?? new AppliedRule
+                applied.Add(upgraded with
                 {
-                    Step = step,
-                    State = LegalContextState.Unresolved,
-                    Impediment =
-                        $"pravila pod kojima je predmet razrešen ({existing.Ruleset}) nisu " +
-                        "više u registru, pa se nov rok ne može izvesti na isti način",
+                    Superseded = new PreviousResolution(
+                        previous.Anchor,
+                        previous.AnchoredOn?.Date,
+                        previous.Due,
+                        ResolutionChange.PrimaryAnchorBecameAvailable),
                 });
 
+                Carry(step, upgraded);
                 continue;
             }
 
-            if (Resolve(step, facts, derived, frozen) is { } resolved)
-            {
-                applied.Add(resolved);
-                Carry(step, resolved);
-            }
-            else if (previous is not null)
-            {
-                applied.Add(previous);
-            }
+            // Still provisional. The fallback date itself changing is a changed fact like any
+            // other, so it is flagged rather than quietly recomputed.
+            applied.Add(previous with { Conflict = ConflictOn(previous, facts, derived) });
+            Carry(step, previous);
         }
 
         return existing with
@@ -332,6 +357,21 @@ public static class LegalRegistry
             }
         }
     }
+
+    /// <summary>
+    /// A step that cannot be settled because the rules the case ran on are no longer
+    /// published. Reaching for today's would put half the case under one regime and half
+    /// under another, with one identifier claiming otherwise.
+    /// </summary>
+    private static AppliedRule Stranded(ComplaintStep step, ResolvedLegalContext existing) => new()
+    {
+        Step = step,
+        State = LegalContextState.Unresolved,
+        Resolution = ResolutionState.Unresolved,
+        Impediment =
+            $"pravila pod kojima je predmet razrešen ({existing.Ruleset}) nisu više u registru, " +
+            "pa se nov rok ne može izvesti na isti način",
+    };
 
     /// <summary>The published rules with exactly this identity, or null when there are none.</summary>
     public static LegalRuleset? Find(LegalRulesetRef reference)
@@ -365,10 +405,14 @@ public static class LegalRegistry
 
         var now = facts.On(anchor) ?? (derived.TryGetValue(anchor, out var value) ? value : null);
 
+        // No advice about starting a new case. Whether one is needed is a legal judgement, and
+        // this program has neither the facts nor the standing to make it - it can only say
+        // what it noticed. The date is formatted without a trailing period of its own: the
+        // Serbian format already ends with one, and two in a row read as a typing mistake.
         return now is not null && now.Date != was.Date
             ? $"Datum od kog je ovaj rok računat promenjen je sa {was.Date:dd.MM.yyyy.} na " +
-              $"{now.Date:dd.MM.yyyy.}. Rok je ostavljen onakav kakav je razrešen; proverite ga " +
-              "i, ako treba, pokrenite nov predmet."
+              $"{now.Date:dd.MM.yyyy.} Sačuvani rok nije automatski promenjen; potrebna je " +
+              "provera pravnog konteksta predmeta."
             : null;
     }
 
@@ -399,8 +443,17 @@ public static class LegalRegistry
             return null;
         }
 
-        var anchored = Lookup(reference.Anchor) ??
-                       (reference.FallbackAnchor is { } fallback ? Lookup(fallback) : null);
+        // Which anchor actually produced a date, not which one the rule names first. Recording
+        // the primary one regardless is what made a period counted from the day an answer was
+        // owed claim to have been counted from the day it arrived.
+        var usedAnchor = reference.Anchor;
+        var anchored = Lookup(reference.Anchor);
+
+        if (anchored is null && reference.FallbackAnchor is { } fallback && Lookup(fallback) is { } byFallback)
+        {
+            usedAnchor = fallback;
+            anchored = byFallback;
+        }
 
         if (anchored is null)
         {
@@ -414,6 +467,7 @@ public static class LegalRegistry
                 {
                     Step = step,
                     State = LegalContextState.Unresolved,
+                    Resolution = ResolutionState.Unresolved,
                     Anchor = reference.Anchor,
                     Impediment = $"nije poznat datum: {Describe(reference.Anchor)}",
                 };
@@ -427,7 +481,8 @@ public static class LegalRegistry
             {
                 Step = step,
                 State = LegalContextState.Unresolved,
-                Anchor = reference.Anchor,
+                Resolution = ResolutionState.Unresolved,
+                Anchor = usedAnchor,
                 AnchoredOn = anchored,
                 Impediment =
                     "rok pada preko granice između starog i važećeg režima, a postupak pred " +
@@ -443,7 +498,8 @@ public static class LegalRegistry
             {
                 Step = step,
                 State = LegalContextState.Unresolved,
-                Anchor = reference.Anchor,
+                Resolution = ResolutionState.Unresolved,
+                Anchor = usedAnchor,
                 AnchoredOn = anchored,
                 Impediment = "režim koji važi za ovaj predmet ne poznaje ovaj rok",
             };
@@ -460,9 +516,12 @@ public static class LegalRegistry
         {
             Step = step,
             State = state,
+            Resolution = usedAnchor == rule.Anchor
+                ? ResolutionState.Resolved
+                : ResolutionState.Provisional,
             RuleId = rule.RuleId,
             Value = rule.Value,
-            Anchor = rule.Anchor,
+            Anchor = usedAnchor,
             AnchoredOn = anchored,
             Due = rule.DueFrom(anchored.Date),
             Citations = Citations(rule, governing, step, facts, anchored),
