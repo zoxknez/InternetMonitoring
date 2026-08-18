@@ -41,7 +41,11 @@
     --body: "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
     --data: "Cascadia Mono", Consolas, "SF Mono", ui-monospace, "Liberation Mono", monospace;
 
-    --col: 68ch;
+    /* Reading measure, for running prose only. Headings and section intros lay
+       out in columns instead: set as one narrow column they left a third of a
+       wide screen empty beside them, and a heading with a void to its right
+       reads as a mistake rather than as a choice. */
+    --measure: 62ch;
     --gutter: clamp(20px, 5vw, 56px);
   }
 
@@ -100,30 +104,29 @@
     -webkit-font-smoothing: antialiased;
   }
 
-  .wrap { max-width: 1080px; margin: 0 auto; padding: 0 var(--gutter); }
-  .col  { max-width: var(--col); }
+  .wrap { max-width: 1140px; margin: 0 auto; padding: 0 var(--gutter); }
+  .measure { max-width: var(--measure); }
 
   h1, h2, h3 {
     font-family: var(--display);
     font-weight: 600;
-    line-height: 1.16;
+    line-height: 1.14;
     text-wrap: balance;
     margin: 0;
-    letter-spacing: -.005em;
+    letter-spacing: -.008em;
   }
-  h1 { font-size: clamp(2.1rem, 5.2vw, 3.15rem); }
-  h2 { font-size: clamp(1.5rem, 3.2vw, 1.95rem); }
-  h3 { font-size: 1.06rem; font-family: var(--body); font-weight: 600; }
+  h2 { font-size: clamp(1.55rem, 2.9vw, 2.15rem); }
+  h3 { font-size: 1.06rem; font-family: var(--body); font-weight: 600; line-height: 1.35; }
 
   p { margin: 0; }
   a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: 2px; }
-  a:focus-visible, .btn:focus-visible, summary:focus-visible {
+  a:focus-visible, .btn:focus-visible, summary:focus-visible, button:focus-visible {
     outline: 2px solid var(--accent);
     outline-offset: 3px;
     border-radius: 3px;
   }
 
-  .lede { font-size: 1.14rem; color: var(--muted); }
+  .lede { font-size: 1.1rem; color: var(--muted); }
   .eyebrow {
     font-family: var(--data);
     font-size: .705rem;
@@ -133,9 +136,25 @@
   }
   .mono { font-family: var(--data); font-variant-numeric: tabular-nums; }
 
-  section { padding: clamp(46px, 7vw, 78px) 0; }
+  section { padding: clamp(50px, 7vw, 84px) 0; }
   .stack  { display: flex; flex-direction: column; gap: 20px; }
-  .stack-s { display: flex; flex-direction: column; gap: 10px; }
+  .stack-s { display: flex; flex-direction: column; gap: 9px; }
+
+  /* ---- Section heads: heading in one column, its qualifier in the other ----- */
+  .section-head {
+    display: grid;
+    gap: 12px 52px;
+    align-items: start;
+    margin-bottom: clamp(28px, 3.4vw, 42px);
+  }
+  .section-head .eyebrow { grid-column: 1 / -1; margin-bottom: 2px; }
+  .section-head h2 { max-width: 17ch; }
+  .section-head .lede { max-width: 52ch; }
+
+  @media (min-width: 900px) {
+    .section-head { grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr); }
+    .section-head h2 { max-width: none; }
+  }
 
   /* ---- The outage strip ----------------------------------------------------
      The program draws this across the bottom of its window: one segment per
@@ -146,17 +165,14 @@
     height: 22px;
     border-radius: 3px;
     overflow: hidden;
-    background:
-      repeating-linear-gradient(90deg,
-        var(--ok) 0 5px, transparent 5px 7px);
+    background: repeating-linear-gradient(90deg, var(--ok) 0 5px, transparent 5px 7px);
     background-color: var(--sunken);
   }
   .strip .seg {
     position: absolute;
     top: 0;
     bottom: 0;
-    background: repeating-linear-gradient(90deg,
-      var(--c) 0 5px, transparent 5px 7px);
+    background: repeating-linear-gradient(90deg, var(--c) 0 5px, transparent 5px 7px);
     background-color: var(--sunken);
   }
   .strip .cover {
@@ -180,29 +196,45 @@
     color: var(--faint);
   }
   .legend span { display: inline-flex; align-items: center; gap: 7px; }
-  .legend i {
-    width: 9px; height: 9px; border-radius: 2px;
-    background: var(--c);
-    display: inline-block;
-  }
+  .legend i { width: 9px; height: 9px; border-radius: 2px; background: var(--c); display: inline-block; }
 
-  /* ---- Hero ---------------------------------------------------------------- */
+  /* ---- Header --------------------------------------------------------------- */
   header.top {
-    padding: 26px 0 0;
+    padding: 22px 0 0;
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 20px;
+    gap: 16px 24px;
     flex-wrap: wrap;
   }
   .brand { display: flex; align-items: center; gap: 11px; font-weight: 600; }
   .brand svg { display: block; }
-  .top nav { display: flex; flex-wrap: wrap; gap: 8px 20px; font-size: .9rem; }
+
+  .top nav {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px 20px;
+    font-size: .9rem;
+  }
   .top nav a { color: var(--muted); text-decoration: none; }
   .top nav a:hover { color: var(--ink); text-decoration: underline; }
+  .top nav .with-mark { display: inline-flex; align-items: center; gap: 6px; }
 
-  .hero { padding-top: clamp(38px, 6vw, 62px); }
-  .hero h1 { margin-bottom: 18px; }
+  .kofi { display: inline-flex; align-items: center; }
+  .kofi img { display: block; height: 34px; width: auto; border: 0; border-radius: 4px; }
+  .kofi:hover img { opacity: .9; }
+
+  /* ---- Hero ------------------------------------------------------------------
+     The headline runs the full width. Capped at a reading measure it set in four
+     short lines with a third of the screen empty to its right, which made the
+     whole page look as though it had been squeezed against the left edge. */
+  .hero { padding-top: clamp(34px, 5vw, 58px); }
+  .hero h1 {
+    font-size: clamp(2.05rem, 5vw, 3.5rem);
+    margin-bottom: 20px;
+  }
+  .hero .lede { max-width: 66ch; }
 
   .cta { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
   .btn {
@@ -221,26 +253,73 @@
     transition: transform .12s ease, box-shadow .12s ease;
   }
   .btn:hover { transform: translateY(-1px); box-shadow: var(--shadow); }
-  .btn.ghost {
-    background: transparent;
-    color: var(--ink);
-    border-color: var(--line);
-  }
+  .btn.ghost { background: transparent; color: var(--ink); border-color: var(--line); }
   .cta-note { font-size: .84rem; color: var(--faint); line-height: 1.5; }
   @media (max-width: 900px) { .cta-note { flex-basis: 100%; } }
 
-  /* ---- Cards & grids ------------------------------------------------------- */
+  /* ---- What you must do, beside what you are about to run -------------------- */
+  .after-cta {
+    display: grid;
+    gap: 18px;
+    margin-top: 26px;
+    align-items: start;
+  }
+  @media (min-width: 980px) {
+    .after-cta { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  }
+
+  .callout {
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+    border: 1px solid var(--degraded);
+    background: var(--warn-soft);
+    border-radius: 6px;
+    padding: 17px 19px;
+  }
+  .callout svg { flex: 0 0 auto; color: var(--degraded); margin-top: 2px; }
+  .callout strong { display: block; font-size: 1.02rem; margin-bottom: 4px; }
+  .callout p { font-size: .92rem; color: var(--muted); }
+  .keys {
+    font-family: var(--data);
+    font-size: .85em;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 3px;
+    padding: 1px 6px;
+    white-space: nowrap;
+  }
+
+  .latest {
+    border: 1px solid var(--line);
+    background: var(--surface);
+    border-radius: 6px;
+    padding: 17px 19px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .latest-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+  .latest ul { margin: 0; padding-left: 18px; color: var(--muted); font-size: .92rem; }
+  .latest li { margin-bottom: 3px; }
+  .latest .more { font-size: .88rem; }
+
+  /* ---- Cards ----------------------------------------------------------------- */
   .grid { display: grid; gap: 18px; }
-  @media (min-width: 720px) { .grid.two { grid-template-columns: 1fr 1fr; } }
-  @media (min-width: 860px) { .grid.four { grid-template-columns: repeat(4, 1fr); } }
+  @media (min-width: 760px) { .grid.two { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } }
+  @media (min-width: 900px) { .grid.four { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
 
   .card {
     background: var(--surface);
     border: 1px solid var(--line);
     border-radius: 6px;
-    padding: 22px;
+    padding: 22px 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
   }
-  .card p { color: var(--muted); font-size: .95rem; }
+  .card h3 { font-size: 1.02rem; }
+  .card p { color: var(--muted); font-size: .94rem; max-width: 46ch; }
 
   figure { margin: 0; }
   figure img {
@@ -252,12 +331,12 @@
     box-shadow: var(--shadow);
     background: var(--surface);
   }
-  figcaption { margin-top: 11px; font-size: .85rem; color: var(--faint); }
+  figcaption { margin-top: 11px; font-size: .85rem; color: var(--faint); max-width: 62ch; }
 
-  /* ---- Ledger table -------------------------------------------------------- */
+  /* ---- Ledger table ---------------------------------------------------------- */
   .ledger-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); }
   table { border-collapse: collapse; width: 100%; min-width: 620px; font-size: .9rem; }
-  th, td { text-align: left; padding: 13px 16px; border-bottom: 1px solid var(--line); vertical-align: baseline; }
+  th, td { text-align: left; padding: 14px 18px; border-bottom: 1px solid var(--line); vertical-align: baseline; }
   thead th {
     font-family: var(--data);
     font-size: .69rem;
@@ -269,24 +348,101 @@
   }
   tbody tr:last-child td { border-bottom: 0; }
   td.num { font-family: var(--data); font-variant-numeric: tabular-nums; white-space: nowrap; color: var(--muted); }
-  /* break-all split "…-win-arm64.exe" after the "ex". Letting the browser use the
-     hyphens and dots the name already has keeps it readable when it wraps. */
   td .file { display: block; font-family: var(--data); font-size: .84rem; overflow-wrap: anywhere; }
   td .what { display: block; margin-bottom: 3px; }
 
-  /* ---- Platform status ----------------------------------------------------- */
+  /* ---- Code and steps -------------------------------------------------------- */
+  pre {
+    margin: 0;
+    overflow-x: auto;
+    background: var(--sunken);
+    border: 1px solid var(--line);
+    border-radius: 5px;
+    padding: 15px 17px;
+    font-family: var(--data);
+    font-size: .82rem;
+    line-height: 1.75;
+  }
+  pre .c { color: var(--faint); }
+
+  .steps { display: grid; gap: 24px; counter-reset: step; }
+  @media (min-width: 900px) { .steps { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 30px 44px; } }
+  .step { display: flex; flex-direction: column; gap: 11px; min-width: 0; }
+  .step h3 { display: flex; align-items: baseline; gap: 10px; }
+  .step h3::before {
+    counter-increment: step;
+    content: counter(step);
+    font-family: var(--data);
+    font-size: .74rem;
+    color: var(--accent);
+    border: 1px solid var(--accent);
+    border-radius: 3px;
+    padding: 1px 6px;
+    flex: 0 0 auto;
+  }
+  .step p { color: var(--muted); font-size: .94rem; max-width: 52ch; }
+
+  /* ---- Versions -------------------------------------------------------------- */
+  .versions { display: flex; flex-direction: column; }
+  .ver {
+    display: grid;
+    grid-template-columns: 11rem minmax(0, 1fr);
+    gap: 8px 32px;
+    padding: 24px 0;
+    border-top: 1px solid var(--line);
+  }
+  .ver:first-child { border-top: 0; padding-top: 2px; }
+  .ver-mark { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
+  .ver-tag { font-family: var(--data); font-size: .95rem; font-weight: 600; }
+  .ver-date { font-family: var(--data); font-size: .74rem; color: var(--faint); }
+  .ver-body h3 { margin-bottom: 8px; }
+  .ver-body p { color: var(--muted); font-size: .95rem; max-width: 68ch; }
+  .ver-body ul { margin: 9px 0 0; padding-left: 18px; color: var(--muted); font-size: .95rem; max-width: 68ch; }
+  .ver-body li { margin-bottom: 4px; }
+  @media (max-width: 640px) {
+    .ver { grid-template-columns: 1fr; gap: 12px; }
+    .ver-mark { flex-direction: row; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+  }
+
+  .pager {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    margin-top: 26px;
+    padding-top: 22px;
+    border-top: 1px solid var(--line);
+  }
+  .pager button {
+    font: inherit;
+    font-size: .88rem;
+    font-family: var(--data);
+    color: var(--muted);
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    padding: 6px 12px;
+    cursor: pointer;
+  }
+  .pager button:hover:not(:disabled) { color: var(--ink); border-color: var(--faint); }
+  .pager button[aria-current="true"] {
+    background: var(--accent-soft);
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+  .pager button:disabled { opacity: .4; cursor: default; }
+  .pager .count { font-size: .82rem; color: var(--faint); margin-left: auto; }
+
+  /* ---- Platforms -------------------------------------------------------------- */
   .plat {
     background: var(--surface);
     border: 1px solid var(--line);
     border-radius: 6px;
-    padding: 20px;
+    padding: 20px 22px;
     display: flex;
     flex-direction: column;
     gap: 14px;
   }
-
-  /* The mark sits in a badge beside the name rather than loose in the corner,
-     so four cards of different glyph shapes still line up as one row. */
   .plat-head { display: flex; align-items: center; gap: 13px; }
   .plat-badge {
     flex: 0 0 auto;
@@ -302,6 +458,8 @@
   .plat svg { color: var(--ink); display: block; }
   .plat .name { font-weight: 600; line-height: 1.2; }
   .plat.soon svg, .plat.soon .name { color: var(--faint); }
+  .plat p { font-size: .88rem; color: var(--muted); margin: 0; }
+
   .chip {
     align-self: flex-start;
     font-family: var(--data);
@@ -312,118 +470,43 @@
     border-radius: 3px;
     background: var(--accent-soft);
     color: var(--accent);
-  }
-  .chip.wait { background: var(--sunken); color: var(--faint); }
-  .plat p { font-size: .85rem; color: var(--muted); margin: 0; }
-
-  /* ---- Isticanje ------------------------------------------------------------
-     One instruction on this page changes whether the program works at all, and
-     it was set in the same faint grey as the file size. */
-  .callout {
-    display: flex;
-    align-items: flex-start;
-    gap: 14px;
-    border: 1px solid var(--degraded);
-    background: var(--warn-soft);
-    border-radius: 6px;
-    padding: 16px 18px;
-    max-width: var(--col);
-  }
-  .callout svg { flex: 0 0 auto; color: var(--degraded); margin-top: 2px; }
-  .callout strong { display: block; font-size: 1.02rem; margin-bottom: 3px; }
-  .callout p { font-size: .92rem; color: var(--muted); }
-  .callout .keys {
-    font-family: var(--data);
-    background: var(--surface);
-    border: 1px solid var(--line);
-    border-radius: 3px;
-    padding: 1px 6px;
     white-space: nowrap;
   }
+  .chip.wait { background: var(--sunken); color: var(--faint); }
 
-  /* ---- Verzije --------------------------------------------------------------
-     Newest first, each with what actually changed. A version line with no
-     description is a number nobody can act on. */
-  .versions { display: flex; flex-direction: column; }
-  .ver {
-    display: grid;
-    grid-template-columns: 10.5rem 1fr;
-    gap: 6px 26px;
-    padding: 22px 0;
-    border-top: 1px solid var(--line);
-  }
-  .ver:first-child { border-top: 0; padding-top: 4px; }
-  .ver-mark { display: flex; flex-direction: column; gap: 7px; align-items: flex-start; }
-  .ver-tag { font-family: var(--data); font-size: .95rem; font-weight: 600; }
-  .ver-date { font-family: var(--data); font-size: .74rem; color: var(--faint); }
-  .ver-body h3 { margin-bottom: 7px; }
-  .ver-body p { color: var(--muted); font-size: .95rem; }
-  .ver-body ul { margin: 7px 0 0; padding-left: 18px; color: var(--muted); font-size: .95rem; }
-  .ver-body li { margin-bottom: 4px; }
-  @media (max-width: 620px) {
-    .ver { grid-template-columns: 1fr; gap: 10px; }
-    .ver-mark { flex-direction: row; align-items: baseline; gap: 12px; }
-  }
-
-  /* ---- Notices ------------------------------------------------------------- */
-  .notice {
-    border-left: 3px solid var(--degraded);
-    padding: 4px 0 4px 18px;
-  }
-  .notice h3 { margin-bottom: 4px; }
-  .notice p { color: var(--muted); font-size: .95rem; }
+  /* ---- Notices ---------------------------------------------------------------- */
+  .notice { border-left: 3px solid var(--degraded); padding: 3px 0 3px 18px; }
+  .notice h3 { margin-bottom: 5px; }
+  .notice p { color: var(--muted); font-size: .94rem; max-width: 54ch; }
 
   details {
     border: 1px solid var(--line);
     border-radius: 6px;
     background: var(--surface);
-    padding: 0 18px;
+    padding: 0 19px;
   }
   summary { cursor: pointer; padding: 15px 0; font-weight: 600; font-size: .95rem; }
   details[open] summary { border-bottom: 1px solid var(--line); }
-  details .body { padding: 16px 0 18px; }
-  pre {
-    margin: 0;
-    overflow-x: auto;
-    background: var(--sunken);
-    border-radius: 5px;
-    padding: 14px 16px;
-    font-family: var(--data);
-    font-size: .82rem;
-    line-height: 1.7;
-  }
+  details .body { padding: 17px 0 19px; display: flex; flex-direction: column; gap: 13px; }
+  details .body p { font-size: .93rem; color: var(--muted); max-width: 62ch; }
 
   footer {
     border-top: 1px solid var(--line);
-    padding: 34px 0 56px;
+    padding: 36px 0 58px;
     color: var(--muted);
     font-size: .88rem;
   }
   footer .links { display: flex; flex-wrap: wrap; gap: 8px 22px; }
+  footer p { max-width: 62ch; }
 
-  /* ---- Telefon -------------------------------------------------------------
-     Two rules here, and both are about the same thing: nothing on this page may
-     make the reader drag sideways. The header ran off the edge once the GitHub
-     link was added, and the download table - fine as a table on a desktop - was
-     a 620px scroller inside a 375px screen, which reads as the page itself being
-     broken. Below 680px each row becomes its own card. */
+  /* ---- Telefon ----------------------------------------------------------------
+     Nothing on this page may make the reader drag sideways. Below 680px each
+     download row becomes its own card instead of a 620px scroller. */
   @media (max-width: 680px) {
-    .ledger-wrap {
-      overflow-x: visible;
-      border: 0;
-      background: transparent;
-      border-radius: 0;
-    }
+    .ledger-wrap { overflow-x: visible; border: 0; background: transparent; border-radius: 0; }
     table { min-width: 0; }
-
-    /* Hidden outright, not clipped away: laying the rows out as blocks already
-       drops the table semantics that made the header useful, and a clipped
-       header leaves cells reporting geometry off the right edge. Each value
-       carries its own label below instead. */
     thead { display: none; }
-
     tbody { display: flex; flex-direction: column; gap: 12px; }
-
     tbody tr {
       display: flex;
       flex-wrap: wrap;
@@ -433,11 +516,8 @@
       border-radius: 6px;
       padding: 16px;
     }
-    tbody tr:last-child td { border-bottom: 0; }
-
     tbody td { display: block; border-bottom: 0; padding: 0; }
     tbody td:first-child { flex: 1 1 100%; }
-
     tbody td.num::before {
       content: attr(data-label);
       display: block;
@@ -447,15 +527,12 @@
       color: var(--faint);
       margin-bottom: 2px;
     }
-
-    /* A command that scrolls inside its own box is the same annoyance, smaller. */
     pre { white-space: pre-wrap; word-break: break-word; }
   }
 
   @media (max-width: 480px) {
-    /* Full-width targets: three buttons side by side leave slivers to tap at. */
     .cta .btn { flex: 1 1 100%; justify-content: center; }
-    .top nav { gap: 6px 16px; font-size: .85rem; }
+    .top nav { gap: 8px 16px; font-size: .85rem; }
   }
 
   @media (prefers-reduced-motion: reduce) {
@@ -482,14 +559,19 @@
     <nav>
       <a href="#kako">Kako radi</a>
       <a href="#preuzimanje">Preuzimanje</a>
+      <a href="#powershell">PowerShell</a>
       <a href="#verzije">Verzije</a>
       <a href="#platforme">Platforme</a>
       <a href="#granice">Granice</a>
-      <a href="https://github.com/zoxknez/InternetMonitoring" style="display: inline-flex; align-items: center; gap: 6px;">
+      <a class="with-mark" href="https://github.com/zoxknez/InternetMonitoring">
         <svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
           <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z" />
         </svg>
         GitHub
+      </a>
+      <a class="kofi" href="https://ko-fi.com/F7I0249KP5" target="_blank" rel="noopener">
+        <img height="36" src="https://storage.ko-fi.com/cdn/kofi6.png?v=6"
+             alt="Buy Me a Coffee at ko-fi.com" />
       </a>
     </nav>
   </header>
@@ -497,7 +579,7 @@
 
 <div class="wrap">
   <section class="hero">
-    <div class="col stack">
+    <div class="stack">
       <p class="eyebrow">Windows · slobodan softver · 2.8.0-beta.3</p>
       <h1>Dokaz da veza pada, napisan tako da operater nema šta da ospori.</h1>
       <p class="lede">
@@ -546,19 +628,36 @@
       </span>
     </div>
 
-    <div class="callout" style="margin-top: 24px;">
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-           stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-        <path d="M12 2.5 4.5 5.5v6.2c0 4.6 3.1 8.6 7.5 9.8 4.4-1.2 7.5-5.2 7.5-9.8V5.5L12 2.5Z" />
-        <path d="m8.7 11.8 2.4 2.4 4.2-4.6" />
-      </svg>
-      <div>
-        <strong>Pokrenite program kao administrator.</strong>
-        <p>
-          Desni klik na preuzeti fajl <span class="keys">&rarr; Pokreni kao administrator</span>.
-          Bez toga program ne može da pročita sve što mu treba od sistema, i prikaz nadzora ume
-          da otkaže.
-        </p>
+    <div class="after-cta">
+      <div class="callout">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M12 2.5 4.5 5.5v6.2c0 4.6 3.1 8.6 7.5 9.8 4.4-1.2 7.5-5.2 7.5-9.8V5.5L12 2.5Z" />
+          <path d="m8.7 11.8 2.4 2.4 4.2-4.6" />
+        </svg>
+        <div>
+          <strong>Pokrenite program kao administrator.</strong>
+          <p>
+            Desni klik na preuzeti fajl <span class="keys">&rarr; Pokreni kao administrator</span>,
+            ili iz PowerShell-a jednom komandom - <a href="#powershell">uputstvo je niže</a>.
+            Bez toga program ne može da pročita sve što mu treba od sistema.
+          </p>
+        </div>
+      </div>
+
+      <div class="latest">
+        <div class="latest-head">
+          <span class="ver-tag">2.8.0-beta.3</span>
+          <span class="chip">Poslednja verzija</span>
+          <span class="ver-date">18.08.2026.</span>
+        </div>
+        <h3>Prva greška koju je prijavio tester</h3>
+        <ul>
+          <li>pita se svaki dodeljeni DNS server, uz javni resolver istog tipa adrese</li>
+          <li>nalaz više ne imenuje operatera: ta adresa je po pravilu vaš ruter</li>
+          <li>kartica stanja razlikuje pogoršanje od prekida, sa svojom bojom i znakom</li>
+        </ul>
+        <p class="more"><a href="#verzije">Šta je bilo u prethodnim verzijama &rarr;</a></p>
       </div>
     </div>
   </section>
@@ -568,7 +667,7 @@
 
 <div class="wrap">
   <section id="kako">
-    <div class="col stack" style="margin-bottom: 30px;">
+    <div class="section-head">
       <p class="eyebrow">Kako radi</p>
       <h2>Sitne provere, svakih nekoliko sekundi, danima.</h2>
       <p class="lede">
@@ -622,9 +721,13 @@
 
 <div class="wrap">
   <section>
-    <div class="col stack" style="margin-bottom: 30px;">
+    <div class="section-head">
       <p class="eyebrow">Šta dobijate na kraju</p>
       <h2>Folder koji se pošalje operateru bez ijedne dopune.</h2>
+      <p class="lede">
+        Kad sesija istekne, program sam napravi ceo paket: izveštaj za štampu, izveštaj za
+        ekran, tabele za Excel, sirovu evidenciju i otiske svih fajlova.
+      </p>
     </div>
 
     <div class="grid two" style="align-items: start;">
@@ -660,17 +763,13 @@
 
 <div class="wrap">
   <section id="preuzimanje">
-    <div class="col stack" style="margin-bottom: 26px;">
+    <div class="section-head">
       <p class="eyebrow">Preuzimanje · 2.8.0-beta.3</p>
       <h2>Jedan fajl je dovoljan. Servis je za dvodnevni test.</h2>
       <p class="lede">
         Portabl fajl pokrenete i radi - ali nadzor tada traje dok je prozor otvoren. Za test
         koji preživljava zatvaranje prozora i restart računara instalira se servis iz arhive.
         Program to kaže i na svom ekranu, umesto da obeća suprotno.
-      </p>
-      <p class="notice" style="margin-top: 4px;">
-        <strong>Portabl fajl pokrenite kao administrator.</strong> Desni klik &rarr; Pokreni kao
-        administrator. Bez toga program ne može da čita sve što mu treba od sistema.
       </p>
     </div>
 
@@ -742,22 +841,105 @@
         </tbody>
       </table>
     </div>
+  </section>
+</div>
 
-    <div style="margin-top: 18px;">
-      <details>
-        <summary>Program nije digitalno potpisan - kako da proverite šta ste skinuli</summary>
-        <div class="body stack">
-          <p style="color: var(--muted); font-size: .95rem;">
-            SmartScreen će upozoriti na nepoznatog izdavača. Potpis je planiran; do tada je
-            provera otiska ono što stoji umesto njega. Zbir mora odgovarati onom u tabeli i
-            fajlu <span class="mono">.sha256</span> uz preuzimanje.
-          </p>
-          <pre>Get-FileHash .\InternetMonitoring-2.8.0-beta.3-win-x64.exe -Algorithm SHA256
+<div class="wrap"><hr class="strip strip-rule" /></div>
+
+<div class="wrap">
+  <section id="powershell">
+    <div class="section-head">
+      <p class="eyebrow">Pokretanje iz PowerShell-a</p>
+      <h2>Četiri koraka, od preuzetog fajla do gotovog paketa.</h2>
+      <p class="lede">
+        Sve što se klikom radi u prozoru može i iz PowerShell-a, a ponešto samo tako - zakazano
+        merenje, nadzor određenog adaptera, provera tuđe sesije. Otvorite PowerShell u folderu
+        gde je fajl: <span class="keys">Shift + desni klik</span> u prazan deo foldera, pa
+        „Otvori PowerShell prozor ovde".
+      </p>
+    </div>
+
+    <div class="steps">
+      <div class="step">
+        <h3>Proverite šta ste preuzeli</h3>
+        <p>
+          Program nije digitalno potpisan, pa Windows označava fajl kao preuzet sa interneta.
+          Zbir mora odgovarati onom iz tabele iznad; tek onda skidate oznaku.
+        </p>
+        <pre><span class="c"># zbir mora da počinje sa 0d7bfa85</span>
+Get-FileHash .\InternetMonitoring-2.8.0-beta.3-win-x64.exe -Algorithm SHA256
+
 Unblock-File .\InternetMonitoring-2.8.0-beta.3-win-x64.exe</pre>
-          <p style="color: var(--muted); font-size: .95rem;">
-            Prvo pokretanje traje desetak sekundi jer se sadržaj raspakuje u privremeni folder;
-            sledeća su odmah. Ako prikaz nadzora ikada pobeli, snimanje se time <em>ne</em>
-            prekida - evidencija nastavlja da se piše, a prijava takvog slučaja mi mnogo znači.
+      </div>
+
+      <div class="step">
+        <h3>Pokrenite prozor kao administrator</h3>
+        <p>
+          <span class="keys">-Verb RunAs</span> je isto što i desni klik pa „Pokreni kao
+          administrator". Windows će tražiti potvrdu.
+        </p>
+        <pre>Start-Process .\InternetMonitoring-2.8.0-beta.3-win-x64.exe -Verb RunAs</pre>
+      </div>
+
+      <div class="step">
+        <h3>Ili nadzor iz konzole, bez prozora</h3>
+        <p>
+          Konzolni pokretač radi isti posao i prima trajanje i folder. Ovako se snima 48 sati u
+          folder <span class="mono">C:\Dokazi</span>.
+        </p>
+        <pre><span class="c"># u konzoli koja je već pokrenuta kao administrator</span>
+.\iem-2.8.0-beta.3-win-x64.exe -t 48h -o C:\Dokazi
+
+<span class="c"># ili odmah kao administrator, iz obične konzole</span>
+Start-Process .\iem-2.8.0-beta.3-win-x64.exe -Verb RunAs `
+  -ArgumentList '-t','48h','-o','C:\Dokazi'</pre>
+      </div>
+
+      <div class="step">
+        <h3>Servis, ako test treba da preživi restart</h3>
+        <p>
+          Iz raspakovane arhive. Traži administratorska prava jednom; posle toga nadzor radi u
+          pozadini i nastavlja se i posle restarta računara.
+        </p>
+        <pre>powershell -ExecutionPolicy Bypass -File install\install.ps1</pre>
+      </div>
+    </div>
+
+    <div style="margin-top: 32px;">
+      <details>
+        <summary>Ostale komande - merenje brzine, provera putanje, prigovor, provera tuđeg paketa</summary>
+        <div class="body">
+          <p>
+            Sve opcije ispisuje <span class="mono">.\iem.exe --pomoc</span>. Ovo su one koje se
+            najčešće koriste.
+          </p>
+          <pre><span class="c"># Merenje brzine, sa ugovorenom brzinom iz ugovora: preuzimanje/slanje.</span>
+<span class="c"># Troši oko 1 GB podataka; --bez-slanja prepolovljuje trošak.</span>
+.\iem.exe --brzina 100/20
+.\iem.exe --brzina 100/20 --bez-slanja
+
+<span class="c"># Zakazano merenje: sačekaj 2 sata pa meri. Za brzinu koja pada uveče.</span>
+.\iem.exe --brzina 100/20 --zakazi 2h
+
+<span class="c"># Kojim adapterom saobraćaj stvarno izlazi. Proverite pre dužeg testa.</span>
+.\iem.exe --putanja
+
+<span class="c"># Šta bežični sloj vidi - mreža, signal, pristupna tačka.</span>
+.\iem.exe --wifi
+
+<span class="c"># Nadzor određenog adaptera, sa ispisom svakog uzorka.</span>
+.\iem.exe -t 6h -i "Wi-Fi" -d
+
+<span class="c"># Provera integriteta postojeće sesije - radi i za tuđu.</span>
+.\iem.exe --proveri C:\Dokazi\Sesija_20260818_154144
+
+<span class="c"># Ponovo napravi izveštaj, i pripremi prigovor sa rokovima.</span>
+.\iem.exe --izvestaj C:\Dokazi\Sesija_20260818_154144
+.\iem.exe --prigovor C:\Dokazi\Sesija_20260818_154144 --operater "Ime operatera"</pre>
+          <p>
+            Ako PowerShell odbije da pokrene <span class="mono">install.ps1</span> zbog politike
+            izvršavanja, <span class="mono">-ExecutionPolicy Bypass</span> iz komande iznad važi
+            samo za taj poziv i ne menja podešavanja sistema.
           </p>
         </div>
       </details>
@@ -769,7 +951,7 @@ Unblock-File .\InternetMonitoring-2.8.0-beta.3-win-x64.exe</pre>
 
 <div class="wrap">
   <section id="verzije">
-    <div class="col stack" style="margin-bottom: 30px;">
+    <div class="section-head">
       <p class="eyebrow">Verzije</p>
       <h2>Šta je u kojoj verziji, i zašto je menjano.</h2>
       <p class="lede">
@@ -778,7 +960,7 @@ Unblock-File .\InternetMonitoring-2.8.0-beta.3-win-x64.exe</pre>
       </p>
     </div>
 
-    <div class="versions">
+    <div class="versions" id="spisak-verzija">
       <div class="ver">
         <div class="ver-mark">
           <span class="ver-tag">2.8.0-beta.3</span>
@@ -815,14 +997,7 @@ Unblock-File .\InternetMonitoring-2.8.0-beta.3-win-x64.exe</pre>
             adapter kome pripada. Kad se ne slažu, opažanje odlučuje.
           </p>
           <ul>
-            <li>
-              merenje čije veze izađu kroz drugi adapter više ne može da dokazuje ugovorenu
-              brzinu, ma šta tabela ruta rekla unapred
-            </li>
-            <li>
-              merenje se više ne upisuje u zapečaćen paket - ranije je odlazilo u folder sesije
-              koji je već bio prebrojan i zapakovan za slanje
-            </li>
+            <li>merenje se više ne upisuje u zapečaćen paket koji je već bio spreman za slanje</li>
             <li>prozor kaže da li merenje ispunjava uslove za prigovor, ne samo koliko je izmerio</li>
             <li>portabl izdanje: jedan fajl, bez instalacije</li>
           </ul>
@@ -837,8 +1012,8 @@ Unblock-File .\InternetMonitoring-2.8.0-beta.3-win-x64.exe</pre>
         <div class="ver-body">
           <h3>Prvo izdanje otvoreno za testiranje</h3>
           <p>
-            Zamenjeno istog dana: prozor je nepromenljivim tekstom obećavao da nadzor preživljava
-            zatvaranje prozora i restart, što bez instaliranog servisa nije tačno.
+            Zamenjeno istog dana: prozor je nepromenljivim tekstom obećavao da nadzor
+            preživljava zatvaranje prozora i restart, što bez instaliranog servisa nije tačno.
           </p>
         </div>
       </div>
@@ -867,8 +1042,8 @@ Unblock-File .\InternetMonitoring-2.8.0-beta.3-win-x64.exe</pre>
           <h3>Stari nalaz nije današnji zaključak</h3>
           <p>
             Merenje snimljeno starijom verzijom nosi zaključak donet po pravilima koja su u
-            međuvremenu ispravljena. Takav nalaz se sada čita kao istorija, a brojevi se ocenjuju
-            iznova. Nemereno više nigde ne piše kao nula.
+            međuvremenu ispravljena. Takav nalaz se sada čita kao istorija, a brojevi se
+            ocenjuju iznova. Nemereno više nigde ne piše kao nula.
           </p>
         </div>
       </div>
@@ -888,9 +1063,25 @@ Unblock-File .\InternetMonitoring-2.8.0-beta.3-win-x64.exe</pre>
           </p>
         </div>
       </div>
+
+      <div class="ver">
+        <div class="ver-mark">
+          <span class="ver-tag">2.6.0</span>
+          <span class="ver-date">17.08.2026.</span>
+        </div>
+        <div class="ver-body">
+          <h3>Merenje brzine uz nadzor</h3>
+          <p>
+            Brzina preuzimanja i slanja, kašnjenje pod opterećenjem, i ocena da li merenje uopšte
+            sme da stoji uz prigovor. Sopstveni saobraćaj programa isključen je iz evidencije.
+          </p>
+        </div>
+      </div>
     </div>
 
-    <p style="margin-top: 26px;">
+    <nav class="pager" id="strane-verzija" aria-label="Stranice verzija" hidden></nav>
+
+    <p style="margin-top: 24px;">
       Ceo spisak izmena, sa razlozima:
       <a href="https://github.com/zoxknez/InternetMonitoring/blob/main/CHANGELOG.md">CHANGELOG.md</a>
       &middot;
@@ -903,7 +1094,7 @@ Unblock-File .\InternetMonitoring-2.8.0-beta.3-win-x64.exe</pre>
 
 <div class="wrap">
   <section id="platforme">
-    <div class="col stack" style="margin-bottom: 30px;">
+    <div class="section-head">
       <p class="eyebrow">Platforme</p>
       <h2>Danas Windows. Ostalo je u pripremi.</h2>
       <p class="lede">
@@ -918,8 +1109,8 @@ Unblock-File .\InternetMonitoring-2.8.0-beta.3-win-x64.exe</pre>
         <div class="plat-head">
           <span class="plat-badge">
             <svg width="24" height="24" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
-                    <path d="M0 2.2 6.4 1.3v5.9H0zM7.3 1.2 16 0v7.2H7.3zM0 8.1h6.4V14L0 13.1zM7.3 8.1H16V16l-8.7-1.2z" />
-                  </svg>
+              <path d="M0 2.2 6.4 1.3v5.9H0zM7.3 1.2 16 0v7.2H7.3zM0 8.1h6.4V14L0 13.1zM7.3 8.1H16V16l-8.7-1.2z" />
+            </svg>
           </span>
           <span class="plat-id">
             <span class="name">Windows</span>
@@ -933,12 +1124,12 @@ Unblock-File .\InternetMonitoring-2.8.0-beta.3-win-x64.exe</pre>
         <div class="plat-head">
           <span class="plat-badge">
             <svg width="24" height="24" viewBox="0 0 32 32" fill="none" stroke="currentColor"
-                       stroke-width="1.8" stroke-linejoin="round" aria-hidden="true">
-                    <path d="M16 3c-3.6 0-5.4 2.6-5.4 6.2 0 2.4.4 4 .1 5.4-.4 1.9-2.5 4.3-3.3 6.6-.8 2.3-.4 4 .6 4.6 1.2.7 2.6-.2 3.6-.2 1.6 0 2.4 1.4 4.4 1.4s2.8-1.4 4.4-1.4c1 0 2.4.9 3.6.2 1-.6 1.4-2.3.6-4.6-.8-2.3-2.9-4.7-3.3-6.6-.3-1.4.1-3 .1-5.4C21.4 5.6 19.6 3 16 3Z" />
-                    <circle cx="13.4" cy="10.4" r="1.3" fill="currentColor" stroke="none" />
-                    <circle cx="18.6" cy="10.4" r="1.3" fill="currentColor" stroke="none" />
-                    <path d="M14.4 13.6c.5.6 2.7.6 3.2 0" stroke-linecap="round" />
-                  </svg>
+                 stroke-width="1.8" stroke-linejoin="round" aria-hidden="true">
+              <path d="M16 3c-3.6 0-5.4 2.6-5.4 6.2 0 2.4.4 4 .1 5.4-.4 1.9-2.5 4.3-3.3 6.6-.8 2.3-.4 4 .6 4.6 1.2.7 2.6-.2 3.6-.2 1.6 0 2.4 1.4 4.4 1.4s2.8-1.4 4.4-1.4c1 0 2.4.9 3.6.2 1-.6 1.4-2.3.6-4.6-.8-2.3-2.9-4.7-3.3-6.6-.3-1.4.1-3 .1-5.4C21.4 5.6 19.6 3 16 3Z" />
+              <circle cx="13.4" cy="10.4" r="1.3" fill="currentColor" stroke="none" />
+              <circle cx="18.6" cy="10.4" r="1.3" fill="currentColor" stroke="none" />
+              <path d="M14.4 13.6c.5.6 2.7.6 3.2 0" stroke-linecap="round" />
+            </svg>
           </span>
           <span class="plat-id">
             <span class="name">Linux</span>
@@ -952,9 +1143,9 @@ Unblock-File .\InternetMonitoring-2.8.0-beta.3-win-x64.exe</pre>
         <div class="plat-head">
           <span class="plat-badge">
             <svg width="24" height="24" viewBox="0 0 32 32" fill="none" stroke="currentColor"
-                       stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                    <path d="M12 6.5A2.5 2.5 0 1 0 9.5 9H12v4H9.5A2.5 2.5 0 1 0 12 15.5V13h8v2.5A2.5 2.5 0 1 0 22.5 13H20V9h2.5A2.5 2.5 0 1 0 20 6.5V9h-8V6.5Z" />
-                  </svg>
+                 stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M12 6.5A2.5 2.5 0 1 0 9.5 9H12v4H9.5A2.5 2.5 0 1 0 12 15.5V13h8v2.5A2.5 2.5 0 1 0 22.5 13H20V9h2.5A2.5 2.5 0 1 0 20 6.5V9h-8V6.5Z" />
+            </svg>
           </span>
           <span class="plat-id">
             <span class="name">macOS</span>
@@ -968,14 +1159,14 @@ Unblock-File .\InternetMonitoring-2.8.0-beta.3-win-x64.exe</pre>
         <div class="plat-head">
           <span class="plat-badge">
             <svg width="24" height="24" viewBox="0 0 32 32" fill="none" stroke="currentColor"
-                       stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                    <path d="M9 14a7 7 0 0 1 14 0" />
-                    <path d="M9 14h14v8a2 2 0 0 1-2 2H11a2 2 0 0 1-2-2v-8Z" />
-                    <path d="m11 6 1.6 2.4M21 6l-1.6 2.4" />
-                    <circle cx="13" cy="11.4" r="1" fill="currentColor" stroke="none" />
-                    <circle cx="19" cy="11.4" r="1" fill="currentColor" stroke="none" />
-                    <path d="M5.5 15v5M26.5 15v5" />
-                  </svg>
+                 stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M9 14a7 7 0 0 1 14 0" />
+              <path d="M9 14h14v8a2 2 0 0 1-2 2H11a2 2 0 0 1-2-2v-8Z" />
+              <path d="m11 6 1.6 2.4M21 6l-1.6 2.4" />
+              <circle cx="13" cy="11.4" r="1" fill="currentColor" stroke="none" />
+              <circle cx="19" cy="11.4" r="1" fill="currentColor" stroke="none" />
+              <path d="M5.5 15v5M26.5 15v5" />
+            </svg>
           </span>
           <span class="plat-id">
             <span class="name">Android</span>
@@ -992,7 +1183,7 @@ Unblock-File .\InternetMonitoring-2.8.0-beta.3-win-x64.exe</pre>
 
 <div class="wrap">
   <section id="granice">
-    <div class="col stack" style="margin-bottom: 28px;">
+    <div class="section-head">
       <p class="eyebrow">Granice ovog alata</p>
       <h2>Šta ovaj program ne dokazuje.</h2>
       <p class="lede">
@@ -1002,7 +1193,7 @@ Unblock-File .\InternetMonitoring-2.8.0-beta.3-win-x64.exe</pre>
       </p>
     </div>
 
-    <div class="col stack" style="gap: 26px;">
+    <div class="grid two" style="gap: 30px 52px;">
       <div class="notice">
         <h3>Ovo nije zvanično merenje brzine</h3>
         <p>
@@ -1054,6 +1245,7 @@ Unblock-File .\InternetMonitoring-2.8.0-beta.3-win-x64.exe</pre>
         <a href="https://github.com/zoxknez/InternetMonitoring/blob/main/docs/INVARIJANTE.md">Pravila koja program ne sme da prekrši</a>
         <a href="https://discord.gg/ZZbtCs942">Discord</a>
         <a href="mailto:zoxknez@hotmail.com">Mejl</a>
+        <a href="https://ko-fi.com/F7I0249KP5" target="_blank" rel="noopener">Časti kafom</a>
       </div>
       <p class="mono" style="font-size: .8rem; color: var(--faint);">
         Internet Monitoring 2.8.0-beta.3 · beta izdanje, otvoreno za testiranje
@@ -1061,6 +1253,73 @@ Unblock-File .\InternetMonitoring-2.8.0-beta.3-win-x64.exe</pre>
     </div>
   </footer>
 </div>
+
+<script>
+  // Versions, five to a page. Without script every entry stays visible, which is the
+  // honest fallback: the list is the content and the paging only a convenience.
+  (function () {
+    var perPage = 5;
+    var list = document.getElementById('spisak-verzija');
+    var pager = document.getElementById('strane-verzija');
+    if (!list || !pager) { return; }
+
+    var items = Array.prototype.slice.call(list.querySelectorAll('.ver'));
+    if (items.length <= perPage) { return; }
+
+    var pages = Math.ceil(items.length / perPage);
+    var current = 1;
+
+    var prev = button('‹ Novije', function () { show(current - 1); });
+    var next = button('Starije ›', function () { show(current + 1); });
+    var numbers = [];
+
+    pager.appendChild(prev);
+    for (var i = 1; i <= pages; i++) {
+      numbers.push(addNumber(i));
+    }
+    pager.appendChild(next);
+
+    var count = document.createElement('span');
+    count.className = 'count';
+    pager.appendChild(count);
+    pager.hidden = false;
+
+    show(1);
+
+    function addNumber(page) {
+      var b = button(String(page), function () { show(page); });
+      pager.appendChild(b);
+      return b;
+    }
+
+    function button(label, onClick) {
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.textContent = label;
+      b.addEventListener('click', onClick);
+      return b;
+    }
+
+    function show(page) {
+      current = Math.min(Math.max(page, 1), pages);
+
+      items.forEach(function (item, index) {
+        item.hidden = Math.floor(index / perPage) + 1 !== current;
+      });
+
+      numbers.forEach(function (b, index) {
+        b.setAttribute('aria-current', index + 1 === current ? 'true' : 'false');
+      });
+
+      prev.disabled = current === 1;
+      next.disabled = current === pages;
+
+      var first = (current - 1) * perPage + 1;
+      var last = Math.min(current * perPage, items.length);
+      count.textContent = first + '-' + last + ' od ' + items.length;
+    }
+  })();
+</script>
 
 </body>
 </html>
