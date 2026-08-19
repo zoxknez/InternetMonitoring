@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # ==============================================================================
-# 3.1-6F-S1-R1 · Physical Suspend/Resume Acceptance Runner
+# 3.1-6F-S1-R2 · Physical Suspend/Resume Acceptance Runner
 # Strict, audit-grade verification on a real bare-metal / suspend-capable Linux host:
 #
 # Proves:
@@ -13,7 +13,7 @@ set -euo pipefail
 # 5. boot_id pre == boot_id post (identical UUID)
 # 6. Core TimeContinuityEvaluator.EvaluateBoot -> BootContinuityState.Continued
 # 7. Core TimeContinuityEvaluator.EvaluateTransition -> ClockContinuityState.SuspendIntervalObserved
-# 8. SuspendDuration strictly > tolerance without clock discontinuity or reboot false positives
+# 8. Zero capability model preserved (CapEff=0000000000000000, CapAmb=0000000000000000)
 # ==============================================================================
 
 ACCEPTANCE_DIR="artifacts/acceptance/3.1-6"
@@ -22,12 +22,22 @@ REPORT_JSON="${ACCEPTANCE_DIR}/suspend-resume-physical.json"
 REPORT_MD="${ACCEPTANCE_DIR}/suspend-resume-physical.md"
 
 echo "=============================================================================="
-echo "3.1-6F-S1-R1 · PHYSICAL SUSPEND/RESUME ACCEPTANCE RUNNER"
+echo "3.1-6F-S1-R2 · PHYSICAL SUSPEND/RESUME ACCEPTANCE RUNNER"
 echo "=============================================================================="
 
 if [ "$(id -u)" -ne 0 ]; then
     echo "ERROR: Acceptance runner must be run as root to trigger host rtcwake" >&2
     exit 1
+fi
+
+COMMIT_SHA="${GITHUB_SHA:-$(git rev-parse HEAD 2>/dev/null || echo 'UNKNOWN')}"
+KERNEL_INFO=$(uname -r)
+ARCH_INFO=$(uname -m)
+DISTRO_NAME="Linux"
+DISTRO_VER="Unknown"
+if [ -f /etc/os-release ]; then
+    DISTRO_NAME=$(grep -E '^ID=' /etc/os-release | cut -d= -f2 | tr -d '"')
+    DISTRO_VER=$(grep -E '^VERSION_ID=' /etc/os-release | cut -d= -f2 | tr -d '"')
 fi
 
 INSTALL_DIR="/usr/lib/internet-evidence-monitor"
@@ -39,43 +49,47 @@ if [ ! -x "${TIME_RUNNER}" ]; then
     chmod 0755 "${TIME_RUNNER}"
 fi
 
-# Ensure user iem exists
-getent passwd iem >/dev/null 2>&1 || useradd -r -s /usr/sbin/nologin iem
+# Canonical service accounts matching Lane C
+getent group iem-users >/dev/null 2>&1 || groupadd -r iem-users
+getent group iem >/dev/null 2>&1 || groupadd -r iem
+getent passwd iem >/dev/null 2>&1 || useradd -r -g iem -G iem-users -d /var/lib/internet-evidence-monitor -s /usr/sbin/nologin iem
 
-# 1. Launch unprivileged observer in background
-OBS_PIPE="/tmp/iem_suspend_pipe"
-rm -f "${OBS_PIPE}"
-mkfifo "${OBS_PIPE}"
-
+# 1. Launch unprivileged observer in background writing to regular log file (no FIFO EPIPE risk)
 OBS_LOG="/tmp/iem_suspend_obs.log"
 rm -f "${OBS_LOG}"
+touch "${OBS_LOG}"
+chown iem:iem "${OBS_LOG}"
 
 echo "Starting IEM.TimeRunner suspend-observe as unprivileged user iem..."
-su -s /bin/bash iem -c "${TIME_RUNNER} suspend-observe" > "${OBS_PIPE}" 2>&1 &
-OBS_PID=$!
+su -s /bin/bash iem -c "${TIME_RUNNER} suspend-observe" > "${OBS_LOG}" 2>&1 &
+LAUNCHER_PID=$!
 
-# Capture process capability bounds
-CAP_EFF=$(grep -E '^CapEff:' "/proc/${OBS_PID}/status" 2>/dev/null | awk '{print $2}' || echo "0000000000000000")
-CAP_AMB=$(grep -E '^CapAmb:' "/proc/${OBS_PID}/status" 2>/dev/null | awk '{print $2}' || echo "0000000000000000")
-echo "Observer PID=${OBS_PID}, CapEff=${CAP_EFF}, CapAmb=${CAP_AMB}"
-
-# 2. Wait for READY signal from D-Bus listener
+# 2. Poll log file for READY signal
 READY_SEEN=false
-while IFS= read -r line; do
-    echo "[observer output] ${line}"
-    echo "${line}" >> "${OBS_LOG}"
-    if [ "${line}" = "IEM_SUSPEND_LISTENER_READY=true" ]; then
+READY_JSON=""
+for _ in $(seq 1 100); do
+    if grep -q '^IEM_SUSPEND_LISTENER_READY=true$' "${OBS_LOG}"; then
         READY_SEEN=true
+        READY_JSON=$(grep '^IEM_SUSPEND_READY_JSON=' "${OBS_LOG}" | head -n1 | cut -d= -f2- || echo "")
         break
     fi
-done < "${OBS_PIPE}"
+    sleep 0.1
+done
 
 if [ "${READY_SEEN}" != "true" ]; then
-    echo "ERROR: Failed to receive READY signal from observer" >&2
-    kill "${OBS_PID}" 2>/dev/null || true
-    rm -f "${OBS_PIPE}" "${OBS_LOG}"
+    echo "ERROR: Failed to receive READY signal from observer within 10s" >&2
+    cat "${OBS_LOG}" >&2 || true
+    kill "${LAUNCHER_PID}" 2>/dev/null || true
     exit 1
 fi
+
+OBSERVER_PID=$(echo "${READY_JSON}" | grep -o '"pid":[0-9]*' | cut -d: -f2 || echo "")
+OBSERVER_UID=$(echo "${READY_JSON}" | grep -o '"uid":"[^"]*"' | cut -d'"' -f4 || echo "")
+OBSERVER_GID=$(echo "${READY_JSON}" | grep -o '"gid":"[^"]*"' | cut -d'"' -f4 || echo "")
+CAP_EFF=$(echo "${READY_JSON}" | grep -o '"capEff":"[^"]*"' | cut -d'"' -f4 || echo "0000000000000000")
+CAP_AMB=$(echo "${READY_JSON}" | grep -o '"capAmb":"[^"]*"' | cut -d'"' -f4 || echo "0000000000000000")
+
+echo "Observer PID=${OBSERVER_PID}, UID=${OBSERVER_UID}, GID=${OBSERVER_GID}, CapEff=${CAP_EFF}, CapAmb=${CAP_AMB}"
 
 echo "Observer is READY. Executing real host suspend for 3 seconds..."
 
@@ -95,12 +109,16 @@ fi
 
 if [ "${SUSPEND_TRIGGER_OK}" != "true" ]; then
     echo "ERROR: Real host suspend trigger failed (neither rtcwake mem nor freeze succeeded)" >&2
-    kill "${OBS_PID}" 2>/dev/null || true
-    rm -f "${OBS_PIPE}" "${OBS_LOG}"
+    kill "${LAUNCHER_PID}" 2>/dev/null || true
 
     cat << EOF > "${REPORT_JSON}"
 {
   "acceptanceVersion": "3.1.6-live",
+  "commitSha": "${COMMIT_SHA}",
+  "distro": "${DISTRO_NAME}",
+  "distroVersion": "${DISTRO_VER}",
+  "architecture": "${ARCH_INFO}",
+  "kernel": "${KERNEL_INFO}",
   "gate": "3.1-6F-S1 · Physical Suspend/Resume Acceptance",
   "timestampUtc": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
   "verdict": "NOT_TESTED",
@@ -112,26 +130,27 @@ fi
 
 echo "Host resumed from suspend via ${SUSPEND_METHOD}!"
 
-# 4. Drain remaining output and wait for IEM_SUSPEND_ACCEPTANCE_JSON
+# 4. Poll log file for final acceptance JSON
+ACCEPTANCE_SEEN=false
 ACCEPTANCE_JSON=""
-while IFS= read -r line; do
-    echo "[observer output] ${line}"
-    echo "${line}" >> "${OBS_LOG}"
-    if echo "${line}" | grep -q "^IEM_SUSPEND_ACCEPTANCE_JSON="; then
-        ACCEPTANCE_JSON=$(echo "${line}" | cut -d= -f2-)
+for _ in $(seq 1 450); do
+    if grep -q '^IEM_SUSPEND_ACCEPTANCE_JSON=' "${OBS_LOG}"; then
+        ACCEPTANCE_SEEN=true
+        ACCEPTANCE_JSON=$(grep '^IEM_SUSPEND_ACCEPTANCE_JSON=' "${OBS_LOG}" | head -n1 | cut -d= -f2-)
         break
     fi
-done < "${OBS_PIPE}"
+    sleep 0.1
+done
 
-wait "${OBS_PID}" || true
-rm -f "${OBS_PIPE}"
+wait "${LAUNCHER_PID}" 2>/dev/null || true
 
-echo "Received Acceptance JSON: ${ACCEPTANCE_JSON}"
-
-if [ -z "${ACCEPTANCE_JSON}" ]; then
-    echo "ERROR: No acceptance JSON emitted by IEM.TimeRunner" >&2
+if [ "${ACCEPTANCE_SEEN}" != "true" ] || [ -z "${ACCEPTANCE_JSON}" ]; then
+    echo "ERROR: No acceptance JSON emitted by IEM.TimeRunner within 45s" >&2
+    cat "${OBS_LOG}" >&2 || true
     exit 1
 fi
+
+echo "Received Acceptance JSON: ${ACCEPTANCE_JSON}"
 
 # 5. Parse and Validate Core Semantic Truths
 SUCCESS_FLAG=$(echo "${ACCEPTANCE_JSON}" | grep -o '"success":true' || echo "")
@@ -175,6 +194,11 @@ fi
 cat << EOF > "${REPORT_JSON}"
 {
   "acceptanceVersion": "3.1.6-live",
+  "commitSha": "${COMMIT_SHA}",
+  "distro": "${DISTRO_NAME}",
+  "distroVersion": "${DISTRO_VER}",
+  "architecture": "${ARCH_INFO}",
+  "kernel": "${KERNEL_INFO}",
   "gate": "3.1-6F-S1 · Physical Suspend/Resume Acceptance",
   "timestampUtc": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
   "verdict": "${VERDICT}",
@@ -182,6 +206,9 @@ cat << EOF > "${REPORT_JSON}"
   "suspendMethod": "${SUSPEND_METHOD}",
   "processEvidence": {
     "user": "iem",
+    "observerPid": "${OBSERVER_PID}",
+    "uid": "${OBSERVER_UID}",
+    "gid": "${OBSERVER_GID}",
     "capEff": "${CAP_EFF}",
     "capAmb": "${CAP_AMB}"
   },
@@ -193,12 +220,15 @@ cat << EOF > "${REPORT_MD}"
 # 3.1-6F-S1 · Physical Suspend/Resume Acceptance Report
 
 - **Timestamp**: $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+- **Commit**: \`${COMMIT_SHA}\`
+- **Distro**: ${DISTRO_NAME} ${DISTRO_VER} (${ARCH_INFO})
+- **Kernel**: ${KERNEL_INFO}
 - **Verdict**: **${VERDICT}**
 - **Method**: \`${SUSPEND_METHOD}\`
 - **Fail Reasons**: ${FAIL_REASONS:-"None"}
 
 ## Process & Boundary Facts
-- **User**: \`iem\` (unprivileged service identity)
+- **User**: \`iem\` (PID ${OBSERVER_PID}, UID ${OBSERVER_UID}, GID ${OBSERVER_GID})
 - **Capabilities**: \`CapEff=${CAP_EFF}\`, \`CapAmb=${CAP_AMB}\` (Zero capability verified)
 - **PrepareForSleep(true) captured**: $([ -n "${SLEEP_TRUE}" ] && echo "YES" || echo "NO")
 - **PrepareForSleep(false) captured**: $([ -n "${SLEEP_FALSE}" ] && echo "YES" || echo "NO")

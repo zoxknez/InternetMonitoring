@@ -121,11 +121,9 @@ public sealed class TimestampTests : IDisposable
         Assert.NotNull(request.GetNonce());
 
         var actualNonce = request.GetNonce()!.Value.Span;
-        if (actualNonce.Length > nonce.Length && actualNonce[0] == 0)
-        {
-            actualNonce = actualNonce[1..];
-        }
-        Assert.True(actualNonce.SequenceEqual(nonce));
+        var actualInt = new System.Numerics.BigInteger(actualNonce, isUnsigned: true, isBigEndian: true);
+        var expectedInt = new System.Numerics.BigInteger(nonce, isUnsigned: true, isBigEndian: true);
+        Assert.Equal(expectedInt, actualInt);
 
 
 

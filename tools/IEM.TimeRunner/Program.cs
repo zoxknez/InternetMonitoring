@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -138,7 +139,18 @@ public static class Program
                     onReady: () =>
                     {
                         readyTcs.TrySetResult(true);
+                        var status = ReadProcStatus();
+                        var readyInfo = new
+                        {
+                            pid = Environment.ProcessId,
+                            uid = status.Uid,
+                            gid = status.Gid,
+                            groups = status.Groups,
+                            capEff = status.CapEff,
+                            capAmb = status.CapAmb
+                        };
                         Console.WriteLine("IEM_SUSPEND_LISTENER_READY=true");
+                        Console.WriteLine("IEM_SUSPEND_READY_JSON=" + JsonSerializer.Serialize(readyInfo));
                         Console.Out.Flush();
                     },
                     cancellationToken: cts.Token);
@@ -172,9 +184,19 @@ public static class Program
                                sleepTrueReceived &&
                                sleepFalseReceived;
 
+                var finalStatus = ReadProcStatus();
                 var output = new
                 {
                     success,
+                    processEvidence = new
+                    {
+                        pid = Environment.ProcessId,
+                        uid = finalStatus.Uid,
+                        gid = finalStatus.Gid,
+                        groups = finalStatus.Groups,
+                        capEff = finalStatus.CapEff,
+                        capAmb = finalStatus.CapAmb
+                    },
                     sleepTrueReceived,
                     sleepTrueUtc,
                     sleepFalseReceived,
@@ -208,5 +230,31 @@ public static class Program
             Console.Error.WriteLine("FATAL: " + ex);
             return 1;
         }
+    }
+
+    private static (string Uid, string Gid, string Groups, string CapEff, string CapAmb) ReadProcStatus()
+    {
+        string uid = "", gid = "", groups = "", capEff = "0000000000000000", capAmb = "0000000000000000";
+        try
+        {
+            if (File.Exists("/proc/self/status"))
+            {
+                foreach (var line in File.ReadAllLines("/proc/self/status"))
+                {
+                    if (line.StartsWith("Uid:", StringComparison.OrdinalIgnoreCase))
+                        uid = line.Substring(4).Trim();
+                    else if (line.StartsWith("Gid:", StringComparison.OrdinalIgnoreCase))
+                        gid = line.Substring(4).Trim();
+                    else if (line.StartsWith("Groups:", StringComparison.OrdinalIgnoreCase))
+                        groups = line.Substring(7).Trim();
+                    else if (line.StartsWith("CapEff:", StringComparison.OrdinalIgnoreCase))
+                        capEff = line.Substring(7).Trim();
+                    else if (line.StartsWith("CapAmb:", StringComparison.OrdinalIgnoreCase))
+                        capAmb = line.Substring(7).Trim();
+                }
+            }
+        }
+        catch { }
+        return (uid, gid, groups, capEff, capAmb);
     }
 }
