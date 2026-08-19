@@ -9,7 +9,7 @@ public static class ServiceContract
 {
     public const string ServiceName = "InternetEvidenceMonitor";
 
-    public const string DisplayName = "Internet Monitoring";
+    public const string DisplayName = "Monitor internet dokaza";
 
     public const string Description =
         "Beleži prekide i kvalitet internet veze i priprema dokumentaciju za prigovor operateru. " +

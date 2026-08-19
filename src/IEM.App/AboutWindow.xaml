@@ -59,7 +59,7 @@
 
                 <StackPanel VerticalAlignment="Center">
                     <TextBlock x:Name="TitleText" Style="{StaticResource Display}" FontSize="18"
-                               Text="Internet Monitoring" />
+                               Text="Monitor internet dokaza" />
                     <TextBlock x:Name="VersionText" FontSize="11.5" Foreground="#9DAAC2"
                                Margin="0,2,0,0" Text="verzija" />
                 </StackPanel>

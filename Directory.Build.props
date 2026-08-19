@@ -7,8 +7,8 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
     <InvariantGlobalization>false</InvariantGlobalization>
-    <Product>Internet Monitoring</Product>
-    <Company>Internet Monitoring</Company>
+    <Product>Monitor internet dokaza</Product>
+    <Company>Monitor internet dokaza</Company>
     <Version>3.0.0-rc.1</Version>
     <NeutralLanguage>sr-Latn-RS</NeutralLanguage>
     <EnableWindowsTargeting>true</EnableWindowsTargeting>

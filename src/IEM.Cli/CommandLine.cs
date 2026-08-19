@@ -576,7 +576,7 @@ public static class CommandLine
     {
         Console.WriteLine(
             $"""
-            Internet Monitoring {ThisVersion}  -  nadzor kvaliteta internet veze
+            Monitor internet dokaza {ThisVersion}  -  nadzor kvaliteta internet veze
 
             Upotreba:
               iem [opcije]

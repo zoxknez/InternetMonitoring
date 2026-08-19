@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:controls="clr-namespace:IEM.App.Controls"
         xmlns:tb="clr-namespace:H.NotifyIcon;assembly=H.NotifyIcon.Wpf"
-        Title="Internet Monitoring"
+        Title="Monitor internet dokaza"
         Width="1280" Height="900" MinWidth="1280" MinHeight="900"
         SizeChanged="OnWindowSizeChanged"
         Background="{StaticResource Page}"
@@ -69,7 +69,7 @@
         </Grid.RowDefinitions>
 
         <tb:TaskbarIcon x:Name="Tray"
-                        ToolTipText="Internet Monitoring"
+                        ToolTipText="Monitor internet dokaza"
                         TrayLeftMouseUp="OnTrayClicked">
             <tb:TaskbarIcon.ContextMenu>
                 <ContextMenu>
@@ -136,7 +136,7 @@
                         </Border>
 
                         <TextBlock Style="{StaticResource Display}" FontSize="17"
-                                   VerticalAlignment="Center" Text="Internet Monitoring" />
+                                   VerticalAlignment="Center" Text="Monitor internet dokaza" />
 
                         <Border Visibility="{Binding IsUpdateBannerVisible, Converter={StaticResource BoolToVisible}}"
                                 Background="#1E3A8A" BorderBrush="#3B82F6" BorderThickness="1"

@@ -121,4 +121,22 @@ public sealed class UpdateNotificationUiTests
             if (Directory.Exists(tempDir)) Directory.Delete(tempDir, true);
         }
     }
+
+    [Fact]
+    public async Task UpdateCheckService_can_fetch_live_github_manifest()
+    {
+        var tempFile = Path.Combine(Path.GetTempPath(), $"iem-test-pref-{Guid.NewGuid():N}.json");
+        try
+        {
+            var service = new UpdateCheckService(tempFile, "3.0.0");
+            var result = await service.CheckForUpdatesAsync(force: true);
+            Assert.NotEqual(UpdateAvailability.Unknown, result.Availability);
+            Assert.NotNull(result.Manifest);
+            Assert.NotEmpty(result.Manifest.Version);
+        }
+        finally
+        {
+            if (File.Exists(tempFile)) File.Delete(tempFile);
+        }
+    }
 }

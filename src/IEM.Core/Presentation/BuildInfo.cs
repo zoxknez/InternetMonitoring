@@ -13,7 +13,7 @@ namespace IEM.Core.Presentation;
 /// </summary>
 public static class BuildInfo
 {
-    public static string Product => "Internet Monitoring";
+    public static string Product => "Monitor internet dokaza";
 
     /// <summary>
     /// The build's own version, prerelease suffix and all.

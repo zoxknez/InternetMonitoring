@@ -217,7 +217,7 @@ static int PrintUsage()
 {
     Console.WriteLine(
         $"""
-        Internet Monitoring - servis
+        Monitor internet dokaza - servis
 
         Bez argumenata pokreće nadzor. Kao Windows servis radi u pozadini, bez
         otvorenog prozora, i nastavlja prekinutu sesiju nakon restarta.

@@ -35,8 +35,8 @@ public partial class App : Application
             // A second window would poll the same service and start a competing in-process
             // session in the same folder. One at a time.
             MessageBox.Show(
-                "Internet Monitoring je već pokrenut.",
-                "Internet Monitoring",
+                "Monitor internet dokaza je već pokrenut.",
+                "Monitor internet dokaza",
                 MessageBoxButton.OK,
                 MessageBoxImage.Information);
 
@@ -157,7 +157,7 @@ public partial class App : Application
                     "Došlo je do neočekivane greške i aplikacija se zatvara.\n\n" +
                     "Ako je nadzor radio kao Windows servis, on nastavlja da radi i podaci nisu izgubljeni.\n\n" +
                     $"Detalji su upisani u:\n{log}",
-                    "Internet Monitoring",
+                    "Monitor internet dokaza",
                     MessageBoxButton.OK,
                     MessageBoxImage.Error);
             }

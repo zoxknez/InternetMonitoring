@@ -115,8 +115,8 @@ public partial class MainWindow : Window
         Tray.Icon = TrayIconFactory.Create(verdict.Kind, _shell.IsRunning);
         previousIcon?.Dispose();
         Tray.ToolTipText = _shell.IsRunning
-            ? $"Internet Monitoring - {_shell.StateLabel}, {_shell.ElapsedText}"
-            : "Internet Monitoring - nadzor nije pokrenut";
+            ? $"Monitor internet dokaza - {_shell.StateLabel}, {_shell.ElapsedText}"
+            : "Monitor internet dokaza - nadzor nije pokrenut";
     }
 
     private static Brush SoftFor(VerdictKind kind) => kind switch
@@ -189,7 +189,7 @@ public partial class MainWindow : Window
                 "sa onim što je do sada prikupljeno.\n\n" +
                 "Za test koji preživljava zatvaranje prozora i restart računara, instalirajte servis.\n\n" +
                 "Zaustaviti nadzor i izaći?",
-                "Internet Monitoring",
+                "Monitor internet dokaza",
                 MessageBoxButton.YesNo,
                 MessageBoxImage.Warning,
                 MessageBoxResult.No);
