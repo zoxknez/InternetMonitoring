@@ -429,7 +429,8 @@
           "IEM.Linux": "[3.0.0, )",
           "IEM.Service.Runtime": "[3.0.0, )",
           "IEM.Storage": "[3.0.0, )",
-          "Microsoft.Extensions.Hosting.Systemd": "[10.0.11, )"
+          "Microsoft.Extensions.Hosting.Systemd": "[10.0.11, )",
+          "Tmds.DBus.Protocol": "[0.94.2, )"
         }
       },
       "iem.service.runtime": {
@@ -524,6 +525,12 @@
         "requested": "[10.0.0, )",
         "resolved": "10.0.0",
         "contentHash": "UPWqLSygJlFerRi9XNIuM0a1VC8gHUIufyP24xQ0sc+XimqUAEcjpOz9DhKpyDjH+5B/wO3RpC0KpkEeDj/ddg=="
+      },
+      "Tmds.DBus.Protocol": {
+        "type": "CentralTransitive",
+        "requested": "[0.94.2, )",
+        "resolved": "0.94.2",
+        "contentHash": "AePc2k7vqIXCR/a6hsG4afO22LuSaGLR3tLUBPWkZAH2mhLu/PL3/dYABEniWV7QHzV444No8IiTRV4+oCq37g=="
       }
     },
     "net10.0/win-arm64": {

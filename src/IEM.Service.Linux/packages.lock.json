@@ -11,6 +11,12 @@
           "Microsoft.Extensions.Hosting": "10.0.11"
         }
       },
+      "Tmds.DBus.Protocol": {
+        "type": "Direct",
+        "requested": "[0.94.2, )",
+        "resolved": "0.94.2",
+        "contentHash": "AePc2k7vqIXCR/a6hsG4afO22LuSaGLR3tLUBPWkZAH2mhLu/PL3/dYABEniWV7QHzV444No8IiTRV4+oCq37g=="
+      },
       "Microsoft.Data.Sqlite.Core": {
         "type": "Transitive",
         "resolved": "10.0.11",

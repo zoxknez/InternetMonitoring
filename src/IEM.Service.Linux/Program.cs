@@ -26,7 +26,9 @@ builder.Services.AddHostedService<LinuxSystemdNotifier>();
 
 // Platform adapter registration (Linux Composition Root)
 builder.Services.AddSingleton<IPlatformProbeFactory>(IEM.Linux.Network.LinuxProbeFactory.Instance);
-builder.Services.AddSingleton<IPowerEventSource>(LinuxPowerEventSourceStub.Instance);
+builder.Services.AddSingleton<LinuxLogindPowerSource>();
+builder.Services.AddSingleton<IPowerEventSource>(sp => sp.GetRequiredService<LinuxLogindPowerSource>());
+builder.Services.AddHostedService(sp => sp.GetRequiredService<LinuxLogindPowerSource>());
 builder.Services.AddSingleton<IPlatformStorageLayout>(LinuxSystemStorageLayout.Instance);
 
 // Runtime engine workers reuse from IEM.Service.Runtime

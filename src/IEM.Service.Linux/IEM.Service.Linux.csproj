@@ -11,6 +11,7 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.Hosting.Systemd" />
+    <PackageReference Include="Tmds.DBus.Protocol" />
   </ItemGroup>
 
   <ItemGroup>
@@ -19,6 +20,10 @@
     <ProjectReference Include="..\IEM.Storage\IEM.Storage.csproj" />
     <ProjectReference Include="..\IEM.Evidence\IEM.Evidence.csproj" />
     <ProjectReference Include="..\IEM.Service.Runtime\IEM.Service.Runtime.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="IEM.Core.Tests" />
   </ItemGroup>
 
 </Project>
