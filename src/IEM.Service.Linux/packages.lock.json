@@ -307,7 +307,7 @@
       "iem.evidence": {
         "type": "Project",
         "dependencies": {
-          "IEM.Storage": "[2.8.0-beta.4, )",
+          "IEM.Storage": "[3.0.0, )",
           "PDFsharp": "[6.2.4, )",
           "System.Security.Cryptography.Pkcs": "[10.0.0, )"
         }
@@ -315,9 +315,9 @@
       "iem.service.runtime": {
         "type": "Project",
         "dependencies": {
-          "IEM.Core": "[2.8.0-beta.4, )",
-          "IEM.Evidence": "[2.8.0-beta.4, )",
-          "IEM.Storage": "[2.8.0-beta.4, )",
+          "IEM.Core": "[3.0.0, )",
+          "IEM.Evidence": "[3.0.0, )",
+          "IEM.Storage": "[3.0.0, )",
           "Microsoft.Extensions.Hosting.Abstractions": "[10.0.11, )",
           "Microsoft.Extensions.Logging.Abstractions": "[10.0.11, )",
           "Microsoft.Extensions.Options": "[10.0.11, )"
@@ -326,7 +326,7 @@
       "iem.storage": {
         "type": "Project",
         "dependencies": {
-          "IEM.Core": "[2.8.0-beta.4, )",
+          "IEM.Core": "[3.0.0, )",
           "Microsoft.Data.Sqlite": "[10.0.11, )"
         }
       },

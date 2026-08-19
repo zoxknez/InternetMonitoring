@@ -158,35 +158,35 @@
       "iem.evidence": {
         "type": "Project",
         "dependencies": {
-          "IEM.Storage": "[2.8.0-beta.4, )",
+          "IEM.Storage": "[3.0.0, )",
           "PDFsharp": "[6.2.4, )"
         }
       },
       "iem.legal": {
         "type": "Project",
         "dependencies": {
-          "IEM.Storage": "[2.8.0-beta.4, )"
+          "IEM.Storage": "[3.0.0, )"
         }
       },
       "iem.presentation": {
         "type": "Project",
         "dependencies": {
-          "IEM.Core": "[2.8.0-beta.4, )",
-          "IEM.Storage": "[2.8.0-beta.4, )"
+          "IEM.Core": "[3.0.0, )",
+          "IEM.Storage": "[3.0.0, )"
         }
       },
       "iem.storage": {
         "type": "Project",
         "dependencies": {
-          "IEM.Core": "[2.8.0-beta.4, )",
+          "IEM.Core": "[3.0.0, )",
           "Microsoft.Data.Sqlite": "[10.0.11, )"
         }
       },
       "iem.windows": {
         "type": "Project",
         "dependencies": {
-          "IEM.Core": "[2.8.0-beta.4, )",
-          "IEM.Evidence": "[2.8.0-beta.4, )",
+          "IEM.Core": "[3.0.0, )",
+          "IEM.Evidence": "[3.0.0, )",
           "ManagedNativeWifi": "[3.0.2, )"
         }
       },
@@ -195,12 +195,12 @@
         "dependencies": {
           "CommunityToolkit.Mvvm": "[8.4.0, )",
           "H.NotifyIcon.Wpf": "[2.3.0, )",
-          "IEM.Core": "[2.8.0-beta.4, )",
-          "IEM.Evidence": "[2.8.0-beta.4, )",
-          "IEM.Legal": "[2.8.0-beta.4, )",
-          "IEM.Presentation": "[2.8.0-beta.4, )",
-          "IEM.Storage": "[2.8.0-beta.4, )",
-          "IEM.Windows": "[2.8.0-beta.4, )"
+          "IEM.Core": "[3.0.0, )",
+          "IEM.Evidence": "[3.0.0, )",
+          "IEM.Legal": "[3.0.0, )",
+          "IEM.Presentation": "[3.0.0, )",
+          "IEM.Storage": "[3.0.0, )",
+          "IEM.Windows": "[3.0.0, )"
         }
       },
       "CommunityToolkit.Mvvm": {

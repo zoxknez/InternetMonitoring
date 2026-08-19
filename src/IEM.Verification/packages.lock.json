@@ -2,12 +2,6 @@
   "version": 2,
   "dependencies": {
     "net10.0": {
-      "Microsoft.NET.ILLink.Tasks": {
-        "type": "Direct",
-        "requested": "[10.0.1, )",
-        "resolved": "10.0.1",
-        "contentHash": "ISahzLHsHY7vrwqr2p1YWZ+gsxoBRtH7gWRDK8fDUst9pp2He0GiesaqEfeX0V8QMCJM3eNEHGGpnIcPjFo2NQ=="
-      },
       "Microsoft.Data.Sqlite.Core": {
         "type": "Transitive",
         "resolved": "10.0.11",
@@ -54,7 +48,7 @@
       "iem.evidence": {
         "type": "Project",
         "dependencies": {
-          "IEM.Storage": "[3.0.0-rc.1, )",
+          "IEM.Storage": "[3.0.0, )",
           "PDFsharp": "[6.2.4, )",
           "System.Security.Cryptography.Pkcs": "[10.0.0, )"
         }
@@ -62,7 +56,7 @@
       "iem.storage": {
         "type": "Project",
         "dependencies": {
-          "IEM.Core": "[3.0.0-rc.1, )",
+          "IEM.Core": "[3.0.0, )",
           "Microsoft.Data.Sqlite": "[10.0.11, )"
         }
       },

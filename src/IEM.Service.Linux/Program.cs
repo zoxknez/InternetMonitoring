@@ -18,6 +18,7 @@ var builder = Host.CreateApplicationBuilder(args);
 
 // systemd integration: registers SystemdLifetime, Type=notify notifications, and journal logging
 builder.Services.AddSystemd();
+builder.Services.AddHostedService<LinuxSystemdNotifier>();
 
 // Platform adapter registration (Linux Composition Root)
 builder.Services.AddSingleton<IPlatformProbeFactory>(LinuxProbeFactoryBaseline.Instance);
