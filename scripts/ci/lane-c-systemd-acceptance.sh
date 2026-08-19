@@ -220,7 +220,7 @@ cleanup_and_exit() {
     rm -rf /usr/lib/internet-evidence-monitor 2>/dev/null || true
     rm -rf /var/lib/internet-evidence-monitor 2>/dev/null || true
     rm -rf /run/internet-evidence-monitor 2>/dev/null || true
-    rm -rf /var/tmp/iem-hardening-control-dir 2>/dev/null || true
+    rm -rf /opt/iem-hardening-control-dir 2>/dev/null || true
 
     # Invariant: If FAIL_COUNT > 0, process MUST exit with non-zero (1)
     if [ "${FAIL_COUNT}" -gt 0 ]; then
@@ -512,10 +512,10 @@ echo "==========================================================================
 CURRENT_STAGE="STAGE_12_PROTECT_SYSTEM"
 
 # Set up an outside test directory that is DAC-writable for iem
-CONTROL_OUTSIDE_DIR="/var/tmp/iem-hardening-control-dir"
+CONTROL_OUTSIDE_DIR="/opt/iem-hardening-control-dir"
 mkdir -p "${CONTROL_OUTSIDE_DIR}"
 chown iem:iem "${CONTROL_OUTSIDE_DIR}"
-chmod 0777 "${CONTROL_OUTSIDE_DIR}"
+chmod 0750 "${CONTROL_OUTSIDE_DIR}"
 
 UNHARDENED_PID=$(systemctl show -p MainPID --value internet-evidence-monitor.service 2>/dev/null || echo "0")
 
