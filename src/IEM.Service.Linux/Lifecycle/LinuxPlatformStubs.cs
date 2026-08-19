@@ -5,13 +5,15 @@ using IEM.Core.Probes;
 namespace IEM.Service.Linux.Lifecycle;
 
 /// <summary>
-/// Baseline stub for power events on Linux until logind D-Bus integration is added in Phase 3.1-8.
+/// Baseline stub for power events on Linux until logind D-Bus integration is added in Phase 3.1-6B.
 /// </summary>
 public sealed class LinuxPowerEventSourceStub : IPowerEventSource
 {
     public static readonly LinuxPowerEventSourceStub Instance = new();
 
     public IDisposable OnSuspending(Action callback) => new NullSubscription();
+
+    public IDisposable OnResumed(Action callback) => new NullSubscription();
 
     public void Dispose() { }
 

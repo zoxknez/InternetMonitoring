@@ -9,4 +9,7 @@ public interface IPowerEventSource : IDisposable
 {
     /// <summary>Registers a callback invoked when the host system is suspending.</summary>
     IDisposable OnSuspending(Action callback);
+
+    /// <summary>Registers a callback invoked when the host system has resumed from suspend.</summary>
+    IDisposable OnResumed(Action callback);
 }

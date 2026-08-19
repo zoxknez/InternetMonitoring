@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <!--
@@ -27,6 +27,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\IEM.App\IEM.App.csproj" />
+    <ProjectReference Include="..\..\src\IEM.Service\IEM.Service.csproj" />
   </ItemGroup>
 
 </Project>

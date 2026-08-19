@@ -12,6 +12,7 @@ public sealed class PowerEventBroker : IPowerEventSource
 {
     private readonly Lock _gate = new();
     private readonly List<Action> _suspendCallbacks = [];
+    private readonly List<Action> _resumeCallbacks = [];
     private readonly ILogger<PowerEventBroker> _logger;
     private readonly bool _usingSystemEvents;
 
@@ -39,7 +40,7 @@ public sealed class PowerEventBroker : IPowerEventSource
         }
     }
 
-    /// <summary>Registers a callback and returns a handle that unregisters it.</summary>
+    /// <summary>Registers a callback invoked when suspending and returns a handle that unregisters it.</summary>
     public IDisposable OnSuspending(Action callback)
     {
         ArgumentNullException.ThrowIfNull(callback);
@@ -49,7 +50,32 @@ public sealed class PowerEventBroker : IPowerEventSource
             _suspendCallbacks.Add(callback);
         }
 
-        return new Subscription(this, callback);
+        return new Subscription(() =>
+        {
+            lock (_gate)
+            {
+                _suspendCallbacks.Remove(callback);
+            }
+        });
+    }
+
+    /// <summary>Registers a callback invoked when resumed and returns a handle that unregisters it.</summary>
+    public IDisposable OnResumed(Action callback)
+    {
+        ArgumentNullException.ThrowIfNull(callback);
+
+        lock (_gate)
+        {
+            _resumeCallbacks.Add(callback);
+        }
+
+        return new Subscription(() =>
+        {
+            lock (_gate)
+            {
+                _resumeCallbacks.Remove(callback);
+            }
+        });
     }
 
     /// <summary>Called by the service lifetime when Windows announces a suspend.</summary>
@@ -78,8 +104,31 @@ public sealed class PowerEventBroker : IPowerEventSource
         }
     }
 
-    public void RaiseResumed() =>
+    /// <summary>Called by the service lifetime when Windows announces a resume.</summary>
+    public void RaiseResumed()
+    {
         _logger.LogInformation("Sistem je nastavio rad nakon spavanja.");
+
+        Action[] callbacks;
+        lock (_gate)
+        {
+            callbacks = [.. _resumeCallbacks];
+        }
+
+        foreach (var callback in callbacks)
+        {
+            try
+            {
+                callback();
+            }
+#pragma warning disable CA1031 // A misbehaving subscriber must not block the resume path.
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Greška pri obradi obaveštenja o buđenju iz spavanja.");
+            }
+#pragma warning restore CA1031
+        }
+    }
 
     private void OnPowerModeChanged(object sender, PowerModeChangedEventArgs e)
     {
@@ -108,17 +157,12 @@ public sealed class PowerEventBroker : IPowerEventSource
         lock (_gate)
         {
             _suspendCallbacks.Clear();
+            _resumeCallbacks.Clear();
         }
     }
 
-    private sealed class Subscription(PowerEventBroker broker, Action callback) : IDisposable
+    private sealed class Subscription(Action unsubscribe) : IDisposable
     {
-        public void Dispose()
-        {
-            lock (broker._gate)
-            {
-                broker._suspendCallbacks.Remove(callback);
-            }
-        }
+        public void Dispose() => unsubscribe();
     }
 }
