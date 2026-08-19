@@ -2,6 +2,7 @@ using System;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using IEM.Core.Time;
 using IEM.Linux.Time;
 using IEM.Service.Linux.Lifecycle.Logind;
 
@@ -55,6 +56,7 @@ public static class Program
                 };
 
                 Console.WriteLine("IEM_TIME_PROVENANCE_JSON=" + JsonSerializer.Serialize(timeOutput));
+                Console.Out.Flush();
             }
 
             if (mode == "logind" || mode == "all")
@@ -93,6 +95,110 @@ public static class Program
                 };
 
                 Console.WriteLine("IEM_LOGIND_JSON=" + JsonSerializer.Serialize(logindOutput));
+                Console.Out.Flush();
+            }
+
+            if (mode == "suspend-observe")
+            {
+                var provider = new LinuxTimeObservationProvider();
+
+                // 1. Capture Pre-Suspend Baseline
+                var bobsPre = provider.CaptureBootObservation();
+                var samplePre = provider.CaptureClockSample(bobsPre.BootInstanceId);
+
+                var transport = new TmdsLogindSignalTransport();
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+
+                bool sleepTrueReceived = false;
+                DateTimeOffset? sleepTrueUtc = null;
+                bool sleepFalseReceived = false;
+                DateTimeOffset? sleepFalseUtc = null;
+
+                var readyTcs = new TaskCompletionSource<bool>();
+                var resumeTcs = new TaskCompletionSource<bool>();
+
+                var observeTask = transport.ObservePrepareForSleepAsync(
+                    prepare =>
+                    {
+                        if (prepare)
+                        {
+                            sleepTrueReceived = true;
+                            sleepTrueUtc = DateTimeOffset.UtcNow;
+                            Console.Error.WriteLine("[IEM.TimeRunner] Received PrepareForSleep(true)");
+                        }
+                        else
+                        {
+                            sleepFalseReceived = true;
+                            sleepFalseUtc = DateTimeOffset.UtcNow;
+                            Console.Error.WriteLine("[IEM.TimeRunner] Received PrepareForSleep(false)");
+                            resumeTcs.TrySetResult(true);
+                        }
+                        return ValueTask.CompletedTask;
+                    },
+                    onReady: () =>
+                    {
+                        readyTcs.TrySetResult(true);
+                        Console.WriteLine("IEM_SUSPEND_LISTENER_READY=true");
+                        Console.Out.Flush();
+                    },
+                    cancellationToken: cts.Token);
+
+                // Wait for D-Bus listener to be ready
+                var readyCompleted = await Task.WhenAny(readyTcs.Task, Task.Delay(5000, cts.Token));
+                if (readyCompleted != readyTcs.Task || !readyTcs.Task.Result)
+                {
+                    Console.Error.WriteLine("FATAL: Logind signal transport failed to reach ready state within 5s");
+                    return 2;
+                }
+
+                // Wait for resume signal (PrepareForSleep(false)) or timeout
+                var resumeCompleted = await Task.WhenAny(resumeTcs.Task, Task.Delay(45000, cts.Token));
+                if (resumeCompleted != resumeTcs.Task)
+                {
+                    Console.Error.WriteLine("FATAL: Timeout waiting for PrepareForSleep(false) after suspend");
+                }
+
+                // 2. Capture Post-Suspend Baseline
+                var bobsPost = provider.CaptureBootObservation();
+                var samplePost = provider.CaptureClockSample(bobsPost.BootInstanceId);
+
+                // 3. Core Continuity Evaluations
+                var policy = new TimeContinuityPolicy { SuspendDetectionTolerance = TimeSpan.FromSeconds(1) };
+                var transResult = TimeContinuityEvaluator.EvaluateTransition(samplePre, samplePost, policy);
+                var bootResult = TimeContinuityEvaluator.EvaluateBoot(bobsPre, bobsPost, policy);
+
+                bool success = bootResult.State == BootContinuityState.Continued &&
+                               transResult.State == ClockContinuityState.SuspendIntervalObserved &&
+                               sleepTrueReceived &&
+                               sleepFalseReceived;
+
+                var output = new
+                {
+                    success,
+                    sleepTrueReceived,
+                    sleepTrueUtc,
+                    sleepFalseReceived,
+                    sleepFalseUtc,
+                    bootInstanceIdPre = bobsPre.BootInstanceId,
+                    bootInstanceIdPost = bobsPost.BootInstanceId,
+                    bootContinuityState = bootResult.State.ToString(),
+                    clockContinuityState = transResult.State.ToString(),
+                    suspendDurationSeconds = transResult.SuspendDuration.TotalSeconds,
+                    monotonicElapsedSeconds = transResult.MonotonicDelta.TotalSeconds,
+                    wallClockElapsedSeconds = transResult.WallClockDelta.TotalSeconds,
+                    bootElapsedDeltaSeconds = transResult.BootElapsedDelta.TotalSeconds,
+                    activeElapsedDeltaSeconds = transResult.ActiveElapsedDelta.TotalSeconds,
+                    capturedUtcPre = samplePre.CapturedUtc,
+                    capturedUtcPost = samplePost.CapturedUtc
+                };
+
+                Console.WriteLine("IEM_SUSPEND_ACCEPTANCE_JSON=" + JsonSerializer.Serialize(output));
+                Console.Out.Flush();
+
+                cts.Cancel();
+                await transport.DisposeAsync();
+
+                return success ? 0 : 1;
             }
 
             return 0;
