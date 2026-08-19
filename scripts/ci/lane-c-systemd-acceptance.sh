@@ -528,7 +528,7 @@ try:
         raw_resp += chunk
     resp = json.loads(raw_resp.decode('utf-8'))
     print(json.dumps(resp))
-    sys.exit(0 if resp.get("status") == "Success" else (1 if resp.get("errorCode") == "ACCESS_DENIED" else 3))
+    sys.exit(0 if resp.get("status") == 0 else (1 if resp.get("errorCode") == "ACCESS_DENIED" else 3))
 except PermissionError:
     sys.exit(13)
 except Exception as e:
@@ -549,18 +549,18 @@ else
     IPC_TEST_OK=false
 fi
 
-# Test 2: User A connects and queries GetServiceStatus -> Success
+# Test 2: User A connects and queries GetServiceStatus -> Success (status: 0)
 USER_A_STATUS=$(sudo -u user-a python3 /tmp/iem_ipc_client.py GetServiceStatus 2>/dev/null || echo "{}")
-if echo "${USER_A_STATUS}" | grep -q '"status":"Success"'; then
+if echo "${USER_A_STATUS}" | grep -E -q '"status": *(0|"Success")'; then
     echo "User A GetServiceStatus: PASS"
 else
     echo "ERROR: User A GetServiceStatus failed: ${USER_A_STATUS}"
     IPC_TEST_OK=false
 fi
 
-# Test 3: User A starts session "lane-c-ses-1" -> Success, owner is user-a
+# Test 3: User A starts session "lane-c-ses-1" -> Success (status: 0), owner is user-a (unix:1002)
 USER_A_START=$(sudo -u user-a python3 /tmp/iem_ipc_client.py StartSession "lane-c-ses-1" 2>/dev/null || echo "{}")
-if echo "${USER_A_START}" | grep -q '"status":"Success"'; then
+if echo "${USER_A_START}" | grep -E -q '"status": *(0|"Success")'; then
     echo "User A StartSession: PASS"
 else
     echo "ERROR: User A StartSession failed: ${USER_A_START}"
@@ -570,26 +570,26 @@ fi
 # Test 4: User B attempts to Stop User A's session with spoofed payload -> Denied (403 / ACCESS_DENIED)
 USER_B_SPOOF_STOP=0
 USER_B_RES=$(sudo -u user-b python3 /tmp/iem_ipc_client.py StopSession "lane-c-ses-1" '{"uid":0,"role":"role:admin"}' 2>/dev/null || USER_B_SPOOF_STOP=$?)
-if echo "${USER_B_RES}" | grep -q '"errorCode":"ACCESS_DENIED"'; then
+if [ "${USER_B_SPOOF_STOP}" -eq 1 ] && echo "${USER_B_RES}" | grep -q '"errorCode": *"ACCESS_DENIED"'; then
     echo "User B spoof stop denial: PASS"
 else
-    echo "ERROR: User B spoof stop should have been ACCESS_DENIED, got: ${USER_B_RES}"
+    echo "ERROR: User B spoof stop should have been ACCESS_DENIED, got: (code=${USER_B_SPOOF_STOP}) ${USER_B_RES}"
     IPC_TEST_OK=false
 fi
 
-# Test 5: User A stops own session -> Success
+# Test 5: User A stops own session -> Success (status: 0)
 USER_A_STOP=$(sudo -u user-a python3 /tmp/iem_ipc_client.py StopSession "lane-c-ses-1" 2>/dev/null || echo "{}")
-if echo "${USER_A_STOP}" | grep -q '"status":"Success"'; then
+if echo "${USER_A_STOP}" | grep -E -q '"status": *(0|"Success")'; then
     echo "User A StopSession: PASS"
 else
     echo "ERROR: User A StopSession failed: ${USER_A_STOP}"
     IPC_TEST_OK=false
 fi
 
-# Test 6: Admin user stops session started by User A via admin override -> Success
+# Test 6: Admin user stops session started by User A via admin override -> Success (status: 0)
 sudo -u user-a python3 /tmp/iem_ipc_client.py StartSession "lane-c-ses-2" >/dev/null 2>&1 || true
 ADMIN_STOP=$(sudo -u admin-user python3 /tmp/iem_ipc_client.py StopSession "lane-c-ses-2" 2>/dev/null || echo "{}")
-if echo "${ADMIN_STOP}" | grep -q '"status":"Success"'; then
+if echo "${ADMIN_STOP}" | grep -E -q '"status": *(0|"Success")'; then
     echo "Admin override StopSession: PASS"
 else
     echo "ERROR: Admin override StopSession failed: ${ADMIN_STOP}"
