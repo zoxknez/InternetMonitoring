@@ -39,6 +39,15 @@ public static class LinuxNetworkCapabilityPreflight
         }
     }
 
+    public static void NotifyCapabilityDenied()
+    {
+        lock (_syncLock)
+        {
+            _cachedSnapshot = null;
+            _lastEvaluatedTicks = long.MinValue;
+        }
+    }
+
     public static LinuxNetworkCapabilitySnapshot Evaluate()
     {
         var evaluatedAt = DateTimeOffset.UtcNow;

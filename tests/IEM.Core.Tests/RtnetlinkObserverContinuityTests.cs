@@ -88,6 +88,59 @@ public sealed class RtnetlinkObserverContinuityTests
     }
 
     [Fact]
+    public void EvaluateContinuity_ignores_unrelated_family_event()
+    {
+        var observer = new LinuxRtnetlinkObserver(isLive: true);
+        // Record an IPv6 event (Family = 10) during probe window [1000, 2000] at 1500
+        observer.RecordChangeEvent(NetlinkConstants.RTM_NEWROUTE, 1500, family: 10, ifindex: 2);
+
+        // IPv4 probe path (Family = 2)
+        var continuity = observer.EvaluateContinuity(
+            1000,
+            2000,
+            new ProbePath("2", "192.168.1.10", Resolved: true),
+            destination: IPAddress.Parse("1.1.1.1"));
+
+        // Unrelated IPv6 event must NOT downgrade IPv4 probe
+        Assert.Equal(PathContinuity.Held, continuity);
+    }
+
+    [Fact]
+    public void EvaluateContinuity_ignores_unrelated_interface_event()
+    {
+        var observer = new LinuxRtnetlinkObserver(isLive: true);
+        // Record an IPv4 event on interface 99 during probe window
+        observer.RecordChangeEvent(NetlinkConstants.RTM_NEWLINK, 1500, family: 2, ifindex: 99);
+
+        // Probe path on interface 2
+        var continuity = observer.EvaluateContinuity(
+            1000,
+            2000,
+            new ProbePath("2", "192.168.1.10", Resolved: true),
+            destination: IPAddress.Parse("1.1.1.1"));
+
+        // Unrelated interface event must NOT downgrade interface 2 probe
+        Assert.Equal(PathContinuity.Held, continuity);
+    }
+
+    [Fact]
+    public void EvaluateContinuity_matching_family_and_interface_event_downgrades_to_ChangedDuringExecution()
+    {
+        var observer = new LinuxRtnetlinkObserver(isLive: true);
+        // Record an IPv4 event on interface 2 during probe window
+        observer.RecordChangeEvent(NetlinkConstants.RTM_NEWROUTE, 1500, family: 2, ifindex: 2);
+
+        // Probe path on interface 2
+        var continuity = observer.EvaluateContinuity(
+            1000,
+            2000,
+            new ProbePath("2", "192.168.1.10", Resolved: true),
+            destination: IPAddress.Parse("1.1.1.1"));
+
+        Assert.Equal(PathContinuity.ChangedDuringExecution, continuity);
+    }
+
+    [Fact]
     public void EvaluateContinuity_returns_Unknown_when_observer_is_not_live()
     {
         var observer = new TestRtnetlinkObserver(isLive: false);

@@ -30,11 +30,15 @@ public sealed class LinuxRtnetlinkObserver : INetworkChangeObserver
 
     public event Action<ulong>? RouteChanged;
 
-    public LinuxRtnetlinkObserver()
+    public LinuxRtnetlinkObserver() : this(RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
     {
-        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+    }
+
+    internal LinuxRtnetlinkObserver(bool isLive)
+    {
+        if (!isLive || !RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
         {
-            _isLive = false;
+            _isLive = isLive;
             return;
         }
 
@@ -53,8 +57,8 @@ public sealed class LinuxRtnetlinkObserver : INetworkChangeObserver
             var okV6Route = SubscribeGroup(NetlinkConstants.RTNLGRP_IPV6_ROUTE);
 
             // Invariant 248: NETLINK_SUBSCRIPTION_FAILURE_NEVER_SYNTHESIZES_PATH_HELD.
-            // Observer is ONLY Live if critical route/link/address memberships actually succeeded.
-            if (okLink && okV4Route && okV4Addr)
+            // Observer is ONLY Live if ALL 5 critical route/link/address memberships actually succeeded.
+            if (okLink && okV4Route && okV4Addr && okV6Route && okV6Addr)
             {
                 _isLive = true;
                 _listenTask = Task.Run(() => ListenLoopAsync(_cts.Token), CancellationToken.None);
@@ -186,17 +190,43 @@ public sealed class LinuxRtnetlinkObserver : INetworkChangeObserver
             return PathContinuity.Unknown;
         }
 
-        // Scan ring buffer for events during [startedTicks, completedTicks]
+        byte targetFamily = 0;
+        if (destination is not null)
+        {
+            targetFamily = destination.AddressFamily == AddressFamily.InterNetwork ? (byte)2 :
+                           destination.AddressFamily == AddressFamily.InterNetworkV6 ? (byte)10 : (byte)0;
+        }
+        else if (path.SourceAddress is not null && IPAddress.TryParse(path.SourceAddress, out var srcIp))
+        {
+            targetFamily = srcIp.AddressFamily == AddressFamily.InterNetwork ? (byte)2 :
+                           srcIp.AddressFamily == AddressFamily.InterNetworkV6 ? (byte)10 : (byte)0;
+        }
+
+        int.TryParse(path.InterfaceId, out var targetIfIndex);
+
+        // Scan ring buffer for matching events during [startedTicks, completedTicks]
         foreach (var evt in _eventLog)
         {
             if (evt.TimestampTicks >= startedTicks && evt.TimestampTicks <= completedTicks)
             {
-                // A route/link/addr change event occurred during this probe's execution window
+                // Family filtering: if event specifies a family, it must match the path/destination family
+                if (targetFamily != 0 && evt.Family != 0 && evt.Family != targetFamily)
+                {
+                    continue; // Unrelated address family event (e.g. IPv6 event during IPv4 probe)
+                }
+
+                // Interface filtering: if event specifies an ifindex, and path has a specific ifindex, they must match
+                if (targetIfIndex != 0 && evt.IfIndex != 0 && evt.IfIndex != targetIfIndex)
+                {
+                    continue; // Unrelated interface event
+                }
+
+                // A relevant route/link/addr change event occurred during this probe's execution window
                 return PathContinuity.ChangedDuringExecution;
             }
         }
 
-        // No change events occurred during execution window on a live observer
+        // No matching change events occurred during execution window on a live observer
         return PathContinuity.Held;
     }
 

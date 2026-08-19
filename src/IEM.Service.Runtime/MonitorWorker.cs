@@ -129,7 +129,7 @@ public sealed class MonitorWorker(
 
         MeasurementMarker.Clear(outputRoot);
 
-        var observer = probeFactory.CreateObserver();
+        await using var observer = probeFactory.CreateObserver();
         var routes = probeFactory.CreateRouteResolver(observer);
         var boundIcmp = probeFactory.CreateBoundIcmp();
 

@@ -91,7 +91,7 @@ public sealed class InProcessMonitorHost : IMonitorHost
 
             MeasurementMarker.Clear(_outputRoot);
 
-            var observer = _probeFactory.CreateObserver();
+            await using var observer = _probeFactory.CreateObserver();
             var routes = _probeFactory.CreateRouteResolver(observer);
             var boundIcmp = _probeFactory.CreateBoundIcmp();
 
