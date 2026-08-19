@@ -19,10 +19,14 @@
 *.cmd       text eol=crlf
 *.bat       text eol=crlf
 
-# Binary, so git neither diffs nor mangles them.
+# Binary and forensic payloads, so git neither diffs nor mangles them.
 *.png       binary
 *.pdf       binary
 *.zip       binary
 *.ttf       binary
 *.ico       binary
 *.db        binary
+*.sig       binary
+*.tsq       binary
+*.tsr       binary
+tests/**/Fixtures/** -text
