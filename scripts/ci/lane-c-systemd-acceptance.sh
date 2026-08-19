@@ -258,7 +258,7 @@ CURRENT_STAGE="STAGE_2_BUILD"
 INSTALL_DIR="/usr/lib/internet-evidence-monitor"
 mkdir -p "${INSTALL_DIR}"
 
-if dotnet publish src/IEM.Service.Linux/IEM.Service.Linux.csproj -c Release -r linux-x64 --self-contained false -o "${INSTALL_DIR}"; then
+if dotnet publish src/IEM.Service.Linux/IEM.Service.Linux.csproj -c Release -r linux-x64 --self-contained true -p:PublishSingleFile=true -o "${INSTALL_DIR}"; then
     chmod 0755 "${INSTALL_DIR}/IEM.Service.Linux"
     STATUS_BUILD="PASS"
     record_pass "Published binary to ${INSTALL_DIR}/IEM.Service.Linux"
