@@ -240,18 +240,34 @@ public sealed class ArchitectureBoundaryTests
 
     private static string FindRepoRoot([CallerFilePath] string callerPath = "")
     {
-        var current = Path.GetDirectoryName(callerPath);
-        while (current != null)
+        var candidates = new[]
         {
-            if (File.Exists(Path.Combine(current, "InternetEvidenceMonitor.slnx")) ||
-                Directory.Exists(Path.Combine(current, ".git")))
-            {
-                return current;
-            }
+            Directory.GetCurrentDirectory(),
+            AppContext.BaseDirectory,
+            callerPath
+        };
 
-            current = Directory.GetParent(current)?.FullName;
+        foreach (var candidate in candidates)
+        {
+            if (string.IsNullOrWhiteSpace(candidate) || candidate.StartsWith("/_")) continue;
+
+            var current = Path.IsPathRooted(candidate) && File.Exists(candidate)
+                ? Path.GetDirectoryName(candidate)
+                : candidate;
+
+            while (!string.IsNullOrEmpty(current))
+            {
+                if (File.Exists(Path.Combine(current, "InternetEvidenceMonitor.slnx")) ||
+                    Directory.Exists(Path.Combine(current, ".git")) ||
+                    (Directory.Exists(Path.Combine(current, "src")) && Directory.Exists(Path.Combine(current, "tests"))))
+                {
+                    return current;
+                }
+
+                current = Directory.GetParent(current)?.FullName;
+            }
         }
 
-        throw new InvalidOperationException("Repository root not found from caller path: " + callerPath);
+        throw new InvalidOperationException("Repository root not found from candidates: " + string.Join(", ", candidates));
     }
 }
