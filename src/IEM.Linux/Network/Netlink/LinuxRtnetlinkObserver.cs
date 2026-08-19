@@ -30,15 +30,11 @@ public sealed class LinuxRtnetlinkObserver : INetworkChangeObserver
 
     public event Action<ulong>? RouteChanged;
 
-    public LinuxRtnetlinkObserver() : this(RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+    public LinuxRtnetlinkObserver()
     {
-    }
-
-    internal LinuxRtnetlinkObserver(bool isLive)
-    {
-        if (!isLive || !RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
         {
-            _isLive = isLive;
+            _isLive = false;
             return;
         }
 
@@ -75,9 +71,10 @@ public sealed class LinuxRtnetlinkObserver : INetworkChangeObserver
             // Graceful fallback to polling/unknown continuity if unprivileged or unsupported
             _isLive = false;
             _socket?.Dispose();
-            _socket = null;
         }
     }
+
+    internal LinuxRtnetlinkObserver(bool isLive) => _isLive = isLive;
 
     private bool SubscribeGroup(int group)
     {
