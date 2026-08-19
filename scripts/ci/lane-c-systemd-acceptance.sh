@@ -293,13 +293,15 @@ CURRENT_STAGE="STAGE_2_BUILD"
 INSTALL_DIR="/usr/lib/internet-evidence-monitor"
 mkdir -p "${INSTALL_DIR}"
 
-if dotnet publish src/IEM.Service.Linux/IEM.Service.Linux.csproj -c Release -r linux-x64 --self-contained true -p:PublishSingleFile=true -o "${INSTALL_DIR}"; then
+if dotnet publish src/IEM.Service.Linux/IEM.Service.Linux.csproj -c Release -r linux-x64 --self-contained true -p:PublishSingleFile=true -o "${INSTALL_DIR}" && \
+   dotnet publish tools/IEM.TimeRunner/IEM.TimeRunner.csproj -c Release -r linux-x64 --self-contained true -p:PublishSingleFile=true -o "${INSTALL_DIR}/tools"; then
     chmod 0755 "${INSTALL_DIR}/IEM.Service.Linux"
+    chmod 0755 "${INSTALL_DIR}/tools/IEM.TimeRunner"
     STATUS_BUILD="PASS"
-    record_pass "Published binary to ${INSTALL_DIR}/IEM.Service.Linux"
+    record_pass "Published binaries to ${INSTALL_DIR}"
 else
     STATUS_BUILD="FAIL"
-    record_fail "Failed to build/publish IEM.Service.Linux"
+    record_fail "Failed to build/publish binaries"
     exit 1
 fi
 
@@ -1310,142 +1312,8 @@ echo "9.13 LINUX TIME, BOOT & ADJTIMEX PROVENANCE ACCEPTANCE (STAGE 6F-A)"
 echo "=============================================================================="
 CURRENT_STAGE="STAGE_9_13_TIME_KERNEL_PROVENANCE"
 
-RUNNER_SRC_DIR="/tmp/iem_time_runner_src"
-RUNNER_BIN_DIR="/tmp/iem_time_runner_bin"
-rm -rf "${RUNNER_SRC_DIR}" "${RUNNER_BIN_DIR}"
-mkdir -p "${RUNNER_SRC_DIR}" "${RUNNER_BIN_DIR}"
-
-cat << EOF > "${RUNNER_SRC_DIR}/iem-time-runner.csproj"
-<Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup>
-    <OutputType>Exe</OutputType>
-    <TargetFramework>net10.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
-  </PropertyGroup>
-  <ItemGroup>
-    <ProjectReference Include="${PWD}/src/IEM.Linux/IEM.Linux.csproj" />
-    <ProjectReference Include="${PWD}/src/IEM.Core/IEM.Core.csproj" />
-    <ProjectReference Include="${PWD}/src/IEM.Service.Linux/IEM.Service.Linux.csproj" />
-  </ItemGroup>
-</Project>
-EOF
-
-cat << 'EOF' > "${RUNNER_SRC_DIR}/Program.cs"
-using System;
-using System.IO;
-using System.Text.Json;
-using System.Threading;
-using System.Threading.Tasks;
-using IEM.Linux.Time;
-using IEM.Service.Linux.Lifecycle.Logind;
-using Tmds.DBus.Protocol;
-
-namespace IemTimeRunner;
-
-class Program
-{
-    static async Task<int> Main(string[] args)
-    {
-        try
-        {
-            var mode = args.Length > 0 ? args[0] : "all";
-
-            if (mode == "time" || mode == "all")
-            {
-                // 1. Production provider instantiation
-                var provider = new LinuxTimeObservationProvider();
-
-                // 2. Authoritative boot observation
-                var bobs = provider.CaptureBootObservation();
-
-                // 3. Clock sample
-                var sample = provider.CaptureClockSample(bobs.BootInstanceId);
-
-                // 4. Time sync provenance via adjtimex
-                var provenance = provider.CaptureTimeSyncProvenance();
-
-                // 5. Test Modes=0 enforcement with caller write flag
-                var timex = new LinuxTimex { Modes = 0x0001 }; // Caller sets ADJ_OFFSET
-                var adj = new LinuxAdjtimex();
-                var queryRes = adj.Query(ref timex);
-
-                var timeOutput = new
-                {
-                    bootInstanceId = bobs.BootInstanceId,
-                    bootIdentityBasis = bobs.BootIdentityBasis,
-                    capturedUtc = bobs.CapturedUtc,
-                    monotonicTimestamp = sample.MonotonicTimestamp,
-                    monotonicFrequency = sample.MonotonicFrequency,
-                    bootElapsed = sample.BootElapsedIncludingSuspend.TotalSeconds,
-                    activeElapsed = sample.ActiveElapsedExcludingSuspend.TotalSeconds,
-                    adjtimexAvailable = provenance.Available,
-                    rawKernelState = provenance.RawKernelState,
-                    rawStatusFlags = provenance.RawStatusFlags,
-                    unsynchronized = provenance.Unsynchronized,
-                    modesEnforcedZero = timex.Modes == 0,
-                    modesQuerySuccess = queryRes >= 0,
-                    queryResult = queryRes,
-                    frequencyPpm = provenance.FrequencyPpm,
-                    taiOffset = provenance.TaiOffsetSeconds
-                };
-
-                Console.WriteLine("IEM_TIME_PROVENANCE_JSON=" + JsonSerializer.Serialize(timeOutput));
-            }
-
-            if (mode == "logind" || mode == "all")
-            {
-                bool logindSuccess = false;
-                string? logindError = null;
-
-                try
-                {
-                    var transport = new TmdsLogindSignalTransport();
-                    using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
-                    var readyTcs = new TaskCompletionSource<bool>();
-
-                    var observeTask = transport.ObservePrepareForSleepAsync(
-                        _ => ValueTask.CompletedTask,
-                        onReady: () => readyTcs.TrySetResult(true),
-                        cancellationToken: cts.Token);
-
-                    var completed = await Task.WhenAny(readyTcs.Task, observeTask);
-                    if (completed == readyTcs.Task && readyTcs.Task.Result)
-                    {
-                        logindSuccess = true;
-                    }
-                    cts.Cancel();
-                    await transport.DisposeAsync();
-                }
-                catch (Exception ex)
-                {
-                    logindError = ex.Message;
-                }
-
-                var logindOutput = new
-                {
-                    logindAvailable = logindSuccess,
-                    error = logindError
-                };
-
-                Console.WriteLine("IEM_LOGIND_JSON=" + JsonSerializer.Serialize(logindOutput));
-            }
-
-            return 0;
-        }
-        catch (Exception ex)
-        {
-            Console.Error.WriteLine("FATAL: " + ex);
-            return 1;
-        }
-    }
-}
-EOF
-
-dotnet build "${RUNNER_SRC_DIR}/iem-time-runner.csproj" -c Release -o "${RUNNER_BIN_DIR}" --nologo >/dev/null
-
 # Execute as unprivileged user iem
-TIME_RUN_OUTPUT=$(su -s /bin/bash iem -c "${RUNNER_BIN_DIR}/iem-time-runner time" 2>&1 || echo "ERROR")
+TIME_RUN_OUTPUT=$(su -s /bin/bash iem -c "${INSTALL_DIR}/tools/IEM.TimeRunner time" 2>&1 || echo "ERROR")
 echo "Time runner output: ${TIME_RUN_OUTPUT}"
 
 TIME_JSON=$(echo "${TIME_RUN_OUTPUT}" | grep "IEM_TIME_PROVENANCE_JSON=" | cut -d= -f2- || echo "")
@@ -1463,7 +1331,7 @@ echo "9.14 LOGIND D-BUS AVAILABILITY (STAGE 6F-B1)"
 echo "=============================================================================="
 CURRENT_STAGE="STAGE_9_14_LOGIND_DBUS_AVAILABILITY"
 
-LOGIND_RUN_OUTPUT=$(su -s /bin/bash iem -c "${RUNNER_BIN_DIR}/iem-time-runner logind" 2>&1 || echo "ERROR")
+LOGIND_RUN_OUTPUT=$(su -s /bin/bash iem -c "${INSTALL_DIR}/tools/IEM.TimeRunner logind" 2>&1 || echo "ERROR")
 echo "Logind runner output: ${LOGIND_RUN_OUTPUT}"
 
 LOGIND_JSON=$(echo "${LOGIND_RUN_OUTPUT}" | grep "IEM_LOGIND_JSON=" | cut -d= -f2- || echo "")
@@ -1484,8 +1352,6 @@ CURRENT_STAGE="STAGE_9_15_SUSPEND_RESUME_CONTINUITY"
 # Physical host suspend requires ACPI S3/sleep capability on bare-metal or supported hypervisor
 STATUS_SUSPEND_RESUME_CONTINUITY="NOT_TESTED"
 record_not_tested "Physical host suspend/resume is prohibited on virtualized CI runner (requires bare-metal or suspend-capable VM)"
-
-rm -rf "${RUNNER_SRC_DIR}" "${RUNNER_BIN_DIR}"
 
 EPHEMERAL_SENTINEL="${RUNTIME_DIR}/ephemeral-sentinel-1"
 touch "${EPHEMERAL_SENTINEL}"

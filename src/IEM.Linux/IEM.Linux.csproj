@@ -16,6 +16,7 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="IEM.Core.Tests" />
+    <InternalsVisibleTo Include="IEM.TimeRunner" />
   </ItemGroup>
 
 </Project>

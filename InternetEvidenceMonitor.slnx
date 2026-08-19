@@ -19,4 +19,8 @@
     <Project Path="tests/IEM.App.Tests/IEM.App.Tests.csproj" />
     <Project Path="tests/IEM.Core.Tests/IEM.Core.Tests.csproj" />
   </Folder>
+
+  <Folder Name="/tools/">
+    <Project Path="tools/IEM.TimeRunner/IEM.TimeRunner.csproj" />
+  </Folder>
 </Solution>
