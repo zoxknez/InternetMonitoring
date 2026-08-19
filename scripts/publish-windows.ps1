@@ -29,13 +29,13 @@ foreach ($rid in $runtimes) {
         -p:PublishSingleFile=true -o $outDir
 
     # Copy named binaries to dist
-    $exeName = "InternetEvidenceMonitor-$version-$rid.exe"
+    $exeName = "MonitorInternetDokaza-$version-$rid.exe"
     Copy-Item "$outDir\InternetEvidenceMonitor.exe" "$distDir\$exeName" -Force
     Copy-Item "$outDir\iem.exe" "$distDir\iem-$version-$rid.exe" -Force
     Copy-Item "$outDir\iem-verifier.exe" "$distDir\iem-verifier-$version-$rid.exe" -Force
 
     # Zip full bundle
-    $zipName = "InternetMonitoring-$version-$rid.zip"
+    $zipName = "MonitorInternetDokaza-$version-$rid.zip"
     Compress-Archive -Path "$outDir\*" -DestinationPath "$distDir\$zipName" -Force
 
     # Compute SHA-256
