@@ -3,13 +3,13 @@
   "product": "InternetEvidenceMonitor",
   "platform": "windows-x64",
   "channel": "preview",
-  "version": "3.0.0-rc.1",
-  "publishedAt": "2026-08-19T08:00:00Z",
+  "version": "3.0.0",
+  "publishedAt": "2026-08-19T08:30:00Z",
   "minimumSupportedVersion": "2.0.0",
   "severity": "normal",
   "mandatory": false,
-  "releaseNotesUrl": "https://github.com/zoxknez/InternetMonitoring/releases/tag/v3.0.0-rc.1",
-  "downloadUrl": "https://github.com/zoxknez/InternetMonitoring/releases/download/v3.0.0-rc.1/MonitorInternetDokaza-3.0.0-rc.1-win-x64.exe",
-  "sha256": "73427e82aeac04f958b6eb27160ab6dbf05726583164d15f23b5f6f0d5a76ddc",
-  "releaseCommit": "4459cd8"
+  "releaseNotesUrl": "https://github.com/zoxknez/InternetMonitoring/releases/tag/v3.0.0",
+  "downloadUrl": "https://github.com/zoxknez/InternetMonitoring/releases/download/v3.0.0/MonitorInternetDokaza-3.0.0-win-x64.exe",
+  "sha256": "5ad1ff5ed1e9a2545854c8962cb86b2ecd5bcc0f15a62e9f8840ca087948b567",
+  "releaseCommit": "6bef268"
 }
