@@ -3,7 +3,7 @@
   "product": "InternetEvidenceMonitor",
   "platform": "windows-x64",
   "channel": "stable",
-  "version": "3.0.1",
+  "version": "3.0.0",
   "publishedAt": "2026-08-19T08:30:00Z",
   "minimumSupportedVersion": "2.0.0",
   "severity": "normal",
