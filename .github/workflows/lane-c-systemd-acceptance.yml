@@ -31,7 +31,7 @@ jobs:
         run: dotnet build InternetEvidenceMonitor.slnx -c Release --no-restore --nologo
 
       - name: Deterministic Unit & Boundary Tests
-        run: dotnet test InternetEvidenceMonitor.slnx -c Release --no-build --nologo
+        run: dotnet test tests/IEM.Core.Tests/IEM.Core.Tests.csproj -c Release --no-build --nologo
 
       - name: Run Lane C Real systemd PID 1 Acceptance
         run: |
