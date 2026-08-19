@@ -125,6 +125,70 @@ public sealed class LinuxBootIdentityTests
     }
 
     [Fact]
+    public void CorrelateUptime_when_within_tolerance_returns_Consistent()
+    {
+        var status = LinuxBootFacts.CorrelateUptime(
+            bootElapsedFromClock: TimeSpan.FromSeconds(100.02),
+            out var procUptime,
+            out var reasonCode,
+            fileReader: _ => "100.00 400.00\n",
+            tolerance: TimeSpan.FromMilliseconds(50));
+
+        Assert.Equal(UptimeCorrelationStatus.Consistent, status);
+        Assert.Null(reasonCode);
+        Assert.Equal(TimeSpan.FromSeconds(100.00), procUptime);
+    }
+
+    [Fact]
+    public void CorrelateUptime_when_outside_tolerance_returns_BOOT_UPTIME_CORRELATION_MISMATCH()
+    {
+        var status = LinuxBootFacts.CorrelateUptime(
+            bootElapsedFromClock: TimeSpan.FromSeconds(130.00),
+            out var procUptime,
+            out var reasonCode,
+            fileReader: _ => "100.00 400.00\n",
+            tolerance: TimeSpan.FromSeconds(1));
+
+        Assert.Equal(UptimeCorrelationStatus.Mismatch, status);
+        Assert.Equal(LinuxBootFacts.ReasonBootUptimeCorrelationMismatch, reasonCode);
+        Assert.Equal(TimeSpan.FromSeconds(100.00), procUptime);
+    }
+
+    [Fact]
+    public void CorrelateUptime_when_uptime_unavailable_returns_Unavailable_and_preserves_valid_boot_id_in_provider()
+    {
+        var status = LinuxBootFacts.CorrelateUptime(
+            bootElapsedFromClock: TimeSpan.FromSeconds(100.00),
+            out var procUptime,
+            out var reasonCode,
+            fileReader: _ => throw new FileNotFoundException());
+
+        Assert.Equal(UptimeCorrelationStatus.Unavailable, status);
+        Assert.Equal(LinuxBootFacts.ReasonBootUptimeUnavailable, reasonCode);
+        Assert.Null(procUptime);
+
+        // Verify provider still succeeds with valid BootObservation even if /proc/uptime is missing
+        var fakeClock = new FakeLinuxClockForIdentity();
+        var provider = new LinuxTimeObservationProvider(
+            fakeClock,
+            path => path == LinuxBootFacts.BootIdPath
+                ? "2b6b0c26-8eb5-4e3f-b649-411a5ff6b142\n"
+                : throw new FileNotFoundException());
+
+        var bobs = provider.CaptureBootObservation();
+        Assert.NotNull(bobs);
+        Assert.Equal("linux-boot-2b6b0c26-8eb5-4e3f-b649-411a5ff6b142", bobs.BootInstanceId);
+    }
+
+    private sealed class FakeLinuxClockForIdentity : ILinuxNativeClock
+    {
+        public void GetTime(int clockId, out LinuxTimeSpec timeSpec)
+        {
+            timeSpec = new LinuxTimeSpec { TvSec = 100, TvNsec = 0 };
+        }
+    }
+
+    [Fact]
     public void TimeContinuityEvaluator_EvaluateBoot_on_initial_observation_returns_Established()
     {
         var obs = CreateBootObservation("linux-boot-aaa");

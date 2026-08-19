@@ -75,6 +75,9 @@ public sealed class LinuxTimeObservationProvider : ITimeObservationProvider
 
         var (utc, monoNanos, activeElapsed, bootElapsed) = SampleClocks();
 
+        // Non-intrusive diagnostic /proc/uptime correlation check (anomaly does not invalidate boot_id)
+        _ = LinuxBootFacts.CorrelateUptime(bootElapsed, out _, out _, _fileReader);
+
         return new BootObservation(
             ObservationId: $"bobs-{Guid.NewGuid():N}",
             BootInstanceId: bootInstanceId,

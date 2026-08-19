@@ -113,4 +113,44 @@ internal static class LinuxBootFacts
         reasonCode = ReasonBootUptimeMalformed;
         return false;
     }
+
+    public static readonly TimeSpan DefaultUptimeCorrelationTolerance = TimeSpan.FromSeconds(5);
+
+    public static UptimeCorrelationStatus CorrelateUptime(
+        TimeSpan bootElapsedFromClock,
+        out TimeSpan? procUptime,
+        out string? reasonCode,
+        Func<string, string>? fileReader = null,
+        TimeSpan? tolerance = null)
+    {
+        var tol = tolerance ?? DefaultUptimeCorrelationTolerance;
+        if (!TryReadProcUptime(out var uptime, out var readReason, fileReader))
+        {
+            procUptime = null;
+            reasonCode = readReason;
+            return readReason == ReasonBootUptimeMalformed
+                ? UptimeCorrelationStatus.Malformed
+                : UptimeCorrelationStatus.Unavailable;
+        }
+
+        procUptime = uptime;
+        var diff = (uptime - bootElapsedFromClock).Duration();
+        if (diff > tol)
+        {
+            reasonCode = ReasonBootUptimeCorrelationMismatch;
+            return UptimeCorrelationStatus.Mismatch;
+        }
+
+        reasonCode = null;
+        return UptimeCorrelationStatus.Consistent;
+    }
 }
+
+internal enum UptimeCorrelationStatus
+{
+    Consistent,
+    Unavailable,
+    Malformed,
+    Mismatch,
+}
+
