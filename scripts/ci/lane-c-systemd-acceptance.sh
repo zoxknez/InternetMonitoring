@@ -1,17 +1,18 @@
 #!/usr/bin/env bash
-set -uo pipefail
+set -euo pipefail
 
 # ==============================================================================
 # Lane C: Real systemd PID 1 Live Acceptance Runner for Phase 3.1-2
 # Strict, audit-grade verification of:
-# - PID 1 == systemd
-# - Type=notify & Result=success lifecycle
+# - PID 1 == systemd (strict)
+# - Type=notify & Result=success lifecycle (strict)
 # - Numeric /proc/$PID/status UID, GID, supplementary GID in Groups: line
 # - Capability bounding (CapAmb=0, no CAP_NET_ADMIN / CAP_NET_RAW)
 # - StateDirectory (iem:iem 0700) persistence through stop/restart
 # - RuntimeDirectory (iem:iem-users 0750) ephemeral cleanup on stop
-# - ProtectSystem=strict mount namespace write/deny tests (truthful NOT_TESTED if nsenter missing)
-# - FatalExitCode = 3 verification and systemd Restart=on-failure with bounded polling (20s)
+# - ProtectSystem=strict causal 3-point test (DAC allowed -> Namespace denied -> State allowed)
+# - FatalExitCode == 3 strict live proof via real pre-flight failure condition
+# - systemd Restart=on-failure with bounded 20s polling and metric capture
 # - Start without network truthful evaluation (NOT_TESTED on hosted runners)
 # - Guaranteed JSON & Markdown evidence generation even on early failure
 # ==============================================================================
@@ -195,7 +196,7 @@ EOF
 | RESTART Persistence & Restore | **${STATUS_RESTART_LIFECYCLE}** |
 | ProtectSystem=strict Mount Namespace | **${STATUS_PROTECT_SYSTEM}** |
 | Failure / Restart Propagation | **${STATUS_FAILURE_RESTART}** |
-| FatalExitCode = 3 Verification | **${STATUS_FATAL_EXIT_CODE}** |
+| FatalExitCode == 3 Verification | **${STATUS_FATAL_EXIT_CODE}** |
 | Start Without Network | **${STATUS_START_WITHOUT_NETWORK}** |
 
 ## Summary
@@ -207,8 +208,8 @@ EOF
 }
 
 cleanup_and_exit() {
-    local exit_code=$?
-    echo "Running finalization and cleanup..."
+    local orig_exit=$?
+    echo "Running finalization and cleanup (original exit: ${orig_exit})..."
     write_evidence_reports
 
     # Cleanup systemd service resources safely
@@ -219,8 +220,16 @@ cleanup_and_exit() {
     rm -rf /usr/lib/internet-evidence-monitor 2>/dev/null || true
     rm -rf /var/lib/internet-evidence-monitor 2>/dev/null || true
     rm -rf /run/internet-evidence-monitor 2>/dev/null || true
+    rm -rf /var/tmp/iem-hardening-control-dir 2>/dev/null || true
 
-    exit "${exit_code}"
+    # Invariant: If FAIL_COUNT > 0, process MUST exit with non-zero (1)
+    if [ "${FAIL_COUNT}" -gt 0 ]; then
+        exit 1
+    elif [ "${orig_exit}" -ne 0 ]; then
+        exit "${orig_exit}"
+    fi
+
+    exit 0
 }
 trap cleanup_and_exit EXIT
 
@@ -316,9 +325,10 @@ MAIN_PID=$(systemctl show -p MainPID --value internet-evidence-monitor.service 2
 echo "Unit Type: ${UNIT_TYPE}"
 echo "ActiveState: ${ACTIVE_STATE}, SubState: ${SUB_STATE}, Result: ${UNIT_RESULT}, MainPID: ${MAIN_PID}"
 
-if [ "${UNIT_TYPE}" = "notify" ] && [ "${ACTIVE_STATE}" = "active" ] && [ "${SUB_STATE}" = "running" ] && [ "${MAIN_PID}" -gt 1 ] && { [ "${UNIT_RESULT}" = "success" ] || [ "${UNIT_RESULT}" = "none" ] || [ -z "${UNIT_RESULT}" ]; }; then
+# Strict assertion: Type MUST be notify, Result MUST be success, State active/running, MainPID > 1
+if [ "${UNIT_TYPE}" = "notify" ] && [ "${ACTIVE_STATE}" = "active" ] && [ "${SUB_STATE}" = "running" ] && [ "${MAIN_PID}" -gt 1 ] && [ "${UNIT_RESULT}" = "success" ]; then
     STATUS_TYPE_NOTIFY="PASS"
-    record_pass "Service reached ActiveState=active, SubState=running via Type=notify with valid result"
+    record_pass "Service reached ActiveState=active, SubState=running via Type=notify with Result=success"
 else
     STATUS_TYPE_NOTIFY="FAIL"
     record_fail "Service failed Type=notify readiness (Type=${UNIT_TYPE}, Active=${ACTIVE_STATE}, Sub=${SUB_STATE}, Result=${UNIT_RESULT})"
@@ -497,81 +507,116 @@ else
 fi
 
 echo "=============================================================================="
-echo "12. PROTECTSYSTEM=STRICT MOUNT NAMESPACE TEST (TRUTHFUL SEMANTICS)"
+echo "12. PROTECTSYSTEM=STRICT CAUSAL CONTROL TEST (3-POINT PROOF)"
 echo "=============================================================================="
 CURRENT_STAGE="STAGE_12_PROTECT_SYSTEM"
 
-DROPIN_DIR="/etc/systemd/system/internet-evidence-monitor.service.d"
-mkdir -p "${DROPIN_DIR}"
-cat << 'EOF' > "${DROPIN_DIR}/hardening.conf"
+# Set up an outside test directory that is DAC-writable for iem
+CONTROL_OUTSIDE_DIR="/var/tmp/iem-hardening-control-dir"
+mkdir -p "${CONTROL_OUTSIDE_DIR}"
+chown iem:iem "${CONTROL_OUTSIDE_DIR}"
+chmod 0777 "${CONTROL_OUTSIDE_DIR}"
+
+UNHARDENED_PID=$(systemctl show -p MainPID --value internet-evidence-monitor.service 2>/dev/null || echo "0")
+
+if command -v nsenter >/dev/null 2>&1; then
+    # Fact 1: Outside write BEFORE hardening must SUCCEED (Proves DAC allows write)
+    FACT_1_DAC_WRITABLE=false
+    if nsenter -t "${UNHARDENED_PID}" -m -- su -s /bin/bash iem -c "touch ${CONTROL_OUTSIDE_DIR}/control-test" 2>/dev/null; then
+        FACT_1_DAC_WRITABLE=true
+        rm -f "${CONTROL_OUTSIDE_DIR}/control-test" 2>/dev/null || true
+    fi
+    echo "Fact 1: Outside write before hardening succeeded: ${FACT_1_DAC_WRITABLE}"
+
+    # Apply ProtectSystem=strict drop-in
+    DROPIN_DIR="/etc/systemd/system/internet-evidence-monitor.service.d"
+    mkdir -p "${DROPIN_DIR}"
+    cat << 'EOF' > "${DROPIN_DIR}/hardening.conf"
 [Service]
 ProtectSystem=strict
 ProtectHome=yes
 PrivateTmp=yes
 EOF
-systemctl daemon-reload
-systemctl restart internet-evidence-monitor.service
+    systemctl daemon-reload
+    systemctl restart internet-evidence-monitor.service
 
-HARDENED_PID=$(systemctl show -p MainPID --value internet-evidence-monitor.service 2>/dev/null || echo "0")
-PROTECT_SYS_VAL=$(systemctl show -p ProtectSystem --value internet-evidence-monitor.service 2>/dev/null || echo "")
+    HARDENED_PID=$(systemctl show -p MainPID --value internet-evidence-monitor.service 2>/dev/null || echo "0")
+    PROTECT_SYS_VAL=$(systemctl show -p ProtectSystem --value internet-evidence-monitor.service 2>/dev/null || echo "")
 
-if [ "${PROTECT_SYS_VAL}" = "strict" ] && [ "${HARDENED_PID}" -gt 1 ]; then
-    if command -v nsenter >/dev/null 2>&1; then
-        WRITE_INSIDE_OK=false
-        WRITE_OUTSIDE_DENIED=false
-
-        if nsenter -t "${HARDENED_PID}" -m -- su -s /bin/bash iem -c "touch /var/lib/internet-evidence-monitor/ns-write-test" 2>/dev/null; then
-            WRITE_INSIDE_OK=true
-            rm -f /var/lib/internet-evidence-monitor/ns-write-test 2>/dev/null || true
-        fi
-
-        if ! nsenter -t "${HARDENED_PID}" -m -- su -s /bin/bash iem -c "touch /usr/lib/internet-evidence-monitor/ns-write-test" 2>/dev/null; then
-            WRITE_OUTSIDE_DENIED=true
-        fi
-
-        if [ "${WRITE_INSIDE_OK}" = "true" ] && [ "${WRITE_OUTSIDE_DENIED}" = "true" ]; then
-            STATUS_PROTECT_SYSTEM="PASS"
-            record_pass "ProtectSystem=strict mount namespace verified (Inside=OK, Outside=Denied)"
-        else
-            STATUS_PROTECT_SYSTEM="FAIL"
-            record_fail "ProtectSystem=strict namespace write test failed (InsideOk: ${WRITE_INSIDE_OK}, OutsideDenied: ${WRITE_OUTSIDE_DENIED})"
-        fi
-    else
-        # Truthful NOT_TESTED semantics
-        STATUS_PROTECT_SYSTEM="NOT_TESTED"
-        record_not_tested "ProtectSystem=strict namespace injection (nsenter command not available on runner)"
+    # Fact 2: Under ProtectSystem=strict, SAME outside write must be DENIED (Read-only file system)
+    FACT_2_OUTSIDE_DENIED=false
+    if ! nsenter -t "${HARDENED_PID}" -m -- su -s /bin/bash iem -c "touch ${CONTROL_OUTSIDE_DIR}/control-test" 2>/dev/null; then
+        FACT_2_OUTSIDE_DENIED=true
     fi
+    echo "Fact 2: Outside write under ProtectSystem=strict denied: ${FACT_2_OUTSIDE_DENIED}"
+
+    # Fact 3: Under ProtectSystem=strict, StateDirectory write must SUCCEED
+    FACT_3_STATE_WRITABLE=false
+    if nsenter -t "${HARDENED_PID}" -m -- su -s /bin/bash iem -c "touch /var/lib/internet-evidence-monitor/ns-write-test" 2>/dev/null; then
+        FACT_3_STATE_WRITABLE=true
+        rm -f /var/lib/internet-evidence-monitor/ns-write-test 2>/dev/null || true
+    fi
+    echo "Fact 3: StateDirectory write under ProtectSystem=strict succeeded: ${FACT_3_STATE_WRITABLE}"
+
+    if [ "${FACT_1_DAC_WRITABLE}" = "true" ] && [ "${FACT_2_OUTSIDE_DENIED}" = "true" ] && [ "${FACT_3_STATE_WRITABLE}" = "true" ]; then
+        STATUS_PROTECT_SYSTEM="PASS"
+        record_pass "ProtectSystem=strict causal 3-point proof verified (DAC allowed -> Namespace denied -> State allowed)"
+    else
+        STATUS_PROTECT_SYSTEM="FAIL"
+        record_fail "ProtectSystem=strict causal proof failed (Fact1: ${FACT_1_DAC_WRITABLE}, Fact2: ${FACT_2_OUTSIDE_DENIED}, Fact3: ${FACT_3_STATE_WRITABLE})"
+    fi
+
+    # Clean up hardening drop-in and restore service
+    rm -rf "${DROPIN_DIR}"
+    systemctl daemon-reload
+    systemctl restart internet-evidence-monitor.service
 else
-    STATUS_PROTECT_SYSTEM="FAIL"
-    record_fail "ProtectSystem=strict drop-in failed to activate"
+    STATUS_PROTECT_SYSTEM="NOT_TESTED"
+    record_not_tested "ProtectSystem=strict namespace injection (nsenter command not available on runner)"
 fi
 
-rm -rf "${DROPIN_DIR}"
-systemctl daemon-reload
-systemctl restart internet-evidence-monitor.service
+rm -rf "${CONTROL_OUTSIDE_DIR}" 2>/dev/null || true
 
 echo "=============================================================================="
-echo "13. LIVE FAILURE PROPAGATION & FATAL EXIT CODE 3 TEST"
+echo "13. FATAL EXIT CODE == 3 STRICT VERIFICATION"
 echo "=============================================================================="
-CURRENT_STAGE="STAGE_13_FAILURE_PROPAGATION"
+CURRENT_STAGE="STAGE_13_FATAL_EXIT_CODE"
 
-# Part A: Test executable FatalExitCode = 3 contract directly with invalid path
-if "${INSTALL_DIR}/IEM.Service.Linux" --invalid-runtime-flag 2>/dev/null; then
+# Stop service temporarily to test standalone binary failure condition
+systemctl stop internet-evidence-monitor.service
+
+# Real failure condition: Create /run/internet-evidence-monitor as a regular FILE (or symlink)
+# so LinuxRuntimeDirectoryPreparer.Prepare fails closed, and Program.cs returns MonitorWorker.FatalExitCode (3)
+rm -rf /run/internet-evidence-monitor
+touch /run/internet-evidence-monitor # Invalid: file instead of directory
+
+set +e
+"${INSTALL_DIR}/IEM.Service.Linux" 2>/dev/null
+CLI_EXIT=$?
+set -e
+
+# Cleanup invalid path
+rm -f /run/internet-evidence-monitor
+
+echo "Pre-flight failure CLI test exit code: ${CLI_EXIT}"
+
+# Strict assertion: MUST BE EXACTLY 3
+if [ "${CLI_EXIT}" -eq 3 ]; then
+    STATUS_FATAL_EXIT_CODE="PASS"
+    record_pass "Fatal pre-flight startup failure strictly returned exit code 3 (FatalExitCode == 3)"
+else
     STATUS_FATAL_EXIT_CODE="FAIL"
-    record_fail "Executable did not return fatal exit code on invalid startup"
-else
-    CLI_EXIT=$?
-    echo "CLI test exit code: ${CLI_EXIT}"
-    if [ "${CLI_EXIT}" -eq 3 ] || [ "${CLI_EXIT}" -ne 0 ]; then
-        STATUS_FATAL_EXIT_CODE="PASS"
-        record_pass "Fatal startup failure returned non-zero/FatalExitCode (Code: ${CLI_EXIT})"
-    else
-        STATUS_FATAL_EXIT_CODE="FAIL"
-        record_fail "Fatal startup returned 0 unexpectedly"
-    fi
+    record_fail "Fatal startup exit code was not 3 (Got: ${CLI_EXIT})"
 fi
 
-# Part B: Test systemd Restart=on-failure with bounded polling (up to 20s for RestartSec=5s)
+# Restart service for next tests
+systemctl start internet-evidence-monitor.service
+
+echo "=============================================================================="
+echo "14. SYSTEMD RESTART=ON-FAILURE LIVE PROPAGATION TEST"
+echo "=============================================================================="
+CURRENT_STAGE="STAGE_14_FAILURE_RESTART"
+
 CURRENT_PID=$(systemctl show -p MainPID --value internet-evidence-monitor.service 2>/dev/null || echo "0")
 NRESTARTS_BEFORE=$(systemctl show -p NRestarts --value internet-evidence-monitor.service 2>/dev/null || echo "0")
 echo "Before failure kill: PID=${CURRENT_PID}, NRestarts=${NRESTARTS_BEFORE}"
@@ -598,16 +643,16 @@ EXEC_MAIN_STATUS=$(systemctl show -p ExecMainStatus --value internet-evidence-mo
 
 if [ "${RESTART_OK}" = "true" ]; then
     STATUS_FAILURE_RESTART="PASS"
-    record_pass "systemd Restart=on-failure verified with bounded polling (ExecMainCode=${EXEC_MAIN_CODE}, ExecMainStatus=${EXEC_MAIN_STATUS})"
+    record_pass "systemd Restart=on-failure verified with bounded polling (ExecMainCode=${EXEC_MAIN_CODE}, ExecMainStatus=${EXEC_MAIN_STATUS}, NewPID=${NEW_PID})"
 else
     STATUS_FAILURE_RESTART="FAIL"
-    record_fail "systemd Restart=on-failure timed out or failed (NRestarts: before=${NRESTARTS_BEFORE}, after=${NRESTARTS_AFTER:-0})"
+    record_fail "systemd Restart=on-failure timed out after 20s (NRestarts: before=${NRESTARTS_BEFORE}, after=${NRESTARTS_AFTER:-0})"
 fi
 
 echo "=============================================================================="
-echo "14. START WITHOUT NETWORK (TRUTHFUL EVALUATION)"
+echo "15. START WITHOUT NETWORK (TRUTHFUL EVALUATION)"
 echo "=============================================================================="
-CURRENT_STAGE="STAGE_14_NETWORK_OFF"
+CURRENT_STAGE="STAGE_15_NETWORK_OFF"
 
 STATUS_START_WITHOUT_NETWORK="NOT_TESTED"
 record_not_tested "Start without network live network-off boot (Shared GitHub Actions VM runner cannot drop primary NIC without killing CI connection; static absence of network-online.target is verified deterministically in IEM.Core.Tests)"
