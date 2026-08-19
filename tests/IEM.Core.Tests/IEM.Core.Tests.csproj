@@ -26,6 +26,7 @@
     <ProjectReference Include="..\..\src\IEM.Verification\IEM.Verification.csproj" />
     <ProjectReference Include="..\..\src\IEM.Service.Runtime\IEM.Service.Runtime.csproj" />
     <ProjectReference Include="..\..\src\IEM.Presentation\IEM.Presentation.csproj" />
+    <ProjectReference Include="..\..\src\IEM.Linux\IEM.Linux.csproj" />
     <ProjectReference Include="..\..\src\IEM.Service.Linux\IEM.Service.Linux.csproj" />
   </ItemGroup>
 

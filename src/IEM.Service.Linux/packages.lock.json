@@ -312,6 +312,14 @@
           "System.Security.Cryptography.Pkcs": "[10.0.0, )"
         }
       },
+      "iem.linux": {
+        "type": "Project",
+        "dependencies": {
+          "IEM.Core": "[3.0.0, )",
+          "IEM.Evidence": "[3.0.0, )",
+          "IEM.Storage": "[3.0.0, )"
+        }
+      },
       "iem.service.runtime": {
         "type": "Project",
         "dependencies": {
