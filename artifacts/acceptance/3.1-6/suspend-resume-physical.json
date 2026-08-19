@@ -1,0 +1,22 @@
+{
+  "acceptanceVersion": "3.1.6-live",
+  "commitSha": "UNKNOWN",
+  "distro": "ubuntu",
+  "distroVersion": "24.04",
+  "architecture": "x86_64",
+  "kernel": "6.8.0-138-generic",
+  "gate": "3.1-6F-S1 · Physical Suspend/Resume Acceptance",
+  "timestampUtc": "2026-08-19T23:06:00Z",
+  "verdict": "PASS",
+  "failReasons": "None",
+  "suspendMethod": "rtcwake -m no -s 3 && systemctl suspend",
+  "processEvidence": {
+    "user": "iem",
+    "observerPid": "368",
+    "uid": "999\t999\t999\t999",
+    "gid": "990\t990\t990\t990",
+    "capEff": "0000000000000000",
+    "capAmb": "0000000000000000"
+  },
+  "coreSemanticEvidence": {"success":true,"processEvidence":{"pid":368,"uid":"999\t999\t999\t999","gid":"990\t990\t990\t990","groups":"990 991","capEff":"0000000000000000","capAmb":"0000000000000000"},"sleepTrueReceived":true,"sleepTrueUtc":"2026-08-19T23:05:53.000376+00:00","sleepFalseReceived":true,"sleepFalseUtc":"2026-08-19T23:05:57.3165226+00:00","bootInstanceIdPre":"linux-boot-6fe8ca35-979c-4f2e-9ace-de07ffc5ea9a","bootInstanceIdPost":"linux-boot-6fe8ca35-979c-4f2e-9ace-de07ffc5ea9a","bootContinuityState":"Continued","clockContinuityState":"SuspendIntervalObserved","suspendDurationSeconds":3.2738453,"monotonicElapsedSeconds":6.7264653,"wallClockElapsedSeconds":10.0003183,"bootElapsedDeltaSeconds":10.0003107,"activeElapsedDeltaSeconds":6.7264654,"capturedUtcPre":"2026-08-19T23:05:47.343796+00:00","capturedUtcPost":"2026-08-19T23:05:57.3441143+00:00"}
+}
