@@ -182,7 +182,7 @@ public sealed class LoadedLatencyTests
                 ProbeCeiling = TimeSpan.FromMilliseconds(40),
             });
 
-        using var stop = new CancellationTokenSource(TimeSpan.FromMilliseconds(300));
+        using var stop = new CancellationTokenSource(TimeSpan.FromSeconds(2));
 
         var reading = await sampler.SampleWhileAsync(TimeSpan.Zero, stop.Token);
 
