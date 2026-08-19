@@ -2,7 +2,7 @@
 <html lang="sr">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <title>Internet Monitoring — Dokaz o prekidima i kvalitetu interneta</title>
 <meta name="description" content="Kriptografski potpisana evidencija i forenzički dokaz o prekidima i kvalitetu internet veze za prigovor operateru i regulatoru (RATEL). Radi 100% lokalno." />
 <meta property="og:title" content="Internet Monitoring 3.0" />
@@ -46,7 +46,7 @@
     --font-body:    'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     --font-mono:    'JetBrains Mono', monospace;
     
-    --gutter: clamp(16px, 4vw, 54px);
+    --gutter: clamp(16px, 4vw, 48px);
   }
 
   * { box-sizing: border-box; }
@@ -64,7 +64,7 @@
     overflow-x: hidden;
   }
 
-  .wrap { max-width: 1200px; margin: 0 auto; padding: 0 var(--gutter); }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 0 var(--gutter); }
 
   h1, h2, h3, h4 {
     font-family: var(--font-heading);
@@ -75,23 +75,23 @@
     margin: 0;
   }
 
-  h1 { font-size: clamp(2.1rem, 5vw, 4rem); letter-spacing: -0.038em; }
-  h2 { font-size: clamp(1.75rem, 3.6vw, 2.7rem); }
-  h3 { font-size: 1.2rem; font-weight: 600; line-height: 1.35; }
+  h1 { font-size: clamp(2.1rem, 5vw, 3.8rem); letter-spacing: -0.038em; }
+  h2 { font-size: clamp(1.7rem, 3.4vw, 2.6rem); }
+  h3 { font-size: 1.18rem; font-weight: 600; line-height: 1.35; }
 
   p { margin: 0; }
   a { color: var(--accent); text-decoration: none; transition: all 0.2s ease; }
   a:hover { color: #60A5FA; }
 
-  /* ---- Header & Nav: Single Row & Mobile Scroll ---------------------------- */
+  /* ---- Header & Nav -------------------------------------------------------- */
   header.top {
-    padding: 18px 0;
+    padding: 16px 0;
     border-bottom: 1px solid var(--line);
     backdrop-filter: blur(16px);
     position: sticky;
     top: 0;
-    z-index: 100;
-    background: rgba(6, 9, 19, 0.88);
+    z-index: 1000;
+    background: rgba(6, 9, 19, 0.9);
   }
 
   .nav-row {
@@ -105,10 +105,10 @@
   .brand {
     display: flex;
     align-items: center;
-    gap: 11px;
+    gap: 10px;
     font-weight: 700;
     font-family: var(--font-heading);
-    font-size: 1.22rem;
+    font-size: 1.2rem;
     letter-spacing: -0.02em;
     color: #FFFFFF;
     white-space: nowrap;
@@ -116,43 +116,85 @@
   }
   .brand svg { display: block; flex-shrink: 0; }
 
-  .nav-links {
+  /* Desktop Menu */
+  .desktop-nav {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 14px;
     font-size: 0.92rem;
     font-weight: 500;
-    overflow-x: auto;
-    white-space: nowrap;
-    scrollbar-width: none;
-    -webkit-overflow-scrolling: touch;
-    padding: 2px 0;
   }
-  .nav-links::-webkit-scrollbar { display: none; }
-
-  .nav-links a {
+  .desktop-nav a {
     color: var(--muted);
-    padding: 6px 10px;
+    padding: 6px 12px;
     border-radius: 6px;
     transition: all 0.15s ease;
-    flex-shrink: 0;
   }
-  .nav-links a:hover { color: #FFFFFF; background: rgba(255, 255, 255, 0.06); }
+  .desktop-nav a:hover { color: #FFFFFF; background: rgba(255, 255, 255, 0.06); }
 
   .nav-btn {
     background: rgba(255, 255, 255, 0.06);
     border: 1px solid var(--line-highlight);
     color: #FFFFFF !important;
-    padding: 6px 13px !important;
+    padding: 6px 14px !important;
     display: inline-flex;
     align-items: center;
     gap: 7px;
+    border-radius: 6px;
   }
   .nav-btn:hover { background: rgba(255, 255, 255, 0.12); }
 
+  /* Mobile Hamburger Toggle */
+  .mobile-toggle {
+    display: none;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid var(--line-highlight);
+    color: #FFFFFF;
+    padding: 8px;
+    border-radius: 8px;
+    cursor: pointer;
+  }
+  .mobile-toggle svg { display: block; }
+
+  /* Mobile Drawer Menu */
+  .mobile-menu {
+    display: none;
+    position: fixed;
+    top: 65px;
+    left: 0;
+    right: 0;
+    background: rgba(6, 9, 19, 0.98);
+    backdrop-filter: blur(20px);
+    border-bottom: 1px solid var(--line-highlight);
+    padding: 20px;
+    flex-direction: column;
+    gap: 12px;
+    z-index: 999;
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.8);
+  }
+  .mobile-menu.active { display: flex; }
+  .mobile-menu a {
+    color: #FFFFFF;
+    padding: 12px 16px;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid var(--line);
+    font-weight: 500;
+    font-size: 1rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .mobile-menu a:hover { background: rgba(59, 130, 246, 0.15); border-color: var(--accent); }
+
+  @media (max-width: 960px) {
+    .desktop-nav { display: none; }
+    .mobile-toggle { display: flex; align-items: center; justify-content: center; }
+  }
+
   /* ---- Hero Section -------------------------------------------------------- */
   .hero {
-    padding: clamp(54px, 7vw, 90px) 0 clamp(40px, 5vw, 60px);
+    padding: clamp(48px, 6vw, 84px) 0 clamp(36px, 4vw, 54px);
     text-align: center;
   }
 
@@ -162,7 +204,7 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 20px;
+    gap: 18px;
   }
 
   .live-pill {
@@ -306,12 +348,12 @@
   .legend i { width: 9px; height: 9px; border-radius: 2.5px; background: var(--c); display: inline-block; }
 
   /* ---- Centered Section Headings ------------------------------------------- */
-  section { padding: clamp(60px, 7vw, 96px) 0; }
+  section { padding: clamp(54px, 7vw, 92px) 0; }
   
   .section-header {
     text-align: center;
     max-width: 820px;
-    margin: 0 auto clamp(32px, 4vw, 52px);
+    margin: 0 auto clamp(30px, 4vw, 50px);
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -558,7 +600,7 @@
     border: 0;
   }
 
-  /* ---- Perfect Mobile Optimization ----------------------------------------- */
+  /* ---- Mobile Optimizations ------------------------------------------------ */
   @media (max-width: 680px) {
     .cta-group .btn { width: 100%; }
     .table-wrapper { overflow-x: visible; border: 0; background: transparent; border-radius: 0; box-shadow: none; }
@@ -576,6 +618,7 @@
     }
     tbody td { display: block; border-bottom: 0; padding: 0; }
     tbody td:last-child { margin-top: 4px; }
+    tbody td:last-child .btn { width: 100%; }
     pre { font-size: 0.78rem; padding: 12px; }
     .admin-tip { border-radius: 10px; }
   }
@@ -583,11 +626,11 @@
 </head>
 <body>
 
-<!-- Navigation Header (Single Row) -->
+<!-- Navigation Header -->
 <header class="top">
   <div class="wrap">
     <div class="nav-row">
-      <div class="brand">
+      <a class="brand" href="#">
         <svg width="26" height="26" viewBox="0 0 32 32" aria-hidden="true">
           <rect width="32" height="32" rx="7" fill="#1B4DD8" />
           <g fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round">
@@ -597,15 +640,14 @@
           <circle cx="16" cy="23" r="1.8" fill="#fff" />
         </svg>
         Internet Monitoring
-      </div>
-      <nav class="nav-links">
+      </a>
+
+      <!-- Desktop Nav -->
+      <nav class="desktop-nav">
         <a href="#kako">Metodologija</a>
         <a href="#dokumentacija">Dokumentacija</a>
         <a href="#preuzimanje">Preuzimanje</a>
-        <a href="#powershell">CLI</a>
         <a href="#verzije">Verzije</a>
-        <a href="#platforme">Platforme</a>
-        <a href="#granice">Granice</a>
         <a class="nav-btn" href="https://github.com/zoxknez/InternetMonitoring" target="_blank" rel="noopener">
           <svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
           GitHub
@@ -614,8 +656,30 @@
           Podrži projekat
         </a>
       </nav>
+
+      <!-- Mobile Hamburger Button -->
+      <button class="mobile-toggle" id="menu-btn" aria-label="Otvori navigaciju">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="3" y1="12" x2="21" y2="12"></line>
+          <line x1="3" y1="6" x2="21" y2="6"></line>
+          <line x1="3" y1="18" x2="21" y2="18"></line>
+        </svg>
+      </button>
     </div>
   </div>
+
+  <!-- Mobile Drawer Menu -->
+  <nav class="mobile-menu" id="mobile-menu">
+    <a href="#kako" onclick="toggleMenu()">Metodologija <span>&rarr;</span></a>
+    <a href="#dokumentacija" onclick="toggleMenu()">Dokumentacija <span>&rarr;</span></a>
+    <a href="#preuzimanje" onclick="toggleMenu()">Preuzimanje <span>&rarr;</span></a>
+    <a href="#powershell" onclick="toggleMenu()">CLI & Komande <span>&rarr;</span></a>
+    <a href="#verzije" onclick="toggleMenu()">Verzije <span>&rarr;</span></a>
+    <a href="#platforme" onclick="toggleMenu()">Platforme <span>&rarr;</span></a>
+    <a href="#granice" onclick="toggleMenu()">Granice Dokaza <span>&rarr;</span></a>
+    <a href="https://github.com/zoxknez/InternetMonitoring" target="_blank" rel="noopener">GitHub Repozitorijum <span>&rarr;</span></a>
+    <a href="https://ko-fi.com/F7I0249KP5" target="_blank" rel="noopener" style="background: rgba(59, 130, 246, 0.15); color: #93C5FD;">Podrži projekat <span>☕</span></a>
+  </nav>
 </header>
 
 <!-- Hero Section -->
@@ -1131,6 +1195,16 @@ Start-Process .\InternetEvidenceMonitor-3.0.0-rc.1-win-x64.exe -Verb RunAs</pre>
     </div>
   </div>
 </footer>
+
+<script>
+  function toggleMenu() {
+    var menu = document.getElementById('mobile-menu');
+    if (menu) {
+      menu.classList.toggle('active');
+    }
+  }
+  document.getElementById('menu-btn').addEventListener('click', toggleMenu);
+</script>
 
 </body>
 </html>
