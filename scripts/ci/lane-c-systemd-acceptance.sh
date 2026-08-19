@@ -1219,6 +1219,7 @@ ip netns exec "${NS_NAME}" ip link set lo up
 ip netns exec "${NS_NAME}" ip addr add 192.0.2.2/24 dev veth_iem
 ip netns exec "${NS_NAME}" ip link set veth_iem up
 ip netns exec "${NS_NAME}" ip route add default via 192.0.2.1 dev veth_iem
+ip netns exec "${NS_NAME}" sysctl -w net.ipv4.ping_group_range="0 2147483647" >/dev/null 2>&1 || true
 
 # Test matrix inside namespace as unprivileged user iem
 # 1. ICMP echo over veth as unprivileged user iem
