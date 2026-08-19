@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
 using System.Runtime.InteropServices;
@@ -17,6 +18,27 @@ public static class LinuxNetworkCapabilityPreflight
     private const int NETLINK_ROUTE = 0;
     private const string PingGroupRangePath = "/proc/sys/net/ipv4/ping_group_range";
 
+    private static readonly TimeSpan ReconcileInterval = TimeSpan.FromMinutes(10);
+    private static LinuxNetworkCapabilitySnapshot? _cachedSnapshot;
+    private static long _lastEvaluatedTicks = long.MinValue;
+    private static readonly object _syncLock = new();
+
+    public static LinuxNetworkCapabilitySnapshot GetOrEvaluate(bool forceRecheck = false)
+    {
+        lock (_syncLock)
+        {
+            var nowTicks = Stopwatch.GetTimestamp();
+            if (!forceRecheck && _cachedSnapshot is not null && Stopwatch.GetElapsedTime(_lastEvaluatedTicks, nowTicks) < ReconcileInterval)
+            {
+                return _cachedSnapshot;
+            }
+
+            _cachedSnapshot = Evaluate();
+            _lastEvaluatedTicks = nowTicks;
+            return _cachedSnapshot;
+        }
+    }
+
     public static LinuxNetworkCapabilitySnapshot Evaluate()
     {
         var evaluatedAt = DateTimeOffset.UtcNow;
@@ -26,8 +48,12 @@ public static class LinuxNetworkCapabilityPreflight
         var icmpV6 = ProbeIcmpDatagram(AddressFamily.InterNetworkV6, ProtocolType.IcmpV6);
         var netlinkV4 = ProbeNetlinkRoute(AddressFamily.InterNetwork);
         var netlinkV6 = ProbeNetlinkRoute(AddressFamily.InterNetworkV6);
-        var bindV4 = ProbeSourceBind(AddressFamily.InterNetwork, IPAddress.Any);
-        var bindV6 = ProbeSourceBind(AddressFamily.InterNetworkV6, IPAddress.IPv6Any);
+        var bindV4 = ProbeSourceBind(AddressFamily.InterNetwork, IPAddress.Loopback);
+        var bindV6 = ProbeSourceBind(AddressFamily.InterNetworkV6, IPAddress.IPv6Loopback);
+        var tcpV4 = ProbeTcpSocket(AddressFamily.InterNetwork);
+        var tcpV6 = ProbeTcpSocket(AddressFamily.InterNetworkV6);
+        var dnsV4 = ProbeDnsUdpSocket(AddressFamily.InterNetwork);
+        var dnsV6 = ProbeDnsUdpSocket(AddressFamily.InterNetworkV6);
 
         return new LinuxNetworkCapabilitySnapshot(
             evaluatedAt,
@@ -37,6 +63,10 @@ public static class LinuxNetworkCapabilityPreflight
             netlinkV6,
             bindV4,
             bindV6,
+            tcpV4,
+            tcpV6,
+            dnsV4,
+            dnsV6,
             pingGroupDiag);
     }
 
@@ -131,6 +161,62 @@ public static class LinuxNetworkCapabilityPreflight
             return new LinuxCapabilityObservation(
                 LinuxCapabilityState.Unknown,
                 Diagnostic: $"Unexpected exception during {family} source bind probe: {ex.Message}");
+        }
+    }
+
+    private static LinuxCapabilityObservation ProbeTcpSocket(AddressFamily family)
+    {
+        try
+        {
+            using var socket = new Socket(family, SocketType.Stream, ProtocolType.Tcp);
+            return new LinuxCapabilityObservation(
+                LinuxCapabilityState.Available,
+                NativeError: 0,
+                SocketError: null,
+                Diagnostic: $"TCP stream socket creation succeeded for {family}.");
+        }
+        catch (SocketException ex)
+        {
+            var state = MapSocketErrorToCapabilityState(ex.SocketErrorCode);
+            return new LinuxCapabilityObservation(
+                state,
+                NativeError: ex.ErrorCode,
+                SocketError: ex.SocketErrorCode.ToString(),
+                Diagnostic: $"TCP socket creation failed for {family}: {ex.Message}");
+        }
+        catch (Exception ex)
+        {
+            return new LinuxCapabilityObservation(
+                LinuxCapabilityState.Unknown,
+                Diagnostic: $"Unexpected exception during {family} TCP probe: {ex.Message}");
+        }
+    }
+
+    private static LinuxCapabilityObservation ProbeDnsUdpSocket(AddressFamily family)
+    {
+        try
+        {
+            using var socket = new Socket(family, SocketType.Dgram, ProtocolType.Udp);
+            return new LinuxCapabilityObservation(
+                LinuxCapabilityState.Available,
+                NativeError: 0,
+                SocketError: null,
+                Diagnostic: $"UDP socket creation succeeded for {family}.");
+        }
+        catch (SocketException ex)
+        {
+            var state = MapSocketErrorToCapabilityState(ex.SocketErrorCode);
+            return new LinuxCapabilityObservation(
+                state,
+                NativeError: ex.ErrorCode,
+                SocketError: ex.SocketErrorCode.ToString(),
+                Diagnostic: $"UDP socket creation failed for {family}: {ex.Message}");
+        }
+        catch (Exception ex)
+        {
+            return new LinuxCapabilityObservation(
+                LinuxCapabilityState.Unknown,
+                Diagnostic: $"Unexpected exception during {family} UDP probe: {ex.Message}");
         }
     }
 

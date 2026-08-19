@@ -56,6 +56,10 @@ public sealed class LinuxNetworkCapabilityPreflightTests
             NetlinkRouteIPv6: new LinuxCapabilityObservation(LinuxCapabilityState.Available),
             SourceBindIPv4: new LinuxCapabilityObservation(LinuxCapabilityState.Available),
             SourceBindIPv6: new LinuxCapabilityObservation(LinuxCapabilityState.Available),
+            TcpConnectIPv4: new LinuxCapabilityObservation(LinuxCapabilityState.Available),
+            TcpConnectIPv6: new LinuxCapabilityObservation(LinuxCapabilityState.Available),
+            DnsUdpIPv4: new LinuxCapabilityObservation(LinuxCapabilityState.Available),
+            DnsUdpIPv6: new LinuxCapabilityObservation(LinuxCapabilityState.Available),
             PingGroupRangeDiagnostic: "0 2147483647");
 
         Assert.True(snapshot.CanUseIcmpV4);
@@ -63,6 +67,8 @@ public sealed class LinuxNetworkCapabilityPreflightTests
         Assert.True(snapshot.CanUseNetlinkRoute);
         Assert.True(snapshot.CanBindSourceIPv4);
         Assert.True(snapshot.CanBindSourceIPv6);
+        Assert.True(snapshot.CanConnectTcpIPv4);
+        Assert.True(snapshot.CanQueryDnsIPv4);
         Assert.Equal("0 2147483647", snapshot.PingGroupRangeDiagnostic);
     }
 

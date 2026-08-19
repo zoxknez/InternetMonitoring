@@ -46,14 +46,25 @@ public sealed class LinuxRtnetlinkObserver : INetworkChangeObserver
                 (ProtocolType)NetlinkConstants.NETLINK_ROUTE);
 
             // Subscribe to rtnetlink multicast groups
-            SubscribeGroup(NetlinkConstants.RTNLGRP_LINK);
-            SubscribeGroup(NetlinkConstants.RTNLGRP_IPV4_IFADDR);
-            SubscribeGroup(NetlinkConstants.RTNLGRP_IPV4_ROUTE);
-            SubscribeGroup(NetlinkConstants.RTNLGRP_IPV6_IFADDR);
-            SubscribeGroup(NetlinkConstants.RTNLGRP_IPV6_ROUTE);
+            var okLink = SubscribeGroup(NetlinkConstants.RTNLGRP_LINK);
+            var okV4Addr = SubscribeGroup(NetlinkConstants.RTNLGRP_IPV4_IFADDR);
+            var okV4Route = SubscribeGroup(NetlinkConstants.RTNLGRP_IPV4_ROUTE);
+            var okV6Addr = SubscribeGroup(NetlinkConstants.RTNLGRP_IPV6_IFADDR);
+            var okV6Route = SubscribeGroup(NetlinkConstants.RTNLGRP_IPV6_ROUTE);
 
-            _isLive = true;
-            _listenTask = Task.Run(() => ListenLoopAsync(_cts.Token), CancellationToken.None);
+            // Invariant 248: NETLINK_SUBSCRIPTION_FAILURE_NEVER_SYNTHESIZES_PATH_HELD.
+            // Observer is ONLY Live if critical route/link/address memberships actually succeeded.
+            if (okLink && okV4Route && okV4Addr)
+            {
+                _isLive = true;
+                _listenTask = Task.Run(() => ListenLoopAsync(_cts.Token), CancellationToken.None);
+            }
+            else
+            {
+                _isLive = false;
+                _socket.Dispose();
+                _socket = null;
+            }
         }
         catch
         {
@@ -64,9 +75,9 @@ public sealed class LinuxRtnetlinkObserver : INetworkChangeObserver
         }
     }
 
-    private void SubscribeGroup(int group)
+    private bool SubscribeGroup(int group)
     {
-        if (_socket is null) return;
+        if (_socket is null) return false;
         try
         {
             var optVal = BitConverter.GetBytes(group);
@@ -74,10 +85,12 @@ public sealed class LinuxRtnetlinkObserver : INetworkChangeObserver
                 (SocketOptionLevel)NetlinkConstants.SOL_NETLINK,
                 (SocketOptionName)NetlinkConstants.NETLINK_ADD_MEMBERSHIP,
                 optVal);
+            return true;
         }
         catch
         {
-            // If individual group subscription is denied, the observer degrades safely
+            // If individual group subscription is denied, return false
+            return false;
         }
     }
 
@@ -100,7 +113,8 @@ public sealed class LinuxRtnetlinkObserver : INetworkChangeObserver
             }
             catch
             {
-                // Unreliable stream or socket closed
+                // Unreliable stream or socket closed: immediately drop Live status (Invariant 248)
+                _isLive = false;
                 break;
             }
         }
@@ -123,18 +137,30 @@ public sealed class LinuxRtnetlinkObserver : INetworkChangeObserver
                 or NetlinkConstants.RTM_NEWADDR or NetlinkConstants.RTM_DELADDR
                 or NetlinkConstants.RTM_NEWROUTE or NetlinkConstants.RTM_DELROUTE)
             {
-                RecordChangeEvent(msgType, nowTicks);
+                byte family = 0;
+                int ifindex = 0;
+
+                if (offset + 20 <= data.Length)
+                {
+                    family = data[offset + 16];
+                }
+                if (offset + 24 <= data.Length && msgType is NetlinkConstants.RTM_NEWLINK or NetlinkConstants.RTM_DELLINK or NetlinkConstants.RTM_NEWADDR or NetlinkConstants.RTM_DELADDR)
+                {
+                    ifindex = BitConverter.ToInt32(data.Slice(offset + 20, 4));
+                }
+
+                RecordChangeEvent(msgType, nowTicks, family, ifindex);
             }
 
             offset += (int)((len + 3) & ~3U);
         }
     }
 
-    internal void RecordChangeEvent(ushort msgType, long timestampTicks)
+    internal void RecordChangeEvent(ushort msgType, long timestampTicks, byte family = 0, int ifindex = 0)
     {
         var newGen = Interlocked.Increment(ref _routeGeneration);
 
-        var record = new NetlinkEventRecord(timestampTicks, newGen, msgType);
+        var record = new NetlinkEventRecord(timestampTicks, newGen, msgType, family, ifindex);
         _eventLog.Enqueue(record);
 
         while (_eventLog.Count > MaxEventLogCapacity && _eventLog.TryDequeue(out _)) { }
@@ -199,5 +225,7 @@ public sealed class LinuxRtnetlinkObserver : INetworkChangeObserver
     internal readonly record struct NetlinkEventRecord(
         long TimestampTicks,
         ulong Generation,
-        ushort MsgType);
+        ushort MsgType,
+        byte Family = 0,
+        int IfIndex = 0);
 }

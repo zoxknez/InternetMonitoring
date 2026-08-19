@@ -91,13 +91,18 @@ public sealed class InProcessMonitorHost : IMonitorHost
 
             MeasurementMarker.Clear(_outputRoot);
 
+            var observer = _probeFactory.CreateObserver();
+            var routes = _probeFactory.CreateRouteResolver(observer);
+            var boundIcmp = _probeFactory.CreateBoundIcmp();
+
             await using var probeSource = new NetworkProbeSource(
                 ProbeOptions.Default,
                 inspector,
                 clock: null,
-                _probeFactory.CreateRouteResolver(),
-                _probeFactory.CreateBoundIcmp(),
-                () => MeasurementMarker.IsHeld(_outputRoot));
+                routes,
+                boundIcmp,
+                () => MeasurementMarker.IsHeld(_outputRoot),
+                observer);
 
             var engine = new MonitorEngine(probeSource);
             _engine = engine;

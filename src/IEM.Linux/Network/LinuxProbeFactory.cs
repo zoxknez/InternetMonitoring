@@ -18,7 +18,15 @@ public sealed class LinuxProbeFactory : IPlatformProbeFactory
         return ValueTask.FromResult<IPlatformLinkInspectionScope>(new BasicLinkInspectionScope(inspector));
     }
 
-    public IRouteResolver CreateRouteResolver() => new LinuxRouteResolver();
+    public IRouteResolver CreateRouteResolver() =>
+        CreateRouteResolver(NullNetworkChangeObserver.Instance);
+
+    public IRouteResolver CreateRouteResolver(INetworkChangeObserver observer)
+    {
+        // Trigger runtime capability preflight on startup / session initiation
+        Preflight.LinuxNetworkCapabilityPreflight.GetOrEvaluate();
+        return new LinuxRouteResolver(observer: observer);
+    }
 
     public IBoundIcmp CreateBoundIcmp() => LinuxBoundIcmp.Instance;
 

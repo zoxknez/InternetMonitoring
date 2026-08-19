@@ -74,7 +74,8 @@ public sealed class NetworkProbeSource : IProbeSource, IAsyncDisposable
         IClock? clock = null,
         IRouteResolver? routes = null,
         IBoundIcmp? boundIcmp = null,
-        Func<bool>? selfTestInProgress = null)
+        Func<bool>? selfTestInProgress = null,
+        INetworkChangeObserver? observer = null)
     {
         _selfTestInProgress = selfTestInProgress;
 
@@ -90,7 +91,7 @@ public sealed class NetworkProbeSource : IProbeSource, IAsyncDisposable
         _activity = new LinkActivityMonitor(_clock);
 
         _scheduler = new ProbeScheduler(
-            _store, _options, _clock, () => _lastLink, httpClient: null, routes, boundIcmp);
+            _store, _options, _clock, () => _lastLink, httpClient: null, routes, boundIcmp, observer);
 
         _scheduler.Start();
 

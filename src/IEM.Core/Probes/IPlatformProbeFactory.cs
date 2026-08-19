@@ -17,6 +17,7 @@ public interface IPlatformProbeFactory
 {
     ValueTask<IPlatformLinkInspectionScope> CreateLinkInspectionAsync(string? interfaceName = null);
     IRouteResolver CreateRouteResolver();
+    IRouteResolver CreateRouteResolver(INetworkChangeObserver observer) => CreateRouteResolver();
     IBoundIcmp CreateBoundIcmp();
     INetworkChangeObserver CreateObserver() => NullNetworkChangeObserver.Instance;
 }

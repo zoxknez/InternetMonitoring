@@ -129,13 +129,18 @@ public sealed class MonitorWorker(
 
         MeasurementMarker.Clear(outputRoot);
 
+        var observer = probeFactory.CreateObserver();
+        var routes = probeFactory.CreateRouteResolver(observer);
+        var boundIcmp = probeFactory.CreateBoundIcmp();
+
         await using var probeSource = new NetworkProbeSource(
             ProbeOptions.Default,
             linkInspection.Inspector,
             clock: null,
-            probeFactory.CreateRouteResolver(),
-            probeFactory.CreateBoundIcmp(),
-            () => MeasurementMarker.IsHeld(outputRoot));
+            routes,
+            boundIcmp,
+            () => MeasurementMarker.IsHeld(outputRoot),
+            observer);
 
         var engine = new MonitorEngine(probeSource, MonitorOptions.Default, resume: plan.Resume);
 
