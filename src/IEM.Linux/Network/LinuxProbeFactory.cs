@@ -1,11 +1,11 @@
-using System.Net;
 using IEM.Core.Hosting;
 using IEM.Core.Probes;
+using IEM.Linux.Network.Icmp;
 
 namespace IEM.Linux.Network;
 
 /// <summary>
-/// Platform factory supplying Linux network probes and FIB route resolvers.
+/// Platform factory supplying Linux network probes, FIB route resolvers, and unprivileged datagram ICMP echo senders.
 /// Invariants 211, 271-275.
 /// </summary>
 public sealed class LinuxProbeFactory : IPlatformProbeFactory
@@ -20,25 +20,11 @@ public sealed class LinuxProbeFactory : IPlatformProbeFactory
 
     public IRouteResolver CreateRouteResolver() => new LinuxRouteResolver();
 
-    public IBoundIcmp CreateBoundIcmp() => FallbackBoundIcmp.Instance;
+    public IBoundIcmp CreateBoundIcmp() => LinuxBoundIcmp.Instance;
 
     private sealed class BasicLinkInspectionScope(ILinkInspector inspector) : IPlatformLinkInspectionScope
     {
         public ILinkInspector Inspector { get; } = inspector;
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
-    }
-
-    private sealed class FallbackBoundIcmp : IBoundIcmp
-    {
-        public static readonly FallbackBoundIcmp Instance = new();
-
-        public Task<IcmpEcho?> SendAsync(
-            IPAddress destination,
-            IPAddress source,
-            TimeSpan timeout,
-            CancellationToken cancellationToken)
-        {
-            return Task.FromResult<IcmpEcho?>(null);
-        }
     }
 }
