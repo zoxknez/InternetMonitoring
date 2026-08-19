@@ -24,14 +24,16 @@ public sealed class LinuxTimeObservationProvider : ITimeObservationProvider
     public const long LinuxMonotonicFrequency = 1_000_000_000L; // Nanoseconds per second
 
     private readonly ILinuxNativeClock _clock;
+    private readonly Func<string, string>? _fileReader;
 
-    public LinuxTimeObservationProvider() : this(new LinuxNativeClock())
+    public LinuxTimeObservationProvider() : this(new LinuxNativeClock(), null)
     {
     }
 
-    internal LinuxTimeObservationProvider(ILinuxNativeClock clock)
+    internal LinuxTimeObservationProvider(ILinuxNativeClock clock, Func<string, string>? fileReader = null)
     {
         _clock = clock ?? throw new ArgumentNullException(nameof(clock));
+        _fileReader = fileReader;
     }
 
     public ClockSample CaptureClockSample(string bootInstanceId)
@@ -52,17 +54,31 @@ public sealed class LinuxTimeObservationProvider : ITimeObservationProvider
 
     public BootObservation CaptureBootObservation(string? knownBootInstanceId = null)
     {
-        if (string.IsNullOrWhiteSpace(knownBootInstanceId))
+        string bootInstanceId;
+        string bootIdentityBasis;
+
+        if (!string.IsNullOrWhiteSpace(knownBootInstanceId))
         {
-            throw new InvalidOperationException("Boot identity is required until Linux boot identity observation is implemented in phase 3.1-6D.");
+            bootInstanceId = knownBootInstanceId;
+            bootIdentityBasis = "KnownBootInstanceId";
+        }
+        else
+        {
+            if (!LinuxBootFacts.TryReadBootId(out var resolvedBootId, out var reasonCode, _fileReader) || resolvedBootId is null)
+            {
+                throw new InvalidOperationException($"Linux kernel boot_id is unavailable ({reasonCode}). Invariant 111: unavailable time source never synthesizes identity.");
+            }
+
+            bootInstanceId = resolvedBootId;
+            bootIdentityBasis = "LinuxKernelRandomBootId";
         }
 
         var (utc, monoNanos, activeElapsed, bootElapsed) = SampleClocks();
 
         return new BootObservation(
             ObservationId: $"bobs-{Guid.NewGuid():N}",
-            BootInstanceId: knownBootInstanceId,
-            BootIdentityBasis: "KnownBootInstanceId",
+            BootInstanceId: bootInstanceId,
+            BootIdentityBasis: bootIdentityBasis,
             CapturedUtc: utc,
             WallClockSource: "clock_gettime(CLOCK_REALTIME)",
             MonotonicTimestamp: monoNanos,

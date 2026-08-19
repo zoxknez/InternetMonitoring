@@ -85,7 +85,7 @@ public enum BootContinuityState
 /// 110. SERVICE_RESTART_NEVER_IMPLIES_HOST_REBOOT
 /// </summary>
 public sealed record BootIdentityAssessment(
-    string BootInstanceId,
+    string? BootInstanceId,
     BootContinuityState State,
     IReadOnlyList<string> ReasonCodes,
     IReadOnlyList<string> SourceEvidenceRefs,

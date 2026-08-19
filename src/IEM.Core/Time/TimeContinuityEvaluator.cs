@@ -141,14 +141,39 @@ public static class TimeContinuityEvaluator
     /// </summary>
     public static BootIdentityAssessment EvaluateBoot(
         BootObservation? previous,
-        BootObservation current,
+        BootObservation? current,
         TimeContinuityPolicy? policy = null)
     {
-        ArgumentNullException.ThrowIfNull(current);
         policy ??= TimeContinuityPolicy.Default;
         var interpretationRefId = $"tboot:v{policy.PolicyVersion}:{policy.PolicyHash}";
         var reasons = new List<string>();
-        var sourceRefs = new List<string> { $"obs:{current.ObservationId}" };
+        var sourceRefs = new List<string>();
+
+        if (current == null)
+        {
+            if (previous != null)
+            {
+                sourceRefs.Add($"prev_obs:{previous.ObservationId}");
+                reasons.Add($"Prethodni boot identitet '{previous.BootInstanceId}' je poznat, ali trenutni boot identitet nije dostupan.");
+                reasons.Add("PREVIOUS_BOOT_ID_KNOWN_CURRENT_UNAVAILABLE");
+            }
+            else
+            {
+                reasons.Add("Trenutni boot identitet nije dostupan.");
+            }
+
+            reasons.Add("BOOT_IDENTITY_AMBIGUOUS");
+            reasons.Add("BOOT_ID_UNAVAILABLE");
+
+            return new BootIdentityAssessment(
+                BootInstanceId: null,
+                State: BootContinuityState.Ambiguous,
+                ReasonCodes: reasons,
+                SourceEvidenceRefs: sourceRefs,
+                InterpretationRefId: interpretationRefId);
+        }
+
+        sourceRefs.Add($"obs:{current.ObservationId}");
 
         if (previous == null)
         {

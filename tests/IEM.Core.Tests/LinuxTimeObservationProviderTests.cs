@@ -69,15 +69,34 @@ public sealed class LinuxTimeObservationProviderTests
         Assert.Equal("3.1.0", bobs.ProviderVersion);
     }
 
+    [Fact]
+    public void CaptureBootObservation_reads_kernel_boot_id_when_known_id_is_omitted()
+    {
+        var fakeClock = new FakeLinuxNativeClock();
+        var provider = new LinuxTimeObservationProvider(
+            fakeClock,
+            path => path == LinuxBootFacts.BootIdPath
+                ? "2b6b0c26-8eb5-4e3f-b649-411a5ff6b142\n"
+                : throw new FileNotFoundException());
+
+        var bobs = provider.CaptureBootObservation();
+
+        Assert.Equal("linux-boot-2b6b0c26-8eb5-4e3f-b649-411a5ff6b142", bobs.BootInstanceId);
+        Assert.Equal("LinuxKernelRandomBootId", bobs.BootIdentityBasis);
+    }
+
     [Theory]
     [InlineData(null)]
     [InlineData("")]
     [InlineData("   ")]
-    public void CaptureBootObservation_without_known_boot_id_throws_InvalidOperationException_in_6C(string? invalidId)
+    public void CaptureBootObservation_without_known_id_throws_when_boot_id_file_missing(string? invalidId)
     {
-        var provider = new LinuxTimeObservationProvider(new FakeLinuxNativeClock());
+        var provider = new LinuxTimeObservationProvider(
+            new FakeLinuxNativeClock(),
+            _ => throw new FileNotFoundException());
+
         var ex = Assert.Throws<InvalidOperationException>(() => provider.CaptureBootObservation(invalidId));
-        Assert.Contains("3.1-6D", ex.Message);
+        Assert.Contains("BOOT_ID_UNAVAILABLE", ex.Message);
     }
 
     [Fact]
