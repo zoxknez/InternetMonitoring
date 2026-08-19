@@ -21,6 +21,7 @@ artifacts/*
 
 # Zapisi i privremeni fajlovi
 *.log
+!tests/**/Fixtures/**/*.log
 *.tmp
 
 # Snimljene sesije, ako se slučajno naprave u kopiji repozitorijuma. Sadrže imena vaših mreža
