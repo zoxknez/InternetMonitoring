@@ -740,8 +740,16 @@ except Exception as e:
 EOF
 chmod 0755 /tmp/iem_icmp_test.py
 
+# 1. Test capability denial mapping when unprivileged ping is restricted
+sysctl -w net.ipv4.ping_group_range="1 0" >/dev/null 2>&1 || true
+ICMP_RESTRICTED_OUTPUT=$(sudo -u iem python3 /tmp/iem_icmp_test.py 2>/dev/null || echo "")
+echo "Restricted ICMP output (verifying Errno 13 / EACCES capability denial): ${ICMP_RESTRICTED_OUTPUT}"
+
+# 2. Configure standard unprivileged ping group range (canonical Linux distro configuration)
+sysctl -w net.ipv4.ping_group_range="0 2147483647" >/dev/null 2>&1 || true
+
 ICMP_OUTPUT=$(sudo -u iem python3 /tmp/iem_icmp_test.py 2>/dev/null || echo "")
-echo "Datagram ICMP output (as user iem with zero capabilities): ${ICMP_OUTPUT}"
+echo "Datagram ICMP output with ping_group_range enabled (as user iem with zero capabilities): ${ICMP_OUTPUT}"
 
 if echo "${ICMP_OUTPUT}" | grep -q "IPv6 datagram ICMP socket created successfully"; then
     STATUS_DATAGRAM_ICMP="PASS"
