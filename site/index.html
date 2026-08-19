@@ -776,52 +776,71 @@
   }
   .release-hero-footer {
     display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 16px;
-    background: rgba(0, 0, 0, 0.4);
+    flex-direction: column;
+    gap: 8px;
+    background: rgba(0, 0, 0, 0.45);
     border-radius: 8px;
-    padding: 10px 16px;
+    padding: 12px 16px;
     border: 1px solid rgba(255, 255, 255, 0.08);
     width: 100%;
     box-sizing: border-box;
   }
-  .release-hero-footer-cmd {
-    font-size: 0.82rem;
-    color: var(--muted);
+  .release-hero-footer-top {
     display: flex;
     align-items: center;
-    gap: 8px;
+    justify-content: space-between;
     flex-wrap: wrap;
+    gap: 8px;
+    width: 100%;
   }
-  .release-hero-footer-cmd code {
-    color: #38BDF8;
-    font-family: var(--font-mono);
-    font-size: 0.8rem;
-    background: rgba(15, 23, 42, 0.9);
-    padding: 3px 8px;
-    border-radius: 4px;
-    border: 1px solid rgba(56, 189, 248, 0.3);
+  .release-hero-footer-lbl {
+    font-size: 0.82rem;
+    color: var(--muted);
+    font-weight: 500;
     white-space: nowrap;
   }
+  .release-hero-footer-code {
+    color: #38BDF8;
+    font-family: var(--font-mono);
+    font-size: 0.78rem;
+    background: rgba(15, 23, 42, 0.95);
+    padding: 4px 8px;
+    border-radius: 5px;
+    border: 1px solid rgba(56, 189, 248, 0.3);
+    word-break: break-all;
+    max-width: 100%;
+  }
+  .release-hero-footer-bottom {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding-top: 6px;
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+    width: 100%;
+  }
+  .release-hero-footer-note {
+    font-size: 0.78rem;
+    color: var(--faint);
+  }
   .release-hero-footer-link {
-    font-size: 0.84rem;
+    font-size: 0.82rem;
     color: #60A5FA;
     text-decoration: none;
     font-weight: 600;
     white-space: nowrap;
     margin-left: auto;
-    flex-shrink: 0;
   }
   .release-hero-footer-link:hover {
     color: #93C5FD;
     text-decoration: underline;
   }
   @media (max-width: 680px) {
-    .release-hero-footer {
+    .release-hero-footer-bottom {
       flex-direction: column;
       align-items: flex-start;
-      gap: 10px;
+      gap: 6px;
     }
     .release-hero-footer-link {
       margin-left: 0;
@@ -1138,13 +1157,16 @@
         </div>
 
         <div class="release-hero-footer">
-          <div class="release-hero-footer-cmd">
-            <span>Provera heša (<span class="mono">SHA-256</span>):</span>
-            <code>Get-FileHash .\InternetEvidenceMonitor-3.0.0-rc.1-win-x64.exe -Algorithm SHA256</code>
+          <div class="release-hero-footer-top">
+            <span class="release-hero-footer-lbl">Provera heša (<span class="mono">SHA-256</span>):</span>
+            <code class="release-hero-footer-code">Get-FileHash .\InternetEvidenceMonitor-3.0.0-rc.1-win-x64.exe -Algorithm SHA256</code>
           </div>
-          <a class="release-hero-footer-link" href="https://github.com/zoxknez/InternetMonitoring/releases/tag/v3.0.0-rc.1" target="_blank" rel="noopener">
-            Pogledaj kompletne release beleške na GitHub-u &rarr;
-          </a>
+          <div class="release-hero-footer-bottom">
+            <span class="release-hero-footer-note">⚡ Samostalni paket (self-contained) · 100% lokalno bez telemetrije</span>
+            <a class="release-hero-footer-link" href="https://github.com/zoxknez/InternetMonitoring/releases/tag/v3.0.0-rc.1" target="_blank" rel="noopener">
+              Sve release beleške na GitHub-u &rarr;
+            </a>
+          </div>
         </div>
       </div>
 
