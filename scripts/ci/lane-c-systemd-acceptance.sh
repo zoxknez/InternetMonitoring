@@ -568,12 +568,11 @@ else
 fi
 
 # Test 4: User B attempts to Stop User A's session with spoofed payload -> Denied (403 / ACCESS_DENIED)
-USER_B_SPOOF_STOP=0
-USER_B_RES=$(sudo -u user-b python3 /tmp/iem_ipc_client.py StopSession "lane-c-ses-1" '{"uid":0,"role":"role:admin"}' 2>/dev/null || USER_B_SPOOF_STOP=$?)
-if [ "${USER_B_SPOOF_STOP}" -eq 1 ] && echo "${USER_B_RES}" | grep -q '"errorCode": *"ACCESS_DENIED"'; then
+USER_B_RES=$(sudo -u user-b python3 /tmp/iem_ipc_client.py StopSession "lane-c-ses-1" '{"uid":0,"role":"role:admin"}' 2>/dev/null || true)
+if echo "${USER_B_RES}" | grep -q '"errorCode": *"ACCESS_DENIED"'; then
     echo "User B spoof stop denial: PASS"
 else
-    echo "ERROR: User B spoof stop should have been ACCESS_DENIED, got: (code=${USER_B_SPOOF_STOP}) ${USER_B_RES}"
+    echo "ERROR: User B spoof stop should have been ACCESS_DENIED, got: ${USER_B_RES}"
     IPC_TEST_OK=false
 fi
 
