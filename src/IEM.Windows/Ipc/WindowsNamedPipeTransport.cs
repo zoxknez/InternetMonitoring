@@ -106,6 +106,40 @@ public sealed class WindowsNamedPipeTransport : IIpcTransport
 
     private static PlatformPeerIdentity DerivePeerIdentity(NamedPipeServerStream pipe)
     {
+        PlatformPeerIdentity? resolvedIdentity = null;
+
+        try
+        {
+            pipe.RunAsClient(() =>
+            {
+                var identity = WindowsIdentity.GetCurrent();
+                if (identity.User is not null)
+                {
+                    var sid = identity.User.Value;
+                    var principal = new WindowsPrincipal(identity);
+                    var isAdmin = principal.IsInRole(WindowsBuiltInRole.Administrator) || identity.IsSystem;
+
+                    var claims = new List<string> { PlatformPeerIdentity.RoleOperator };
+                    if (isAdmin)
+                    {
+                        claims.Add(PlatformPeerIdentity.RoleAdmin);
+                    }
+
+                    resolvedIdentity = PlatformPeerIdentity.CreateWindows(sid, processId: null, claims);
+                }
+            });
+        }
+        catch
+        {
+            // Impersonation query failed
+        }
+
+        if (resolvedIdentity is not null)
+        {
+            return resolvedIdentity;
+        }
+
+        // Secondary fallback using GetImpersonationUserName if RunAsClient was restricted
         try
         {
             var userName = pipe.GetImpersonationUserName();
@@ -113,14 +147,15 @@ public sealed class WindowsNamedPipeTransport : IIpcTransport
             {
                 var account = new NTAccount(userName);
                 var sid = account.Translate(typeof(SecurityIdentifier)).Value;
-                return PlatformPeerIdentity.CreateWindows(sid);
+                var claims = new List<string> { PlatformPeerIdentity.RoleOperator };
+                return PlatformPeerIdentity.CreateWindows(sid, processId: null, claims);
             }
         }
         catch
         {
-            // Fallback if impersonation query is not available in test harness
         }
 
-        return PlatformPeerIdentity.CreateWindows("S-1-5-21-LOCAL-USER");
+        // Invariant 90 & M6: Never fabricate a fake SID. Fail closed on unknown peer.
+        return PlatformPeerIdentity.Unknown;
     }
 }

@@ -22,11 +22,34 @@ public sealed record PlatformPeerIdentity(
     DateTimeOffset CapturedAtUtc,
     string PlatformProvenance)
 {
+    public const string RoleAdmin = "role:admin";
+    public const string RoleOperator = "role:operator";
+
+    public string PrincipalRef => Scheme switch
+    {
+        PeerIdentityScheme.UnixUid => $"unix:{PrincipalId}",
+        PeerIdentityScheme.WindowsSid => $"windows:{PrincipalId}",
+        _ => $"unknown:{PrincipalId}"
+    };
+
+    public bool HasRole(string role) =>
+        SupplementaryClaims.Contains(role, StringComparer.Ordinal);
+
+    public bool IsAdmin => HasRole(RoleAdmin);
+    public bool IsOperator => HasRole(RoleOperator);
+
     public static PlatformPeerIdentity CreateWindows(string sid, int? processId = null, IEnumerable<string>? claims = null) =>
         new(PeerIdentityScheme.WindowsSid, sid, processId, claims?.ToList() ?? new List<string>(), DateTimeOffset.UtcNow, "WindowsNamedPipe");
 
-    public static PlatformPeerIdentity CreateUnix(int uid, int? gid = null, int? pid = null) =>
-        new(PeerIdentityScheme.UnixUid, uid.ToString(), pid, gid.HasValue ? new[] { $"gid:{gid}" } : Array.Empty<string>(), DateTimeOffset.UtcNow, "UnixDomainSocket");
+    public static PlatformPeerIdentity CreateUnix(int uid, int? gid = null, int? pid = null, IEnumerable<string>? claims = null)
+    {
+        var claimList = claims?.ToList() ?? new List<string>();
+        if (gid.HasValue && !claimList.Contains($"gid:{gid.Value}"))
+        {
+            claimList.Add($"gid:{gid.Value}");
+        }
+        return new(PeerIdentityScheme.UnixUid, uid.ToString(), pid, claimList, DateTimeOffset.UtcNow, "UnixDomainSocket");
+    }
 
     public static PlatformPeerIdentity Unknown =>
         new(PeerIdentityScheme.Generic, "unknown", null, Array.Empty<string>(), DateTimeOffset.UtcNow, "Unknown");

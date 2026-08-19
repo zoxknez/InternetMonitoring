@@ -1,7 +1,9 @@
 using System.Globalization;
 using IEM.Core.Hosting;
+using IEM.Core.Ipc;
 using IEM.Core.Presentation;
 using IEM.Core.Probes;
+using IEM.Service.Linux.Ipc;
 using IEM.Service.Linux.Lifecycle;
 using IEM.Service.Linux.Storage;
 using IEM.Service.Runtime;
@@ -33,6 +35,15 @@ builder.Services.AddSingleton<MonitorWorker>();
 builder.Services.AddHostedService(provider => provider.GetRequiredService<MonitorWorker>());
 builder.Services.AddSingleton<SpeedWorker>();
 builder.Services.AddHostedService(provider => provider.GetRequiredService<SpeedWorker>());
+
+// Unix IPC Transport & Command Dispatcher (§11 / Phase 3.1-3)
+builder.Services.AddSingleton<ISessionOwnerResolver, InMemorySessionOwnerResolver>();
+builder.Services.AddSingleton<IIpcTransport, LinuxUnixDomainSocketTransport>();
+builder.Services.AddSingleton<IpcCommandDispatcher>(sp => LinuxIpcDispatcherFactory.Create(
+    sp.GetRequiredService<MonitorWorker>(),
+    sp.GetRequiredService<SpeedWorker>(),
+    sp.GetRequiredService<ISessionOwnerResolver>()));
+builder.Services.AddHostedService<LinuxIpcHostedService>();
 
 var host = builder.Build();
 

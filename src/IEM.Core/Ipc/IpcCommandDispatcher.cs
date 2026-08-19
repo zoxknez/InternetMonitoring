@@ -17,6 +17,7 @@ public sealed class IpcCommandDispatcher
 {
     private readonly string _serviceInstanceId;
     private readonly IpcAuthorizationPolicy _authPolicy;
+    private readonly ISessionOwnerResolver _sessionOwnerResolver;
     private readonly ConcurrentDictionary<string, CommandHandlerDelegate> _handlers = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentDictionary<string, IpcResponseEnvelope> _idempotencyCache = new();
     private readonly List<ControlCommandObserved> _auditLog = new();
@@ -44,14 +45,17 @@ public sealed class IpcCommandDispatcher
 
     public IpcCommandDispatcher(
         string serviceInstanceId,
-        IpcAuthorizationPolicy? authPolicy = null)
+        IpcAuthorizationPolicy? authPolicy = null,
+        ISessionOwnerResolver? sessionOwnerResolver = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(serviceInstanceId);
         _serviceInstanceId = serviceInstanceId;
         _authPolicy = authPolicy ?? IpcAuthorizationPolicy.Default;
+        _sessionOwnerResolver = sessionOwnerResolver ?? new InMemorySessionOwnerResolver();
     }
 
     public string ServiceInstanceId => _serviceInstanceId;
+    public ISessionOwnerResolver SessionOwnerResolver => _sessionOwnerResolver;
     public IReadOnlyList<ControlCommandObserved> AuditLog
     {
         get
@@ -114,6 +118,11 @@ public sealed class IpcCommandDispatcher
         }
     }
 
+    public Task ProcessConnectionAsync(
+        IpcConnectionContext context,
+        CancellationToken cancellationToken) =>
+        ProcessConnectionAsync(context, sessionOwnerPrincipalRef: null, cancellationToken);
+
     public async Task<IpcResponseEnvelope> DispatchFrameAsync(
         byte[] frameBytes,
         PlatformPeerIdentity peerIdentity,
@@ -175,8 +184,13 @@ public sealed class IpcCommandDispatcher
             return cachedResponse;
         }
 
-        // 4. Authorization check
-        var authDecision = _authPolicy.Evaluate(request, peerIdentity, sessionOwnerPrincipalRef);
+        // 4. Dynamic session owner resolution (M3): Resolve immediately prior to evaluation
+        var effectiveOwner = !string.IsNullOrWhiteSpace(sessionOwnerPrincipalRef)
+            ? sessionOwnerPrincipalRef
+            : _sessionOwnerResolver.GetSessionOwner(request.SessionId);
+
+        // 5. Authorization check
+        var authDecision = _authPolicy.Evaluate(request, peerIdentity, effectiveOwner);
         if (!authDecision.IsAllowed)
         {
             var authStatus = authDecision.Outcome == AuthorizationOutcome.Unknown
@@ -194,7 +208,7 @@ public sealed class IpcCommandDispatcher
             return deniedResponse;
         }
 
-        // 5. Lookup handler
+        // 6. Lookup handler
         if (!_handlers.TryGetValue(request.CommandName, out var handler))
         {
             return IpcResponseEnvelope.CreateError(
@@ -205,7 +219,7 @@ public sealed class IpcCommandDispatcher
                 errorMessage: $"Handler za komandu '{request.CommandName}' nije registrovan.");
         }
 
-        // 6. Execute handler safely
+        // 7. Execute handler safely
         try
         {
             // Invariant 96: Non-critical operations can respect cancellation, but committed ones complete
@@ -215,6 +229,16 @@ public sealed class IpcCommandDispatcher
             {
                 _idempotencyCache[request.RequestId] = response;
                 RecordAuditIfStateChanging(request, peerIdentity, receivedAtUtc, authDecision, response.Status.ToString(), response.ErrorCode);
+
+                // If StartSession succeeded, record the caller's PrincipalRef as authoritative immutable session owner
+                if (request.CommandName == "StartSession" && response.Status == IpcResponseStatus.Success)
+                {
+                    var sessionId = !string.IsNullOrWhiteSpace(request.SessionId)
+                        ? request.SessionId
+                        : Guid.NewGuid().ToString("N");
+
+                    _sessionOwnerResolver.RecordSessionOwner(sessionId, peerIdentity.PrincipalRef);
+                }
             }
 
             return response;
@@ -252,7 +276,7 @@ public sealed class IpcCommandDispatcher
             RequestId: request.RequestId,
             CommandName: request.CommandName,
             SessionId: request.SessionId,
-            PeerIdentityRef: $"{peerIdentity.Scheme}:{peerIdentity.PrincipalId}",
+            PeerIdentityRef: peerIdentity.PrincipalRef,
             ReceivedAtUtc: receivedAtUtc,
             CompletedAtUtc: completedAtUtc,
             AuthorizationDecisionRef: authDecision.PolicyRef,

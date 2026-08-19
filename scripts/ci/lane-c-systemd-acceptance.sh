@@ -45,6 +45,7 @@ STATUS_RESTART_LIFECYCLE="NOT_TESTED"
 STATUS_PROTECT_SYSTEM="NOT_TESTED"
 STATUS_FAILURE_RESTART="NOT_TESTED"
 STATUS_FATAL_EXIT_CODE="NOT_TESTED"
+STATUS_UNIX_IPC_IDENTITY="NOT_TESTED"
 STATUS_START_WITHOUT_NETWORK="NOT_TESTED"
 
 # Environment metadata
@@ -130,6 +131,7 @@ write_evidence_reports() {
     "stopLifecycle": "${STATUS_STOP_LIFECYCLE}",
     "restartLifecycle": "${STATUS_RESTART_LIFECYCLE}",
     "protectSystemStrict": "${STATUS_PROTECT_SYSTEM}",
+    "unixIpcIdentity": "${STATUS_UNIX_IPC_IDENTITY}",
     "failureRestart": "${STATUS_FAILURE_RESTART}",
     "fatalExitCode3": "${STATUS_FATAL_EXIT_CODE}",
     "startWithoutNetwork": "${STATUS_START_WITHOUT_NETWORK}"
@@ -161,7 +163,7 @@ EOF
 
     # Write Markdown summary report
     cat << EOF > "${REPORT_MD}"
-# 3.1-2 · Linux Host & systemd Lane C Live Acceptance Report
+# 3.1-3 · Linux Host, systemd & Unix IPC Lane C Live Acceptance Report
 
 - **Timestamp**: $(date -u +"%Y-%m-%d %H:%M:%S UTC")
 - **Commit**: \`${COMMIT_SHA}\`
@@ -192,6 +194,7 @@ EOF
 | Capability Bounding | **${STATUS_CAPABILITIES}** |
 | StateDirectory Persistence | **${STATUS_STATE_DIRECTORY}** |
 | RuntimeDirectory Ephemeral Lifecycle | **${STATUS_RUNTIME_DIRECTORY}** |
+| Unix IPC control.sock 5-Layer Identity | **${STATUS_UNIX_IPC_IDENTITY}** |
 | STOP Persistence & Cleanup | **${STATUS_STOP_LIFECYCLE}** |
 | RESTART Persistence & Restore | **${STATUS_RESTART_LIFECYCLE}** |
 | ProtectSystem=strict Mount Namespace | **${STATUS_PROTECT_SYSTEM}** |
@@ -466,12 +469,139 @@ fi
 RUNTIME_STAT=$(stat -c "%U:%G %a" "${RUNTIME_DIR}")
 echo "RuntimeDirectory stat: ${RUNTIME_STAT}"
 
-if [ "${RUNTIME_STAT}" = "iem:iem-users 750" ] && [ ! -e "${RUNTIME_DIR}/control.sock" ]; then
+SOCK_STAT=$(stat -c "%U:%G %a" "${RUNTIME_DIR}/control.sock" 2>/dev/null || echo "")
+echo "control.sock stat: ${SOCK_STAT}"
+
+if [ "${RUNTIME_STAT}" = "iem:iem-users 750" ] && [ "${SOCK_STAT}" = "iem:iem-users 660" ]; then
     STATUS_RUNTIME_DIRECTORY="PASS"
-    record_pass "RuntimeDirectory is 'iem:iem-users 750' and control.sock is absent"
+    record_pass "RuntimeDirectory is 'iem:iem-users 750' and control.sock is 'iem:iem-users 660'"
 else
     STATUS_RUNTIME_DIRECTORY="FAIL"
-    record_fail "RuntimeDirectory check failed (Stat: ${RUNTIME_STAT})"
+    record_fail "RuntimeDirectory/control.sock check failed (RuntimeStat: ${RUNTIME_STAT}, SockStat: ${SOCK_STAT})"
+    exit 1
+fi
+
+echo "=============================================================================="
+echo "9.5 UNIX DOMAIN SOCKET CONTROL.SOCK & 5-LAYER IDENTITY ACCEPTANCE"
+echo "=============================================================================="
+CURRENT_STAGE="STAGE_9_5_UNIX_IPC_IDENTITY"
+
+# Provision multi-user test accounts
+getent group iem-admin >/dev/null 2>&1 || groupadd -r iem-admin
+getent passwd user-a >/dev/null 2>&1 || useradd -m -g iem-users -s /bin/bash user-a
+getent passwd user-b >/dev/null 2>&1 || useradd -m -g iem-users -s /bin/bash user-b
+getent passwd outsider >/dev/null 2>&1 || useradd -m -s /bin/bash outsider
+getent passwd admin-user >/dev/null 2>&1 || useradd -m -g iem-users -G iem-admin -s /bin/bash admin-user
+
+IPC_TEST_OK=true
+
+# Helper python script to invoke IPC command
+cat << 'EOF' > /tmp/iem_ipc_client.py
+import socket, struct, json, sys
+
+command = sys.argv[1]
+session_id = sys.argv[2] if len(sys.argv) > 2 else ""
+payload = sys.argv[3] if len(sys.argv) > 3 else "{}"
+
+s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+try:
+    s.connect("/run/internet-evidence-monitor/control.sock")
+    req = {
+        "protocolVersion": 1,
+        "requestId": "req-" + command,
+        "commandName": command,
+        "sessionId": session_id,
+        "payload": payload
+    }
+    body = json.dumps(req).encode('utf-8')
+    s.sendall(struct.pack('>I', len(body)) + body)
+    
+    header = s.recv(4)
+    if len(header) < 4:
+        print("ERROR: Incomplete header", file=sys.stderr)
+        sys.exit(2)
+    resp_len = struct.unpack('>I', header)[0]
+    raw_resp = b""
+    while len(raw_resp) < resp_len:
+        chunk = s.recv(min(4096, resp_len - len(raw_resp)))
+        if not chunk: break
+        raw_resp += chunk
+    resp = json.loads(raw_resp.decode('utf-8'))
+    print(json.dumps(resp))
+    sys.exit(0 if resp.get("status") == "Success" else (1 if resp.get("errorCode") == "ACCESS_DENIED" else 3))
+except PermissionError:
+    sys.exit(13)
+except Exception as e:
+    print(f"EXCEPTION: {e}", file=sys.stderr)
+    sys.exit(99)
+finally:
+    s.close()
+EOF
+chmod 0755 /tmp/iem_ipc_client.py
+
+# Test 1: Outsider cannot connect to control.sock (Permission denied / 13)
+OUTSIDER_RES=0
+sudo -u outsider python3 /tmp/iem_ipc_client.py GetServiceStatus >/dev/null 2>&1 || OUTSIDER_RES=$?
+if [ "${OUTSIDER_RES}" -eq 13 ]; then
+    echo "Outsider permission denial: PASS"
+else
+    echo "ERROR: Outsider expected permission denied (13), got ${OUTSIDER_RES}"
+    IPC_TEST_OK=false
+fi
+
+# Test 2: User A connects and queries GetServiceStatus -> Success
+USER_A_STATUS=$(sudo -u user-a python3 /tmp/iem_ipc_client.py GetServiceStatus 2>/dev/null || echo "{}")
+if echo "${USER_A_STATUS}" | grep -q '"status":"Success"'; then
+    echo "User A GetServiceStatus: PASS"
+else
+    echo "ERROR: User A GetServiceStatus failed: ${USER_A_STATUS}"
+    IPC_TEST_OK=false
+fi
+
+# Test 3: User A starts session "lane-c-ses-1" -> Success, owner is user-a
+USER_A_START=$(sudo -u user-a python3 /tmp/iem_ipc_client.py StartSession "lane-c-ses-1" 2>/dev/null || echo "{}")
+if echo "${USER_A_START}" | grep -q '"status":"Success"'; then
+    echo "User A StartSession: PASS"
+else
+    echo "ERROR: User A StartSession failed: ${USER_A_START}"
+    IPC_TEST_OK=false
+fi
+
+# Test 4: User B attempts to Stop User A's session with spoofed payload -> Denied (403 / ACCESS_DENIED)
+USER_B_SPOOF_STOP=0
+USER_B_RES=$(sudo -u user-b python3 /tmp/iem_ipc_client.py StopSession "lane-c-ses-1" '{"uid":0,"role":"role:admin"}' 2>/dev/null || USER_B_SPOOF_STOP=$?)
+if echo "${USER_B_RES}" | grep -q '"errorCode":"ACCESS_DENIED"'; then
+    echo "User B spoof stop denial: PASS"
+else
+    echo "ERROR: User B spoof stop should have been ACCESS_DENIED, got: ${USER_B_RES}"
+    IPC_TEST_OK=false
+fi
+
+# Test 5: User A stops own session -> Success
+USER_A_STOP=$(sudo -u user-a python3 /tmp/iem_ipc_client.py StopSession "lane-c-ses-1" 2>/dev/null || echo "{}")
+if echo "${USER_A_STOP}" | grep -q '"status":"Success"'; then
+    echo "User A StopSession: PASS"
+else
+    echo "ERROR: User A StopSession failed: ${USER_A_STOP}"
+    IPC_TEST_OK=false
+fi
+
+# Test 6: Admin user stops session started by User A via admin override -> Success
+sudo -u user-a python3 /tmp/iem_ipc_client.py StartSession "lane-c-ses-2" >/dev/null 2>&1 || true
+ADMIN_STOP=$(sudo -u admin-user python3 /tmp/iem_ipc_client.py StopSession "lane-c-ses-2" 2>/dev/null || echo "{}")
+if echo "${ADMIN_STOP}" | grep -q '"status":"Success"'; then
+    echo "Admin override StopSession: PASS"
+else
+    echo "ERROR: Admin override StopSession failed: ${ADMIN_STOP}"
+    IPC_TEST_OK=false
+fi
+
+if [ "${IPC_TEST_OK}" = "true" ]; then
+    STATUS_UNIX_IPC_IDENTITY="PASS"
+    record_pass "Unix IPC control.sock 5-layer authorization, SO_PEERCRED provenance & spoof resistance verified"
+else
+    STATUS_UNIX_IPC_IDENTITY="FAIL"
+    record_fail "Unix IPC control.sock authorization matrix failed"
     exit 1
 fi
 

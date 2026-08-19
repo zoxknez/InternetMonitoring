@@ -23,22 +23,24 @@ public sealed record CommandAuthorizationDecision(
 }
 
 /// <summary>
-/// Platform-neutral authorization policy governing commands over IPC.
+/// Platform-neutral authorization policy governing commands over IPC (Version 2).
 /// Invariants:
 /// 84. PLATFORM_PEER_IDENTITY_IS_AUTHENTICATION_PROVENANCE_NOT_AUTHORIZATION
 /// 85. TRANSPORT_ACCESS_NEVER_IMPLIES_COMMAND_AUTHORIZATION
 /// 90. UNKNOWN_CALLER_AUTHORIZATION_FAILS_CLOSED
 /// 91. AUTHORIZED_COMMAND_NEVER_BYPASSES_SESSION_STATE_INVARIANTS
+/// 94. CALLER_IDENTITY_IS_DERIVED_FROM_TRANSPORT_NOT_CLIENT_PAYLOAD
+/// 95. PLATFORM_CREDENTIAL_FORMAT_NEVER_CHANGES_COMMAND_AUTHORIZATION_SEMANTICS
 /// </summary>
 public sealed class IpcAuthorizationPolicy
 {
-    public int PolicyVersion { get; init; } = 1;
+    public const int PolicyVersion = 2;
 
     public string PolicyHash => ComputeHash();
 
-    private string ComputeHash()
+    private static string ComputeHash()
     {
-        var descriptor = $"v={PolicyVersion};auth=ExplicitAllowlist";
+        const string descriptor = "v=2;matrix=StrictCanonicalRoles;roles=role:operator,role:admin;layer5=FailClosedMissingOwner;comparison=Ordinal";
         return Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(descriptor)));
     }
 
@@ -53,10 +55,12 @@ public sealed class IpcAuthorizationPolicy
         ArgumentNullException.ThrowIfNull(peerIdentity);
 
         var reasons = new List<string>();
-        var principalRef = $"{peerIdentity.Scheme}:{peerIdentity.PrincipalId}";
+        var principalRef = peerIdentity.PrincipalRef;
 
-        // 1. Invariant 90: UNKNOWN_CALLER_AUTHORIZATION_FAILS_CLOSED
-        if (peerIdentity.Scheme == PeerIdentityScheme.Generic || string.IsNullOrWhiteSpace(peerIdentity.PrincipalId) || peerIdentity.PrincipalId == "unknown")
+        // Layer 2 / Invariant 90: UNKNOWN_CALLER_AUTHORIZATION_FAILS_CLOSED
+        if (peerIdentity.Scheme == PeerIdentityScheme.Generic ||
+            string.IsNullOrWhiteSpace(peerIdentity.PrincipalId) ||
+            peerIdentity.PrincipalId == "unknown")
         {
             reasons.Add("Identitet pozivaoca nije utvrđen (Unknown peer) -> Fail closed.");
             return new CommandAuthorizationDecision(
@@ -64,35 +68,62 @@ public sealed class IpcAuthorizationPolicy
                 AuthorizationOutcome.Unknown, reasons, PolicyHash);
         }
 
-        // 2. Read-only commands
+        // Layer 3: Canonical role requirement (Filesystem admission != command allow)
+        var isOperator = peerIdentity.IsOperator;
+        var isAdmin = peerIdentity.IsAdmin;
+
+        if (!isOperator && !isAdmin)
+        {
+            reasons.Add($"Autentifikovani pozivalac '{principalRef}' ne poseduje potrebne kanonske role (role:operator / role:admin) -> Odbijeno.");
+            return new CommandAuthorizationDecision(
+                request.RequestId, principalRef, request.CommandName, request.SessionId,
+                AuthorizationOutcome.Denied, reasons, PolicyHash);
+        }
+
+        // Layer 4: Read-only status inspection commands
         if (request.CommandName is "GetServiceStatus" or "GetActiveSession" or "GetSessionStatus")
         {
-            reasons.Add($"Autentifikovani korisnik '{principalRef}' ima pravo čitanja statusa.");
+            reasons.Add($"Korisnik '{principalRef}' sa ulogom {(isAdmin ? "role:admin" : "role:operator")} je autorizovan za čitanje statusa.");
             return new CommandAuthorizationDecision(
                 request.RequestId, principalRef, request.CommandName, request.SessionId,
                 AuthorizationOutcome.Allowed, reasons, PolicyHash);
         }
 
-        // 3. StartSession
+        // Layer 4: StartSession
         if (request.CommandName is "StartSession")
         {
-            reasons.Add($"Autentifikovani lokalni korisnik '{principalRef}' ima pravo pokretanja sesije.");
+            reasons.Add($"Korisnik '{principalRef}' sa ulogom {(isAdmin ? "role:admin" : "role:operator")} je autorizovan za pokretanje sesije.");
             return new CommandAuthorizationDecision(
                 request.RequestId, principalRef, request.CommandName, request.SessionId,
                 AuthorizationOutcome.Allowed, reasons, PolicyHash);
         }
 
-        // 4. Session-controlling commands: StopSession, FinalizeSession, RetryTimestamp, CreateExport
+        // Layer 5: Session mutation commands: StopSession, FinalizeSession, RetryTimestamp, CreateExport
         if (request.CommandName is "StopSession" or "FinalizeSession" or "RetryTimestamp" or "CreateExport")
         {
-            var isOwner = !string.IsNullOrEmpty(sessionOwnerPrincipalRef) &&
-                          string.Equals(sessionOwnerPrincipalRef, principalRef, StringComparison.OrdinalIgnoreCase);
-
-            var isAdmin = peerIdentity.SupplementaryClaims.Any(c => c.Contains("Admin", StringComparison.OrdinalIgnoreCase) || c.Contains("root", StringComparison.OrdinalIgnoreCase));
-
-            if (isOwner || isAdmin || string.IsNullOrEmpty(sessionOwnerPrincipalRef))
+            // Missing session owner must FAIL CLOSED
+            if (string.IsNullOrWhiteSpace(sessionOwnerPrincipalRef))
             {
-                reasons.Add(isOwner ? $"Vlasnik sesije '{principalRef}' je autorizovan." : $"Administrator '{principalRef}' je autorizovan.");
+                reasons.Add("Vlasnik sesije nije zabeležen ili nedostaje -> Odbijeno (Fail closed).");
+                return new CommandAuthorizationDecision(
+                    request.RequestId, principalRef, request.CommandName, request.SessionId,
+                    AuthorizationOutcome.Denied, reasons, PolicyHash);
+            }
+
+            // Session owner check (strict ordinal string comparison per roadmap)
+            var isOwner = string.Equals(sessionOwnerPrincipalRef, principalRef, StringComparison.Ordinal);
+
+            if (isOwner)
+            {
+                reasons.Add($"Vlasnik sesije '{principalRef}' je autorizovan za upravljanje sesijom.");
+                return new CommandAuthorizationDecision(
+                    request.RequestId, principalRef, request.CommandName, request.SessionId,
+                    AuthorizationOutcome.Allowed, reasons, PolicyHash);
+            }
+
+            if (isAdmin)
+            {
+                reasons.Add($"Administrator '{principalRef}' (role:admin) je autorizovan putem administratorskog prekoračenja.");
                 return new CommandAuthorizationDecision(
                     request.RequestId, principalRef, request.CommandName, request.SessionId,
                     AuthorizationOutcome.Allowed, reasons, PolicyHash);
@@ -104,8 +135,8 @@ public sealed class IpcAuthorizationPolicy
                 AuthorizationOutcome.Denied, reasons, PolicyHash);
         }
 
-        // 5. Invariant 91: Modification of sealed evidence or arbitrary execution does not exist
-        reasons.Add($"Komanda '{request.CommandName}' nije dozvoljena ili podržana u autorizacionoj matrici.");
+        // Layer 4 catch-all: Unknown command denied
+        reasons.Add($"Komanda '{request.CommandName}' nije dozvoljena u autorizacionoj matrici.");
         return new CommandAuthorizationDecision(
             request.RequestId, principalRef, request.CommandName, request.SessionId,
             AuthorizationOutcome.Denied, reasons, PolicyHash);
