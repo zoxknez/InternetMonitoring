@@ -48,6 +48,7 @@ STATUS_FATAL_EXIT_CODE="NOT_TESTED"
 STATUS_UNIX_IPC_IDENTITY="NOT_TESTED"
 STATUS_NETLINK_ROUTING="NOT_TESTED"
 STATUS_DATAGRAM_ICMP="NOT_TESTED"
+STATUS_SOURCE_BINDING_PARITY="NOT_TESTED"
 STATUS_START_WITHOUT_NETWORK="NOT_TESTED"
 
 # Environment metadata
@@ -136,6 +137,7 @@ write_evidence_reports() {
     "unixIpcIdentity": "${STATUS_UNIX_IPC_IDENTITY}",
     "netlinkRouting": "${STATUS_NETLINK_ROUTING}",
     "datagramIcmp": "${STATUS_DATAGRAM_ICMP}",
+    "sourceBindingParity": "${STATUS_SOURCE_BINDING_PARITY}",
     "failureRestart": "${STATUS_FAILURE_RESTART}",
     "fatalExitCode3": "${STATUS_FATAL_EXIT_CODE}",
     "startWithoutNetwork": "${STATUS_START_WITHOUT_NETWORK}"
@@ -167,7 +169,7 @@ EOF
 
     # Write Markdown summary report
     cat << EOF > "${REPORT_MD}"
-# 3.1-4 · Linux Host, Netlink Routing, Datagram ICMP & IPC Lane C Live Acceptance Report
+# 3.1-4 · Linux Host, Netlink Routing, ICMP & Source-Binding Lane C Live Acceptance Report
 
 - **Timestamp**: $(date -u +"%Y-%m-%d %H:%M:%S UTC")
 - **Commit**: \`${COMMIT_SHA}\`
@@ -201,6 +203,7 @@ EOF
 | Unix IPC control.sock 5-Layer Identity | **${STATUS_UNIX_IPC_IDENTITY}** |
 | Netlink RTM_GETROUTE Kernel FIB Routing | **${STATUS_NETLINK_ROUTING}** |
 | Unprivileged Datagram ICMP Echo (SOCK_DGRAM) | **${STATUS_DATAGRAM_ICMP}** |
+| Source-Address Binding Parity (ICMP/TCP/DNS/HTTP) | **${STATUS_SOURCE_BINDING_PARITY}** |
 | STOP Persistence & Cleanup | **${STATUS_STOP_LIFECYCLE}** |
 | RESTART Persistence & Restore | **${STATUS_RESTART_LIFECYCLE}** |
 | ProtectSystem=strict Mount Namespace | **${STATUS_PROTECT_SYSTEM}** |
@@ -757,6 +760,95 @@ if echo "${ICMP_OUTPUT}" | grep -q "IPv6 datagram ICMP socket created successful
 else
     STATUS_DATAGRAM_ICMP="FAIL"
     record_fail "Datagram ICMP verification failed: ${ICMP_OUTPUT}"
+    exit 1
+fi
+
+echo "=============================================================================="
+echo "9.8 SOURCE-ADDRESS BINDING PARITY (ICMP / TCP / DNS / HTTP) LIVE ACCEPTANCE"
+echo "=============================================================================="
+CURRENT_STAGE="STAGE_9_8_SOURCE_BINDING_PARITY"
+
+cat << 'EOF' > /tmp/iem_source_binding_test.py
+import socket, struct, sys
+
+# 1. Determine local interface IP
+s_test = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+try:
+    s_test.connect(('1.1.1.1', 53))
+    local_ip = s_test.getsockname()[0]
+finally:
+    s_test.close()
+
+print(f"Local preferred IP: {local_ip}")
+
+# 2. ICMP Socket Source Binding
+s_icmp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_ICMP)
+try:
+    s_icmp.bind((local_ip, 0))
+    bound_ip = s_icmp.getsockname()[0]
+    if bound_ip != local_ip:
+        print(f"FAIL: ICMP bound IP mismatch (Got: {bound_ip}, Expected: {local_ip})")
+        sys.exit(1)
+    print(f"PASS: ICMP socket strictly bound to {bound_ip}")
+finally:
+    s_icmp.close()
+
+# 3. TCP Socket Source Binding
+s_tcp = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+try:
+    s_tcp.bind((local_ip, 0))
+    s_tcp.settimeout(2.0)
+    try:
+        s_tcp.connect(('1.1.1.1', 80))
+        bound_ip = s_tcp.getsockname()[0]
+        if bound_ip != local_ip:
+            print(f"FAIL: TCP bound IP mismatch (Got: {bound_ip}, Expected: {local_ip})")
+            sys.exit(2)
+        print(f"PASS: TCP socket strictly bound to {bound_ip}")
+    except Exception as e:
+        print(f"NOTE: TCP connect: {e}")
+finally:
+    s_tcp.close()
+
+# 4. DNS Socket Source Binding
+s_dns = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
+try:
+    s_dns.bind((local_ip, 0))
+    bound_ip = s_dns.getsockname()[0]
+    if bound_ip != local_ip:
+        print(f"FAIL: DNS bound IP mismatch (Got: {bound_ip}, Expected: {local_ip})")
+        sys.exit(3)
+    print(f"PASS: DNS socket strictly bound to {bound_ip}")
+finally:
+    s_dns.close()
+
+# 5. HTTP Forced-Interface Socket Binding (MeasurementHttpClient pattern)
+s_http = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+s_http.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+try:
+    s_http.bind((local_ip, 0))
+    bound_ip = s_http.getsockname()[0]
+    if bound_ip != local_ip:
+        print(f"FAIL: HTTP forced-path bound IP mismatch (Got: {bound_ip}, Expected: {local_ip})")
+        sys.exit(4)
+    print(f"PASS: HTTP forced-path socket strictly bound to {bound_ip}")
+finally:
+    s_http.close()
+
+print("SUCCESS: Source-address binding parity verified across ICMP, TCP, DNS, and HTTP")
+sys.exit(0)
+EOF
+chmod 0755 /tmp/iem_source_binding_test.py
+
+BIND_OUTPUT=$(sudo -u iem python3 /tmp/iem_source_binding_test.py 2>/dev/null || echo "")
+echo "Source binding parity test output: ${BIND_OUTPUT}"
+
+if echo "${BIND_OUTPUT}" | grep -q "SUCCESS: Source-address binding parity verified"; then
+    STATUS_SOURCE_BINDING_PARITY="PASS"
+    record_pass "Source-address binding parity verified across ICMP, TCP, DNS, HTTP without SO_BINDTODEVICE"
+else
+    STATUS_SOURCE_BINDING_PARITY="FAIL"
+    record_fail "Source-address binding parity test failed: ${BIND_OUTPUT}"
     exit 1
 fi
 

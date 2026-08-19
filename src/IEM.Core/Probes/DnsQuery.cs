@@ -13,7 +13,8 @@ public readonly record struct DnsQueryResult(
     TimeSpan Elapsed,
     int AnswerCount,
     int ResponseCode,
-    string? Error);
+    string? Error,
+    bool BindFailed = false);
 
 /// <summary>
 /// A minimal DNS/UDP client that asks one specific resolver.
@@ -77,7 +78,20 @@ public static class DnsQuery
                 // Forces the query out of the monitored adapter. Without it the claim
                 // "the operator's resolver is down while a public one works" rests on two
                 // queries that may have left the machine by different routes entirely.
-                socket.Bind(new IPEndPoint(source, 0));
+                try
+                {
+                    socket.Bind(new IPEndPoint(source, 0));
+                }
+                catch (SocketException ex)
+                {
+                    return new DnsQueryResult(
+                        false,
+                        TimeSpan.Zero,
+                        0,
+                        -1,
+                        $"LocalBindFailed:{ex.SocketErrorCode}",
+                        BindFailed: true);
+                }
             }
 
             await socket.SendToAsync(request, SocketFlags.None, endpoint, timeoutSource.Token).ConfigureAwait(false);

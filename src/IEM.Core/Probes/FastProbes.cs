@@ -131,7 +131,23 @@ public static class FastProbes
         {
             if (source is not null && source.AddressFamily == endpoint.AddressFamily)
             {
-                socket.Bind(new IPEndPoint(source, 0));
+                try
+                {
+                    socket.Bind(new IPEndPoint(source, 0));
+                }
+                catch (SocketException ex)
+                {
+                    return new ProbeResult(
+                        ProbeKind.TcpConnect,
+                        ProbeScope.External,
+                        target,
+                        ProbeOutcome.Skipped,
+                        null,
+                        $"LocalBindFailed:{ex.SocketErrorCode}")
+                    {
+                        Family = endpoint.AddressFamily,
+                    };
+                }
             }
 
             await socket.ConnectAsync(endpoint, timeoutSource.Token).ConfigureAwait(false);

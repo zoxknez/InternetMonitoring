@@ -246,10 +246,7 @@ public sealed class ProbeScheduler : IAsyncDisposable
             targets,
             (target, path, token) => FastProbes.IcmpAsync(
                 target, ProbeScope.External, _options.IcmpTimeout, token, SourceOf(path), _boundIcmp),
-            // ICMP is only pinned to a source where the platform sender can do it, which for
-            // now means IPv4. Elsewhere the route is known but not enforced, and the record
-            // says so rather than claiming a binding it did not get.
-            bound: (path, target) => _boundIcmp is not null && SourceOf(path)?.AddressFamily == AddressFamily.InterNetwork,
+            bound: (path, target) => _boundIcmp is not null && SourceOf(path) is not null,
             cancellationToken).ConfigureAwait(false);
     }
 
@@ -338,7 +335,7 @@ public sealed class ProbeScheduler : IAsyncDisposable
         static async Task<ProbeResult> Tag(Task<ProbeResult> probe, ProbePath path, bool bound = false)
         {
             var result = await probe.ConfigureAwait(false);
-            return result with { Path = path with { Bound = bound } };
+            return result with { Path = path with { Bound = bound && result.Outcome != ProbeOutcome.Skipped } };
         }
     }
 
@@ -368,7 +365,8 @@ public sealed class ProbeScheduler : IAsyncDisposable
         var completed = _clock.MonotonicTicks;
 
         _store.RecordAll(results.Select((result, i) =>
-            Stamp(result, started, completed, planned[i].Path, bound(planned[i].Path, planned[i].Target))));
+            Stamp(result, started, completed, planned[i].Path,
+                bound(planned[i].Path, planned[i].Target) && result.Outcome != ProbeOutcome.Skipped)));
     }
 
     private void SkipExternal(ProbeKind kind, IEnumerable<string> targets)
@@ -411,7 +409,7 @@ public sealed class ProbeScheduler : IAsyncDisposable
     /// </summary>
     private bool BoundIfSourced(ProbePath path, ProbeResult result) =>
         _boundIcmp is not null &&
-        SourceOf(path)?.AddressFamily == AddressFamily.InterNetwork &&
+        SourceOf(path) is not null &&
         result.Outcome != ProbeOutcome.Skipped;
 
     private static ProbeResult Stamp(ProbeResult result, long startedAtTicks, long completedAtTicks) =>

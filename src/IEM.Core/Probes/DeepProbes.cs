@@ -31,11 +31,17 @@ public static class DeepProbes
             .ResolveAsync(resolver, name, timeout, cancellationToken, source)
             .ConfigureAwait(false);
 
+        var outcome = result.Succeeded
+            ? ProbeOutcome.Success
+            : (result.BindFailed
+                ? ProbeOutcome.Skipped
+                : (result.Error == "Timed out" ? ProbeOutcome.TimedOut : ProbeOutcome.Failed));
+
         return new ProbeResult(
             ProbeKind.Dns,
             ProbeScope.External,
             resolver,
-            result.Succeeded ? ProbeOutcome.Success : ProbeOutcome.Failed,
+            outcome,
             result.Succeeded ? result.Elapsed : null,
             result.Error)
         {
