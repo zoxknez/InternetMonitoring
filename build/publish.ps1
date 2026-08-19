@@ -57,9 +57,10 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 $projects = @(
-    @{ Name = 'servis';    Path = 'src\IEM.Service'; Folder = 'service' }
-    @{ Name = 'interfejs'; Path = 'src\IEM.App';     Folder = 'app' }
-    @{ Name = 'konzola';   Path = 'src\IEM.Cli';     Folder = 'cli' }
+    @{ Name = 'servis';    Path = 'src\IEM.Service';  Folder = 'service' }
+    @{ Name = 'interfejs'; Path = 'src\IEM.App';      Folder = 'app' }
+    @{ Name = 'konzola';   Path = 'src\IEM.Cli';      Folder = 'cli' }
+    @{ Name = 'verifikator'; Path = 'src\IEM.Verifier'; Folder = 'verifier' }
 )
 
 foreach ($project in $projects) {
@@ -160,8 +161,9 @@ $size = [math]::Round((Get-Item $zip).Length / 1MB, 1)
 Write-Step 'Portabl izdanje'
 
 $portable = @(
-    @{ Name = 'interfejs'; Path = 'src\IEM.App'; Built = 'InternetEvidenceMonitor.exe'; Ships = "InternetMonitoring-$version-$Runtime.exe" }
+    @{ Name = 'interfejs'; Path = 'src\IEM.App'; Built = 'InternetEvidenceMonitor.exe'; Ships = "InternetMonitoring-$version-$Runtime.exe"; Alias = "InternetEvidenceMonitor-$version-$Runtime.exe" }
     @{ Name = 'konzola';   Path = 'src\IEM.Cli'; Built = 'iem.exe';                     Ships = "iem-$version-$Runtime.exe" }
+    @{ Name = 'verifikator'; Path = 'src\IEM.Verifier'; Built = 'iem-verifier.exe';     Ships = "iem-verifier-$version-$Runtime.exe" }
 )
 
 # The lock files are put back byte for byte after this step, because a single-file
@@ -209,6 +211,13 @@ foreach ($single in $portable) {
 
     $singleHash = (Get-FileHash $shipped -Algorithm SHA256).Hash.ToLower()
     $singleHash | Set-Content -Path "$shipped.sha256" -Encoding ascii
+
+    if ($single.Alias) {
+        $aliasPath = Join-Path $repoRoot "artifacts\$($single.Alias)"
+        Copy-Item $shipped $aliasPath -Force
+        $aliasHash = (Get-FileHash $aliasPath -Algorithm SHA256).Hash.ToLower()
+        $aliasHash | Set-Content -Path "$aliasPath.sha256" -Encoding ascii
+    }
 
     $singleSize = [math]::Round((Get-Item $shipped).Length / 1MB, 1)
 
