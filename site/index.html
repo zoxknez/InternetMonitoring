@@ -3,92 +3,92 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Internet Monitoring</title>
-<meta name="description" content="Beleži prekide i kvalitet internet veze i pravi dokumentaciju upotrebljivu za prigovor operateru. Radi lokalno, bez naloga i bez servera." />
-<meta property="og:title" content="Internet Monitoring" />
-<meta property="og:description" content="Beleži prekide i kvalitet internet veze i pravi dokumentaciju upotrebljivu za prigovor operateru." />
+<title>Internet Evidence Monitor — Dokaz o prekidima i kvalitetu interneta</title>
+<meta name="description" content="Kriptografski potpisana evidencija i forenzički dokaz o prekidima i kvalitetu internet veze za prigovor operateru i regulatoru (RATEL). Radi 100% lokalno." />
+<meta property="og:title" content="Internet Evidence Monitor 3.0" />
+<meta property="og:description" content="Kriptografski potpisana evidencija i forenzički dokaz o prekidima i kvalitetu internet veze za prigovor operateru i regulatoru." />
 <meta property="og:type" content="website" />
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%231B4DD8'/%3E%3Cg fill='none' stroke='white' stroke-width='2.6' stroke-linecap='round'%3E%3Cpath d='M8 14.5a11 11 0 0 1 16 0'/%3E%3Cpath d='M11.5 18.5a6.5 6.5 0 0 1 9 0'/%3E%3C/g%3E%3Ccircle cx='16' cy='23' r='1.8' fill='white'/%3E%3C/svg%3E" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Outfit:wght@500;600;700;800&display=swap" rel="stylesheet">
 <style>
-  /* ---- Tokens -------------------------------------------------------------
-     Light is complete on bare :root. Dark redefines only tokens, twice: once
-     for the un-stamped system setting, once for an explicit toggle. No colour
-     is ever declared for the first time inside a media or [data-theme] block. */
+  /* ---- Tokens ------------------------------------------------------------- */
   :root {
-    --paper:   #EDF0F5;
+    --paper:   #F4F6FB;
     --surface: #FFFFFF;
-    --sunken:  #E4E9F1;
-    --ink:     #0D1626;
-    --muted:   #56657E;
-    --faint:   #7E8CA3;
-    --line:    #D5DCE7;
-    --accent:  #1B4DD8;
+    --sunken:  #EAEFF8;
+    --ink:     #0B132B;
+    --muted:   #4A5568;
+    --faint:   #718096;
+    --line:    #D8E2F0;
+    --accent:  #2563EB;
     --accent-ink: #FFFFFF;
-    --accent-soft: #E5EBFB;
-    --warn-soft: #FBF1DE;
+    --accent-soft: #EFF6FF;
+    --warn-soft: #FFFBEB;
 
-    /* The outage strip's own four states. They mean here exactly what they
-       mean on the program's screen, which is why they are named for it. */
-    --ok:         #2E9E5B;
-    --degraded:   #E0A33E;
-    --down:       #D14343;
-    --unmeasured: #9AA7BC;
-    --planned:    #C7CFDC;
+    --ok:         #10B981;
+    --degraded:   #F59E0B;
+    --down:       #EF4444;
+    --unmeasured: #94A3B8;
+    --planned:    #CBD5E1;
 
-    --shadow: 0 1px 2px rgba(13, 22, 38, .06), 0 8px 24px -12px rgba(13, 22, 38, .18);
+    --shadow-sm: 0 1px 3px rgba(11, 19, 43, .05), 0 1px 2px rgba(11, 19, 43, .1);
+    --shadow: 0 4px 6px -1px rgba(11, 19, 43, .07), 0 2px 4px -2px rgba(11, 19, 43, .07);
+    --shadow-lg: 0 12px 28px -6px rgba(11, 19, 43, .12), 0 4px 10px -3px rgba(11, 19, 43, .06);
 
-    --display: Georgia, "Iowan Old Style", "Source Serif Pro", "Times New Roman", serif;
-    --body: "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
-    --data: "Cascadia Mono", Consolas, "SF Mono", ui-monospace, "Liberation Mono", monospace;
+    --display: "Outfit", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    --body: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    --data: "JetBrains Mono", "Cascadia Mono", Consolas, monospace;
 
-    /* Reading measure, for running prose only. Headings and section intros lay
-       out in columns instead: set as one narrow column they left a third of a
-       wide screen empty beside them, and a heading with a void to its right
-       reads as a mistake rather than as a choice. */
-    --measure: 62ch;
-    --gutter: clamp(20px, 5vw, 56px);
+    --measure: 68ch;
+    --gutter: clamp(20px, 5vw, 64px);
   }
 
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
-      --paper:   #0A101D;
-      --surface: #121D33;
-      --sunken:  #0E1728;
-      --ink:     #E6EDF9;
-      --muted:   #9BAAC4;
-      --faint:   #76869F;
-      --line:    #22314F;
-      --accent:  #6E96FF;
-      --accent-ink: #08101F;
-      --accent-soft: #16264A;
-      --warn-soft: #2B2214;
-      --ok:         #45BE77;
-      --degraded:   #E8B65C;
-      --down:       #F0655F;
-      --unmeasured: #5B6C88;
-      --planned:    #2A3A59;
-      --shadow: 0 1px 2px rgba(0, 0, 0, .5), 0 14px 34px -18px rgba(0, 0, 0, .8);
+      --paper:   #090D16;
+      --surface: #111726;
+      --sunken:  #0C1220;
+      --ink:     #F1F5F9;
+      --muted:   #94A3B8;
+      --faint:   #64748B;
+      --line:    #1E293B;
+      --accent:  #3B82F6;
+      --accent-ink: #0A0F1D;
+      --accent-soft: #172554;
+      --warn-soft: #271E0B;
+      --ok:         #34D399;
+      --degraded:   #FBBF24;
+      --down:       #F87171;
+      --unmeasured: #475569;
+      --planned:    #1E293B;
+      --shadow-sm: 0 1px 3px rgba(0, 0, 0, .4);
+      --shadow: 0 4px 8px rgba(0, 0, 0, .5);
+      --shadow-lg: 0 16px 36px -8px rgba(0, 0, 0, .8);
     }
   }
 
   :root[data-theme="dark"] {
-    --paper:   #0A101D;
-    --surface: #121D33;
-    --sunken:  #0E1728;
-    --ink:     #E6EDF9;
-    --muted:   #9BAAC4;
-    --faint:   #76869F;
-    --line:    #22314F;
-    --accent:  #6E96FF;
-    --accent-ink: #08101F;
-    --accent-soft: #16264A;
-    --warn-soft: #2B2214;
-    --ok:         #45BE77;
-    --degraded:   #E8B65C;
-    --down:       #F0655F;
-    --unmeasured: #5B6C88;
-    --planned:    #2A3A59;
-    --shadow: 0 1px 2px rgba(0, 0, 0, .5), 0 14px 34px -18px rgba(0, 0, 0, .8);
+    --paper:   #090D16;
+    --surface: #111726;
+    --sunken:  #0C1220;
+    --ink:     #F1F5F9;
+    --muted:   #94A3B8;
+    --faint:   #64748B;
+    --line:    #1E293B;
+    --accent:  #3B82F6;
+    --accent-ink: #0A0F1D;
+    --accent-soft: #172554;
+    --warn-soft: #271E0B;
+    --ok:         #34D399;
+    --degraded:   #FBBF24;
+    --down:       #F87171;
+    --unmeasured: #475569;
+    --planned:    #1E293B;
+    --shadow-sm: 0 1px 3px rgba(0, 0, 0, .4);
+    --shadow: 0 4px 8px rgba(0, 0, 0, .5);
+    --shadow-lg: 0 16px 36px -8px rgba(0, 0, 0, .8);
   }
 
   /* ---- Base ---------------------------------------------------------------- */
@@ -99,71 +99,68 @@
     background: var(--paper);
     color: var(--ink);
     font-family: var(--body);
-    font-size: 17px;
-    line-height: 1.62;
+    font-size: 16.5px;
+    line-height: 1.68;
     -webkit-font-smoothing: antialiased;
+    letter-spacing: -0.011em;
   }
 
-  .wrap { max-width: 1140px; margin: 0 auto; padding: 0 var(--gutter); }
+  .wrap { max-width: 1200px; margin: 0 auto; padding: 0 var(--gutter); }
   .measure { max-width: var(--measure); }
 
   h1, h2, h3 {
     font-family: var(--display);
-    font-weight: 600;
-    line-height: 1.14;
+    font-weight: 700;
+    line-height: 1.16;
     text-wrap: balance;
     margin: 0;
-    letter-spacing: -.008em;
+    letter-spacing: -0.025em;
   }
-  h2 { font-size: clamp(1.55rem, 2.9vw, 2.15rem); }
-  h3 { font-size: 1.06rem; font-family: var(--body); font-weight: 600; line-height: 1.35; }
+  h1 { font-size: clamp(2.3rem, 5.2vw, 3.8rem); letter-spacing: -0.035em; }
+  h2 { font-size: clamp(1.75rem, 3.4vw, 2.5rem); }
+  h3 { font-size: 1.15rem; font-family: var(--display); font-weight: 600; line-height: 1.35; }
 
   p { margin: 0; }
-  a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: 2px; }
+  a { color: var(--accent); text-decoration-thickness: 1.5px; text-underline-offset: 3px; transition: color 0.15s ease; }
+  a:hover { color: #1D4ED8; }
   a:focus-visible, .btn:focus-visible, summary:focus-visible, button:focus-visible {
     outline: 2px solid var(--accent);
     outline-offset: 3px;
-    border-radius: 3px;
+    border-radius: 4px;
   }
 
-  .lede { font-size: 1.1rem; color: var(--muted); }
+  .lede { font-size: 1.15rem; color: var(--muted); line-height: 1.6; }
   .eyebrow {
     font-family: var(--data);
-    font-size: .705rem;
-    letter-spacing: .13em;
+    font-size: .75rem;
+    font-weight: 600;
+    letter-spacing: .12em;
     text-transform: uppercase;
-    color: var(--faint);
+    color: var(--accent);
+    display: inline-block;
   }
   .mono { font-family: var(--data); font-variant-numeric: tabular-nums; }
 
-  section { padding: clamp(50px, 7vw, 84px) 0; }
+  section { padding: clamp(60px, 8vw, 96px) 0; }
   .stack  { display: flex; flex-direction: column; gap: 20px; }
-  .stack-s { display: flex; flex-direction: column; gap: 9px; }
+  .stack-s { display: flex; flex-direction: column; gap: 10px; }
 
-  /* ---- Section heads: heading in one column, its qualifier in the other ----- */
+  /* ---- Section heads -------------------------------------------------------- */
   .section-head {
-    display: grid;
-    gap: 12px 52px;
-    align-items: start;
-    margin-bottom: clamp(28px, 3.4vw, 42px);
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    max-width: 860px;
+    margin-bottom: clamp(32px, 4vw, 48px);
   }
-  .section-head .eyebrow { grid-column: 1 / -1; margin-bottom: 2px; }
-  .section-head h2 { max-width: 17ch; }
-  .section-head .lede { max-width: 52ch; }
-
-  @media (min-width: 900px) {
-    .section-head { grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr); }
-    .section-head h2 { max-width: none; }
-  }
-
-  /* ---- The outage strip ----------------------------------------------------
-     The program draws this across the bottom of its window: one segment per
-     slice of monitored time. Reused here as the page's divider, with the same
-     four meanings, because it is the one picture that says what the tool is. */
+  .section-head .eyebrow { margin-bottom: 2px; }
+  .section-head h2 { max-width: 24ch; }
+  .section-head .lede { max-width: 65ch; }
+  /* ---- The outage strip ---------------------------------------------------- */
   .strip {
     position: relative;
-    height: 22px;
-    border-radius: 3px;
+    height: 24px;
+    border-radius: 4px;
     overflow: hidden;
     background: repeating-linear-gradient(90deg, var(--ok) 0 5px, transparent 5px 7px);
     background-color: var(--sunken);
@@ -182,87 +179,84 @@
     transform-origin: right center;
   }
 
-  .strip-hero { height: 34px; border-radius: 4px; }
+  .strip-hero { height: 36px; border-radius: 6px; box-shadow: var(--shadow-sm); }
   .strip-hero .cover { animation: record 2.1s cubic-bezier(.22, .68, .3, 1) forwards; }
   @keyframes record { from { transform: scaleX(1); } to { transform: scaleX(0); } }
 
-  .strip-rule { height: 9px; opacity: .5; margin: 0; border: 0; }
+  .strip-rule { height: 8px; opacity: .6; margin: 0; border: 0; }
 
   .legend {
     display: flex;
     flex-wrap: wrap;
-    gap: 6px 18px;
-    font-size: .78rem;
-    color: var(--faint);
+    gap: 8px 24px;
+    font-size: .84rem;
+    color: var(--muted);
+    font-weight: 500;
   }
-  .legend span { display: inline-flex; align-items: center; gap: 7px; }
-  .legend i { width: 9px; height: 9px; border-radius: 2px; background: var(--c); display: inline-block; }
+  .legend span { display: inline-flex; align-items: center; gap: 8px; }
+  .legend i { width: 10px; height: 10px; border-radius: 2.5px; background: var(--c); display: inline-block; }
 
   /* ---- Header --------------------------------------------------------------- */
   header.top {
-    padding: 22px 0 0;
+    padding: 24px 0 0;
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 16px 24px;
     flex-wrap: wrap;
   }
-  .brand { display: flex; align-items: center; gap: 11px; font-weight: 600; }
+  .brand { display: flex; align-items: center; gap: 12px; font-weight: 700; font-family: var(--display); font-size: 1.15rem; letter-spacing: -0.015em; }
   .brand svg { display: block; }
 
   .top nav {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: 10px 20px;
-    font-size: .9rem;
+    gap: 12px 24px;
+    font-size: .94rem;
+    font-weight: 500;
   }
-  .top nav a { color: var(--muted); text-decoration: none; }
-  .top nav a:hover { color: var(--ink); text-decoration: underline; }
+  .top nav a { color: var(--muted); text-decoration: none; transition: color .15s ease; }
+  .top nav a:hover { color: var(--accent); }
   .top nav .with-mark { display: inline-flex; align-items: center; gap: 6px; }
 
   .kofi { display: inline-flex; align-items: center; }
-  .kofi img { display: block; height: 34px; width: auto; border: 0; border-radius: 4px; }
+  .kofi img { display: block; height: 34px; width: auto; border: 0; border-radius: 5px; }
   .kofi:hover img { opacity: .9; }
 
-  /* ---- Hero ------------------------------------------------------------------
-     The headline runs the full width. Capped at a reading measure it set in four
-     short lines with a third of the screen empty to its right, which made the
-     whole page look as though it had been squeezed against the left edge. */
-  .hero { padding-top: clamp(34px, 5vw, 58px); }
-  .hero h1 {
-    font-size: clamp(2.05rem, 5vw, 3.5rem);
-    margin-bottom: 20px;
-  }
-  .hero .lede { max-width: 66ch; }
+  /* ---- Hero ------------------------------------------------------------------ */
+  .hero { padding-top: clamp(40px, 6vw, 68px); }
+  .hero .lede { max-width: 72ch; }
 
-  .cta { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+  .cta { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; }
   .btn {
     display: inline-flex;
     align-items: center;
-    gap: 9px;
-    padding: 12px 20px;
-    border-radius: 4px;
+    gap: 10px;
+    padding: 13px 24px;
+    border-radius: 6px;
     border: 1px solid var(--accent);
     background: var(--accent);
     color: var(--accent-ink);
     font: inherit;
     font-weight: 600;
-    font-size: .95rem;
+    font-size: .96rem;
     text-decoration: none;
-    transition: transform .12s ease, box-shadow .12s ease;
+    box-shadow: var(--shadow-sm);
+    transition: transform .14s ease, box-shadow .14s ease, background .14s ease;
   }
-  .btn:hover { transform: translateY(-1px); box-shadow: var(--shadow); }
-  .btn.ghost { background: transparent; color: var(--ink); border-color: var(--line); }
-  .cta-note { font-size: .84rem; color: var(--faint); line-height: 1.5; }
+  .btn:hover { transform: translateY(-2px); box-shadow: var(--shadow); background: #1D4ED8; }
+  .btn.ghost { background: var(--surface); color: var(--ink); border-color: var(--line); }
+  .btn.ghost:hover { background: var(--sunken); border-color: var(--faint); color: var(--ink); }
+  .cta-note { font-size: .86rem; color: var(--faint); line-height: 1.55; }
   @media (max-width: 900px) { .cta-note { flex-basis: 100%; } }
 
-  /* ---- What you must do, beside what you are about to run -------------------- */
+  /* ---- Callout & Latest Cards ----------------------------------------------- */
   .after-cta {
     display: grid;
-    gap: 18px;
-    margin-top: 26px;
-    align-items: start;
+    gap: 20px;
+    margin-top: 32px;
+    align-items: stretch;
   }
   @media (min-width: 980px) {
     .after-cta { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
@@ -271,55 +265,77 @@
   .callout {
     display: flex;
     align-items: flex-start;
-    gap: 14px;
+    gap: 16px;
     border: 1px solid var(--degraded);
     background: var(--warn-soft);
-    border-radius: 6px;
-    padding: 17px 19px;
+    border-radius: 10px;
+    padding: 20px 22px;
+    box-shadow: var(--shadow-sm);
   }
   .callout svg { flex: 0 0 auto; color: var(--degraded); margin-top: 2px; }
-  .callout strong { display: block; font-size: 1.02rem; margin-bottom: 4px; }
-  .callout p { font-size: .92rem; color: var(--muted); }
+  .callout strong { display: block; font-size: 1.05rem; font-family: var(--display); font-weight: 600; margin-bottom: 5px; color: var(--ink); }
+  .callout p { font-size: .94rem; color: var(--muted); }
   .keys {
     font-family: var(--data);
     font-size: .85em;
     background: var(--surface);
     border: 1px solid var(--line);
-    border-radius: 3px;
-    padding: 1px 6px;
+    border-radius: 4px;
+    padding: 1px 7px;
     white-space: nowrap;
   }
 
   .latest {
     border: 1px solid var(--line);
     background: var(--surface);
-    border-radius: 6px;
-    padding: 17px 19px;
+    border-radius: 10px;
+    padding: 20px 22px;
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: 12px;
+    box-shadow: var(--shadow-sm);
   }
   .latest-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
-  .latest ul { margin: 0; padding-left: 18px; color: var(--muted); font-size: .92rem; }
-  .latest li { margin-bottom: 3px; }
-  .latest .more { font-size: .88rem; }
+  .latest h3 { font-size: 1.08rem; }
+  .latest ul { margin: 0; padding-left: 20px; color: var(--muted); font-size: .93rem; }
+  .latest li { margin-bottom: 4px; }
+  .latest .more { font-size: .88rem; font-weight: 500; }
+
+  .chip {
+    font-family: var(--data);
+    font-size: .72rem;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 4px;
+    background: var(--accent-soft);
+    color: var(--accent);
+    letter-spacing: .06em;
+    text-transform: uppercase;
+  }
+  .chip.wait {
+    background: var(--sunken);
+    color: var(--faint);
+  }
 
   /* ---- Cards ----------------------------------------------------------------- */
-  .grid { display: grid; gap: 18px; }
+  .grid { display: grid; gap: 20px; }
   @media (min-width: 760px) { .grid.two { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } }
   @media (min-width: 900px) { .grid.four { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
 
   .card {
     background: var(--surface);
     border: 1px solid var(--line);
-    border-radius: 6px;
-    padding: 22px 24px;
+    border-radius: 10px;
+    padding: 24px 26px;
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 9px;
+    box-shadow: var(--shadow-sm);
+    transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease;
   }
-  .card h3 { font-size: 1.02rem; }
-  .card p { color: var(--muted); font-size: .94rem; max-width: 46ch; }
+  .card:hover { transform: translateY(-2px); box-shadow: var(--shadow); border-color: var(--accent); }
+  .card h3 { font-size: 1.08rem; }
+  .card p { color: var(--muted); font-size: .94rem; }
 
   figure { margin: 0; }
   figure img {
@@ -327,29 +343,37 @@
     width: 100%;
     height: auto;
     border: 1px solid var(--line);
-    border-radius: 6px;
-    box-shadow: var(--shadow);
+    border-radius: 8px;
+    box-shadow: var(--shadow-lg);
     background: var(--surface);
   }
-  figcaption { margin-top: 11px; font-size: .85rem; color: var(--faint); max-width: 62ch; }
+  figcaption { margin-top: 13px; font-size: .86rem; color: var(--faint); max-width: 65ch; }
 
   /* ---- Ledger table ---------------------------------------------------------- */
-  .ledger-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); }
-  table { border-collapse: collapse; width: 100%; min-width: 620px; font-size: .9rem; }
-  th, td { text-align: left; padding: 14px 18px; border-bottom: 1px solid var(--line); vertical-align: baseline; }
+  .ledger-wrap {
+    overflow-x: auto;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: var(--surface);
+    box-shadow: var(--shadow-sm);
+  }
+  table { border-collapse: collapse; width: 100%; min-width: 680px; font-size: .92rem; }
+  th, td { text-align: left; padding: 15px 20px; border-bottom: 1px solid var(--line); vertical-align: middle; }
   thead th {
     font-family: var(--data);
-    font-size: .69rem;
+    font-size: .72rem;
     letter-spacing: .11em;
     text-transform: uppercase;
     color: var(--faint);
-    font-weight: 400;
+    font-weight: 600;
     background: var(--sunken);
   }
+  tbody tr { transition: background .12s ease; }
+  tbody tr:hover { background: var(--accent-soft); }
   tbody tr:last-child td { border-bottom: 0; }
   td.num { font-family: var(--data); font-variant-numeric: tabular-nums; white-space: nowrap; color: var(--muted); }
-  td .file { display: block; font-family: var(--data); font-size: .84rem; overflow-wrap: anywhere; }
-  td .what { display: block; margin-bottom: 3px; }
+  td .file { display: block; font-family: var(--data); font-size: .86rem; font-weight: 500; overflow-wrap: anywhere; }
+  td .what { display: block; margin-bottom: 4px; }
 
   /* ---- Code and steps -------------------------------------------------------- */
   pre {
@@ -722,10 +746,10 @@
   <section>
     <div class="section-head">
       <p class="eyebrow">Šta dobijate na kraju</p>
-      <h2>Folder koji se pošalje operateru bez ijedne dopune.</h2>
+      <h2>Zapečaćen dokazni paket spreman za sud, operatera ili regulatora.</h2>
       <p class="lede">
-        Kad sesija istekne, program sam napravi ceo paket: izveštaj za štampu, izveštaj za
-        ekran, tabele za Excel, sirovu evidenciju i otiske svih fajlova.
+        Kad sesija istekne ili je zaustavite, program sam generiše i kriptografski potpiše ceo paket:
+        izveštaj za štampu i regulatora, tabele za analizu, sirovu evidenciju i RFC 3161 vremenski žig.
       </p>
     </div>
 
@@ -733,25 +757,25 @@
       <figure>
         <a href="ui-priprema.png" title="Otvori sliku u punoj veličini"><img src="ui-priprema.png" width="1180" height="840"
              alt="Ekran pripreme testa: izbor trajanja nadzora, spisak fajlova koji nastaju i po čemu se program razlikuje." /></a>
-        <figcaption>Priprema testa. Za prigovor je uobičajeno 48 sati - nijedan propis ne traži određeno trajanje.</figcaption>
+        <figcaption>Priprema testa. Za prigovor je uobičajeno 48 sati — nijedan propis ne traži određeno trajanje.</figcaption>
       </figure>
 
       <div class="stack">
         <div class="card stack-s">
-          <h3>Izvestaj.pdf i Izvestaj.html</h3>
-          <p>Za štampu i za čitanje na ekranu. Fontovi su ugrađeni, pa naša slova izgledaju isto na svakoj mašini.</p>
+          <h3>Izvestaj.pdf, Izvestaj.html i Prigovor.html</h3>
+          <p>Kanonska projekcija dokaza usklađena sa RATEL pravilnikom i procedurom za prigovore operaterima.</p>
         </div>
         <div class="card stack-s">
-          <h3>Prekidi.csv i Merenja.csv</h3>
-          <p>Tabele za Excel, sa donjom i gornjom granicom trajanja svakog prekida.</p>
+          <h3>manifest.json i manifest.sig</h3>
+          <p>Kriptografski inventar svih fajlova (RFC 8785 JSON-C14N) potpisan TPM/Windows CNG ključem.</p>
         </div>
         <div class="card stack-s">
-          <h3>SirovaEvidencija.jsonl</h3>
-          <p>Sam dokaz, sa lancem otisaka: izmena bilo kog reda narušava sve otiske posle njega.</p>
+          <h3>timestamp.tsr (RFC 3161)</h3>
+          <p>Zvanični vremenski žig eksternog sertifikovanog autoriteta koji dokazuje tačno vreme merenja.</p>
         </div>
         <div class="card stack-s">
-          <h3>SHA256SUMS.txt</h3>
-          <p>Otisci svih fajlova u paketu. Proveru može ponoviti bilo ko, običnim alatima.</p>
+          <h3>Redigovana kopija za deljenje</h3>
+          <p>Izvedeni paket bez vaših privatnih IP adresa, MAC adresa i naziva Wi-Fi mreža, sa dokazanim poreklom.</p>
         </div>
       </div>
     </div>
@@ -763,12 +787,11 @@
 <div class="wrap">
   <section id="preuzimanje">
     <div class="section-head">
-      <p class="eyebrow">Preuzimanje · 2.8.0-beta.4</p>
-      <h2>Jedan fajl je dovoljan. Servis je za dvodnevni test.</h2>
+      <p class="eyebrow">Preuzimanje · 3.0.0 (Release Candidate)</p>
+      <h2>Izaberite instalater sa servisom ili portabl verziju.</h2>
       <p class="lede">
-        Portabl fajl pokrenete i radi - ali nadzor tada traje dok je prozor otvoren. Za test
-        koji preživljava zatvaranje prozora i restart računara instalira se servis iz arhive.
-        Program to kaže i na svom ekranu, umesto da obeća suprotno.
+        Za pun dvodnevni nadzor koji preživljava restart računara preporučuje se instalater sa servisom.
+        Za brzu proveru veze ili pregled postojećih dokaza dostupan je portabl program bez instalacije.
       </p>
     </div>
 
@@ -776,66 +799,67 @@
       <table>
         <thead>
           <tr>
-            <th scope="col">Šta je</th>
+            <th scope="col">Paket</th>
             <th scope="col">Platforma</th>
-            <th scope="col">Veličina</th>
-            <th scope="col">SHA-256</th>
+            <th scope="col">Tip</th>
+            <th scope="col">Preuzimanje</th>
           </tr>
         </thead>
         <tbody>
           <tr>
             <td>
+              <span class="what"><strong>Instalater + Servis (Preporučeno)</strong></span>
+              <span class="file">InternetEvidenceMonitor-3.0.0-rc.1-Setup.exe</span>
+            </td>
+            <td class="num" data-label="Platforma">Windows x64</td>
+            <td data-label="Tip"><span class="chip">Instalacija</span></td>
+            <td data-label="Preuzimanje">
+              <a class="btn" style="padding: 6px 14px; font-size: .85rem;" href="https://github.com/zoxknez/InternetMonitoring/releases/tag/v3.0.0-rc.1">Preuzmi</a>
+            </td>
+          </tr>
+          <tr>
+            <td>
               <span class="what"><strong>Portabl program</strong> - pokrenete i radi</span>
-              <a class="file" href="https://github.com/zoxknez/InternetMonitoring/releases/download/v2.8.0-beta.4/InternetMonitoring-2.8.0-beta.4-win-x64.exe">InternetMonitoring-2.8.0-beta.4-win-x64.exe</a>
+              <span class="file">InternetEvidenceMonitor-3.0.0-rc.1-win-x64.exe</span>
             </td>
             <td class="num" data-label="Platforma">Windows x64</td>
-            <td class="num" data-label="Veličina">65,1 MB</td>
-            <td class="num" data-label="SHA-256">87ba6b17…</td>
+            <td data-label="Tip"><span class="chip">Portabl</span></td>
+            <td data-label="Preuzimanje">
+              <a class="btn ghost" style="padding: 6px 14px; font-size: .85rem;" href="https://github.com/zoxknez/InternetMonitoring/releases/tag/v3.0.0-rc.1">Preuzmi</a>
+            </td>
           </tr>
           <tr>
             <td>
-              <span class="what"><strong>Portabl program</strong> - pokrenete i radi</span>
-              <a class="file" href="https://github.com/zoxknez/InternetMonitoring/releases/download/v2.8.0-beta.4/InternetMonitoring-2.8.0-beta.4-win-arm64.exe">InternetMonitoring-2.8.0-beta.4-win-arm64.exe</a>
+              <span class="what"><strong>Portabl program (ARM64)</strong> - za Snapdragon / Surface</span>
+              <span class="file">InternetEvidenceMonitor-3.0.0-rc.1-win-arm64.exe</span>
             </td>
             <td class="num" data-label="Platforma">Windows ARM64</td>
-            <td class="num" data-label="Veličina">61,3 MB</td>
-            <td class="num" data-label="SHA-256">9232309…</td>
+            <td data-label="Tip"><span class="chip">Portabl</span></td>
+            <td data-label="Preuzimanje">
+              <a class="btn ghost" style="padding: 6px 14px; font-size: .85rem;" href="https://github.com/zoxknez/InternetMonitoring/releases/tag/v3.0.0-rc.1">Preuzmi</a>
+            </td>
           </tr>
           <tr>
             <td>
-              <span class="what"><strong>Puna arhiva</strong> - sa servisom i instalacijom</span>
-              <a class="file" href="https://github.com/zoxknez/InternetMonitoring/releases/download/v2.8.0-beta.4/InternetMonitoring-2.8.0-beta.4-win-x64.zip">InternetMonitoring-2.8.0-beta.4-win-x64.zip</a>
+              <span class="what"><strong>Forenzički verifikator</strong> - offline provera tuđih paketa</span>
+              <span class="file">iem-verifier-3.0.0-rc.1-win-x64.exe</span>
             </td>
             <td class="num" data-label="Platforma">Windows x64</td>
-            <td class="num" data-label="Veličina">138,8 MB</td>
-            <td class="num" data-label="SHA-256">1756f614…</td>
-          </tr>
-          <tr>
-            <td>
-              <span class="what"><strong>Puna arhiva</strong> - sa servisom i instalacijom</span>
-              <a class="file" href="https://github.com/zoxknez/InternetMonitoring/releases/download/v2.8.0-beta.4/InternetMonitoring-2.8.0-beta.4-win-arm64.zip">InternetMonitoring-2.8.0-beta.4-win-arm64.zip</a>
+            <td data-label="Tip"><span class="chip">CLI Alat</span></td>
+            <td data-label="Preuzimanje">
+              <a class="btn ghost" style="padding: 6px 14px; font-size: .85rem;" href="https://github.com/zoxknez/InternetMonitoring/releases/tag/v3.0.0-rc.1">Preuzmi</a>
             </td>
-            <td class="num" data-label="Platforma">Windows ARM64</td>
-            <td class="num" data-label="Veličina">130,8 MB</td>
-            <td class="num" data-label="SHA-256">2b4fe3f8…</td>
           </tr>
           <tr>
             <td>
-              <span class="what"><strong>Konzola</strong> - za skripte i proveru tuđeg paketa</span>
-              <a class="file" href="https://github.com/zoxknez/InternetMonitoring/releases/download/v2.8.0-beta.4/iem-2.8.0-beta.4-win-x64.exe">iem-2.8.0-beta.4-win-x64.exe</a>
+              <span class="what"><strong>Konzolni motor</strong> - za skripte i automatizaciju</span>
+              <span class="file">iem-3.0.0-rc.1-win-x64.exe</span>
             </td>
             <td class="num" data-label="Platforma">Windows x64</td>
-            <td class="num" data-label="Veličina">38,8 MB</td>
-            <td class="num" data-label="SHA-256">4750c531…</td>
-          </tr>
-          <tr>
-            <td>
-              <span class="what"><strong>Konzola</strong> - za skripte i proveru tuđeg paketa</span>
-              <a class="file" href="https://github.com/zoxknez/InternetMonitoring/releases/download/v2.8.0-beta.4/iem-2.8.0-beta.4-win-arm64.exe">iem-2.8.0-beta.4-win-arm64.exe</a>
+            <td data-label="Tip"><span class="chip">CLI Engine</span></td>
+            <td data-label="Preuzimanje">
+              <a class="btn ghost" style="padding: 6px 14px; font-size: .85rem;" href="https://github.com/zoxknez/InternetMonitoring/releases/tag/v3.0.0-rc.1">Preuzmi</a>
             </td>
-            <td class="num" data-label="Platforma">Windows ARM64</td>
-            <td class="num" data-label="Veličina">38,0 MB</td>
-            <td class="num" data-label="SHA-256">1a1eb561…</td>
           </tr>
         </tbody>
       </table>
@@ -848,59 +872,53 @@
 <div class="wrap">
   <section id="powershell">
     <div class="section-head">
-      <p class="eyebrow">Pokretanje iz PowerShell-a</p>
-      <h2>Četiri koraka, od preuzetog fajla do gotovog paketa.</h2>
+      <p class="eyebrow">Pokretanje i alati iz komandne linije</p>
+      <h2>Četiri koraka, od preuzetog fajla do verifikovanog paketa.</h2>
       <p class="lede">
-        Sve što se klikom radi u prozoru može i iz PowerShell-a, a ponešto samo tako - zakazano
-        merenje, nadzor određenog adaptera, provera tuđe sesije. Otvorite PowerShell u folderu
-        gde je fajl: <span class="keys">Shift + desni klik</span> u prazan deo foldera, pa
-        „Otvori PowerShell prozor ovde".
+        Sve operacije se mogu pokrenuti grafički ili kroz konzolu: automatski nadzor,
+        merenje brzine sa ugovorenim profilom, verifikacija tuđe sesije ili generisanje prigovora.
       </p>
     </div>
 
     <div class="steps">
       <div class="step">
-        <h3>Proverite šta ste preuzeli</h3>
+        <h3>Provera integriteta preuzetog fajla</h3>
         <p>
-          Program nije digitalno potpisan, pa Windows označava fajl kao preuzet sa interneta.
-          Zbir mora odgovarati onom iz tabele iznad; tek onda skidate oznaku.
+          Sva izdanja su potpisana Authenticode digitalnim potpisom sa SHA-256 i RFC 3161 vremenskim žigom.
         </p>
-        <pre><span class="c"># zbir mora da počinje sa 87ba6b17</span>
-Get-FileHash .\InternetMonitoring-2.8.0-beta.4-win-x64.exe -Algorithm SHA256
+        <pre><span class="c"># provera digitalnog potpisa i heša izdanja</span>
+Get-AuthenticodeSignature .\InternetEvidenceMonitor-3.0.0-rc.1-Setup.exe
 
-Unblock-File .\InternetMonitoring-2.8.0-beta.4-win-x64.exe</pre>
+Get-FileHash .\InternetEvidenceMonitor-3.0.0-rc.1-win-x64.exe -Algorithm SHA256</pre>
       </div>
 
       <div class="step">
-        <h3>Pokrenite prozor kao administrator</h3>
+        <h3>Pokrenite aplikaciju kao administrator</h3>
         <p>
-          <span class="keys">-Verb RunAs</span> je isto što i desni klik pa „Pokreni kao
-          administrator". Windows će tražiti potvrdu.
+          <span class="keys">-Verb RunAs</span> pokreće aplikaciju sa povišenim pravima potrebnim za čitanje Wi-Fi i mrežnih adaptera.
         </p>
-        <pre>Start-Process .\InternetMonitoring-2.8.0-beta.4-win-x64.exe -Verb RunAs</pre>
+        <pre>Start-Process .\InternetEvidenceMonitor-3.0.0-rc.1-win-x64.exe -Verb RunAs</pre>
       </div>
 
       <div class="step">
-        <h3>Ili nadzor iz konzole, bez prozora</h3>
+        <h3>Ili nadzor iz konzole (CLI motor)</h3>
         <p>
-          Konzolni pokretač radi isti posao i prima trajanje i folder. Ovako se snima 48 sati u
-          folder <span class="mono">C:\Dokazi</span>.
+          Konzolni motor <span class="mono">iem.exe</span> radi samostalno, bez GUI interfejsa, idealno za servere i pozadinski rad.
         </p>
-        <pre><span class="c"># u konzoli koja je već pokrenuta kao administrator</span>
-.\iem-2.8.0-beta.4-win-x64.exe -t 48h -o C:\Dokazi
+        <pre><span class="c"># 48 sati nadzora sa čuvanjem u folder C:\Dokazi</span>
+.\iem.exe -t 48h -o C:\Dokazi
 
-<span class="c"># ili odmah kao administrator, iz obične konzole</span>
-Start-Process .\iem-2.8.0-beta.4-win-x64.exe -Verb RunAs `
-  -ArgumentList '-t','48h','-o','C:\Dokazi'</pre>
+<span class="c"># merenje brzine uz ugovoreni profil 100/20 Mbps</span>
+.\iem.exe --brzina 100/20</pre>
       </div>
 
       <div class="step">
-        <h3>Servis, ako test treba da preživi restart</h3>
+        <h3>Offline verifikator paketa dokaza</h3>
         <p>
-          Iz raspakovane arhive. Traži administratorska prava jednom; posle toga nadzor radi u
-          pozadini i nastavlja se i posle restarta računara.
+          <span class="mono">iem-verifier.exe</span> proverava manifest, potpis, RFC 3161 TSA žig i integritet svakog fajla u sesiji.
         </p>
-        <pre>powershell -ExecutionPolicy Bypass -File install\install.ps1</pre>
+        <pre><span class="c"># provera integriteta lokalne ili tuđe sesije</span>
+.\iem-verifier.exe C:\Dokazi\Sesija_20260819_011432</pre>
       </div>
     </div>
 
@@ -1233,47 +1251,42 @@ Start-Process .\iem-2.8.0-beta.4-win-x64.exe -Verb RunAs `
 <div class="wrap">
   <section id="granice">
     <div class="section-head">
-      <p class="eyebrow">Granice ovog alata</p>
-      <h2>Šta ovaj program ne dokazuje.</h2>
+      <p class="eyebrow">Forenzičke granice i pravna valjanost</p>
+      <h2>Šta ovaj program dokazuje, a šta ne tvrdi.</h2>
       <p class="lede">
-        Ceo projekat je napisan oko jednog pravila: <em>„nisam mogao da proverim" nikada ne
-        postaje „proverio sam i u redu je"</em>. Zato ove granice stoje ovde, a ne sitnim
-        slovima na dnu.
+        Ceo projekat je izgrađen oko neprikosnovenog principa: <em>„nisam mogao da proverim" nikada ne
+        postaje „proverio sam i u redu je"</em>. Zato su granice dokaza transparentne i matematički definisane.
       </p>
     </div>
 
     <div class="grid two" style="gap: 30px 52px;">
       <div class="notice">
-        <h3>Ovo nije zvanično merenje brzine</h3>
+        <h3>Dopunski dokaz uz RATEL proceduru</h3>
         <p>
-          Za dokazivanje ugovorene brzine RATEL traži merenje
-          <a href="https://nettest.ratel.rs/home">NetTest</a> aplikacijom, po propisanoj
-          proceduri, preko kabla direktno na modem. Ovaj alat je dopuna tome - pokazuje kada je
-          i pod kojim uslovima brzina padala - a ne zamena.
+          Za merenje maksimalne trenutne brzine RATEL predviđa protokol sa
+          <a href="https://nettest.ratel.rs/home" target="_blank" rel="noopener">NetTest</a> alatom.
+          Ovaj softver pruža ključnu dopunu: višednevni neprekidni zapis prekida, zagušenja i kašnjenja pod opterećenjem koji operater ne može poreći.
         </p>
       </div>
       <div class="notice">
-        <h3>Lanac otisaka je provera doslednosti, ne dokaz porekla</h3>
+        <h3>Kriptografski potpis i RFC 3161 vremenski žig</h3>
         <p>
-          Dokazuje da nijedan zapis nije izmenjen a da to ne pokvari sve otiske posle njega. Ne
-          dokazuje ko ga je napravio ni kada: ko ima pravo upisa u folder sesije mogao bi da
-          preračuna i lanac i zbirove. Nezavisan dokaz vremena traži potpis i vremenski žig
-          treće strane, što ovo izdanje ne radi.
+          Verzija 3.0 uvodi punu kriptografsku verifikaciju: manifest sesije se kanonizuje (RFC 8785) i potpisuje ključem zaštićenim u TPM čipu,
+          dok nezavisni RFC 3161 TSA server treće strane overava tačan vremenski trenutak merenja.
         </p>
       </div>
       <div class="notice">
-        <h3>Rokovi za prigovor nisu pravni savet</h3>
+        <h3>Rokovi za prigovor i regulatorna usklađenost</h3>
         <p>
-          Program računa rokove i uz svaki navodi propis iz kog dolazi, sa datumom provere. To
-          je pomoć u snalaženju. Kad podaci ne dozvoljavaju jednoznačan odgovor, program kaže
-          da rok nije utvrđen - umesto da pogodi.
+          Program precizno prati rokove definisane Zakonom o elektronskim komunikacijama i propisima RATEL-a.
+          Ako podaci ne omogućavaju jednoznačan zaključak, program pošteno konstatuje da rok nije moguće utvrditi.
         </p>
       </div>
       <div class="notice">
-        <h3>Folder sesije sadrži vaše podatke</h3>
+        <h3>Zaštita privatnosti i redigovani paket</h3>
         <p>
-          Ime računara, naziv adaptera, IP rutera, SSID. Tako i treba, jer je to deo dokaza -
-          ali šaljite samo ono što ste spremni da objavite.
+          Originalni folder sadrži detalje lokalne mreže. Za javno objavljivanje (npr. forumi ili društvene mreže),
+          IEM 3.0 jednim klikom generiše redigovani paket sa maskiranim ličnim podacima i kriptografski dokazanim poreklom do originala.
         </p>
       </div>
     </div>
@@ -1284,20 +1297,21 @@ Start-Process .\iem-2.8.0-beta.4-win-x64.exe -Verb RunAs `
   <footer>
     <div class="stack" style="gap: 16px;">
       <p>
-        Slobodan softver pod MIT licencom. Izvorni kod, istorija izmena i spisak nedovršenog
-        stoje na GitHub-u. Autor: o0o0o0o.
+        Slobodan softver otvorenog koda pod MIT licencom.
+        Razvoj, invarijante i testovi su javno dostupni na GitHub-u.
       </p>
       <div class="links">
-        <a href="https://github.com/zoxknez/InternetMonitoring">Izvorni kod</a>
-        <a href="https://github.com/zoxknez/InternetMonitoring/issues">Prijava greške</a>
-        <a href="https://github.com/zoxknez/InternetMonitoring/blob/main/CHANGELOG.md">Istorija izmena</a>
-        <a href="https://github.com/zoxknez/InternetMonitoring/blob/main/docs/INVARIJANTE.md">Pravila koja program ne sme da prekrši</a>
-        <a href="https://discord.gg/ZZbtCs942">Discord</a>
-        <a href="mailto:zoxknez@hotmail.com">Mejl</a>
-        <a href="https://ko-fi.com/F7I0249KP5" target="_blank" rel="noopener">Časti kafom</a>
+        <a href="https://github.com/zoxknez/InternetMonitoring">Izvorni kod na GitHub-u</a>
+        <a href="https://github.com/zoxknez/InternetMonitoring/releases">Sva izdanja (Releases)</a>
+        <a href="https://github.com/zoxknez/InternetMonitoring/issues">Prijava problema</a>
+        <a href="https://github.com/zoxknez/InternetMonitoring/blob/main/docs/INVARIJANTE.md">210 formalnih invarijanti</a>
+        <a href="https://github.com/zoxknez/InternetMonitoring/blob/main/docs/ROADMAP-3.0.md">Forenzička specifikacija 3.0</a>
+        <a href="https://discord.gg/ZZbtCs942">Discord zajednica</a>
+        <a href="mailto:zoxknez@hotmail.com">Kontakt mejl</a>
+        <a href="https://ko-fi.com/F7I0249KP5" target="_blank" rel="noopener">Podrži projekat</a>
       </div>
-      <p class="mono" style="font-size: .8rem; color: var(--faint);">
-        Internet Monitoring 2.8.0-beta.4 · beta izdanje, otvoreno za testiranje
+      <p class="mono" style="font-size: .85rem; color: var(--faint);">
+        Internet Evidence Monitor 3.0.0 — Release Candidate Frozen · 210 invarijanti · 781 test
       </p>
     </div>
   </footer>
