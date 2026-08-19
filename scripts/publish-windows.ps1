@@ -16,17 +16,17 @@ foreach ($rid in $runtimes) {
     # 1. Desktop GUI App
     Write-Host "Publishing IEM.App ($rid)..."
     dotnet publish src/IEM.App/IEM.App.csproj -c Release -r $rid --self-contained true `
-        -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o $outDir
+        -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:IncludeAllContentForSelfExtract=true -o $outDir
 
     # 2. CLI tool
     Write-Host "Publishing IEM.Cli ($rid)..."
     dotnet publish src/IEM.Cli/IEM.Cli.csproj -c Release -r $rid --self-contained true `
-        -p:PublishSingleFile=true -o $outDir
+        -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:IncludeAllContentForSelfExtract=true -o $outDir
 
     # 3. Verifier tool
     Write-Host "Publishing IEM.Verifier ($rid)..."
     dotnet publish src/IEM.Verifier/IEM.Verifier.csproj -c Release -r $rid --self-contained true `
-        -p:PublishSingleFile=true -o $outDir
+        -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:IncludeAllContentForSelfExtract=true -o $outDir
 
     # Copy named binaries to dist
     $exeName = "MonitorInternetDokaza-$version-$rid.exe"

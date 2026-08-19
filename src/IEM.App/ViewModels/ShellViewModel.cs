@@ -130,7 +130,8 @@ public sealed partial class ShellViewModel : ObservableObject, IAsyncDisposable
                 var result = await _updateService.CheckForUpdatesAsync(force: false);
                 if (result.Availability == global::IEM.Presentation.Updates.UpdateAvailability.UpdateAvailable ||
                     result.Availability == global::IEM.Presentation.Updates.UpdateAvailability.PreviewAvailable ||
-                    result.Availability == global::IEM.Presentation.Updates.UpdateAvailability.CriticalUpdateAvailable)
+                    result.Availability == global::IEM.Presentation.Updates.UpdateAvailability.CriticalUpdateAvailable ||
+                    result.Availability == global::IEM.Presentation.Updates.UpdateAvailability.UnsupportedCurrentVersion)
                 {
                     Application.Current?.Dispatcher?.Invoke(() =>
                     {

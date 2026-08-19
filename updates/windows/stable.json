@@ -5,7 +5,7 @@
   "channel": "stable",
   "version": "3.1.0",
   "publishedAt": "2026-08-19T08:13:00Z",
-  "minimumSupportedVersion": "3.0.0",
+  "minimumSupportedVersion": "2.0.0",
   "severity": "normal",
   "mandatory": false,
   "releaseNotesUrl": "https://github.com/zoxknez/InternetMonitoring/releases/tag/v3.0.0-rc.1",

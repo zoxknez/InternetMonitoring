@@ -54,10 +54,13 @@ public static class UpdatePolicy
             return UpdateAvailability.UpToDate;
         }
 
-        // Minimum supported version check
+        // Minimum supported version check: flag as unsupported only if below the major/minor base
         if (!string.IsNullOrWhiteSpace(manifest.MinimumSupportedVersion) &&
             SemanticVersion.TryParse(manifest.MinimumSupportedVersion, out var minSupportedVersion) &&
-            currentVersion.CompareTo(minSupportedVersion) < 0)
+            currentVersion.CompareTo(minSupportedVersion) < 0 &&
+            !(currentVersion.Major == minSupportedVersion.Major &&
+              currentVersion.Minor == minSupportedVersion.Minor &&
+              currentVersion.Patch == minSupportedVersion.Patch))
         {
             return UpdateAvailability.UnsupportedCurrentVersion;
         }

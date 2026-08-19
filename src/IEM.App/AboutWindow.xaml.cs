@@ -79,7 +79,8 @@ public partial class AboutWindow : Window
 
         if (result.Availability == global::IEM.Presentation.Updates.UpdateAvailability.UpdateAvailable ||
             result.Availability == global::IEM.Presentation.Updates.UpdateAvailability.PreviewAvailable ||
-            result.Availability == global::IEM.Presentation.Updates.UpdateAvailability.CriticalUpdateAvailable)
+            result.Availability == global::IEM.Presentation.Updates.UpdateAvailability.CriticalUpdateAvailable ||
+            result.Availability == global::IEM.Presentation.Updates.UpdateAvailability.UnsupportedCurrentVersion)
         {
             UpdateStatusText.Text = $"Dostupna je nova verzija: {result.Manifest?.Version}!";
             if (!string.IsNullOrEmpty(result.Manifest?.DownloadUrl))
