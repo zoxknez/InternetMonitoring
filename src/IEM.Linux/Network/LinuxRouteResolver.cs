@@ -23,23 +23,30 @@ public sealed class LinuxRouteResolver : IRouteResolver
     private readonly ConcurrentDictionary<IPAddress, CachedPath> _cache = new();
     private readonly LinuxInterfaceIndexMap _interfaces = new();
     private readonly LinuxNetlinkRouteClient _netlinkClient;
+    private readonly INetworkChangeObserver _observer;
 
-    public LinuxRouteResolver(LinuxNetlinkRouteClient? netlinkClient = null)
+    public LinuxRouteResolver(
+        LinuxNetlinkRouteClient? netlinkClient = null,
+        INetworkChangeObserver? observer = null)
     {
         _netlinkClient = netlinkClient ?? LinuxNetlinkRouteClient.Instance;
+        _observer = observer ?? NullNetworkChangeObserver.Instance;
+        _observer.RouteChanged += _ => Invalidate();
     }
 
     public ProbePath Resolve(IPAddress destination)
     {
         ArgumentNullException.ThrowIfNull(destination);
 
-        if (_cache.TryGetValue(destination, out var cached) && !cached.IsStale)
+        var currentGen = _observer.RouteGeneration;
+
+        if (_cache.TryGetValue(destination, out var cached) && !cached.IsStale(currentGen))
         {
             return cached.Path;
         }
 
         var path = Lookup(destination);
-        _cache[destination] = new CachedPath(path, Stopwatch.GetTimestamp());
+        _cache[destination] = new CachedPath(path, Stopwatch.GetTimestamp(), currentGen);
 
         return path;
     }
@@ -90,12 +97,13 @@ public sealed class LinuxRouteResolver : IRouteResolver
             Bound: false);
     }
 
-    private readonly struct CachedPath(ProbePath path, long recordedTimestamp)
+    private readonly struct CachedPath(ProbePath path, long recordedTimestamp, ulong generation)
     {
         public ProbePath Path { get; } = path;
+        public ulong Generation { get; } = generation;
 
-        public bool IsStale =>
-            Stopwatch.GetElapsedTime(recordedTimestamp) >= CacheLifetime;
+        public bool IsStale(ulong currentGeneration) =>
+            Generation != currentGeneration || Stopwatch.GetElapsedTime(recordedTimestamp) >= CacheLifetime;
     }
 
     private sealed class LinuxInterfaceIndexMap

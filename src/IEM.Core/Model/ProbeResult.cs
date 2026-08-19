@@ -223,6 +223,9 @@ public sealed record ProbeResult(
     /// <summary>Which way out of the machine this probe went.</summary>
     public ProbePath Path { get; init; } = ProbePath.Unresolved;
 
+    /// <summary>TOCTOU provenance proving whether the route path was held during execution.</summary>
+    public PathContinuity PathContinuity { get; init; } = PathContinuity.Unknown;
+
     public ProbeFamily ProbeFamily => ProbeFamilyInfo.FamilyOf(Kind, Scope);
 
     public static ProbeResult Skip(ProbeKind kind, ProbeScope scope, string target, string reason) =>

@@ -15,9 +15,34 @@ public static class NetlinkConstants
     public const ushort NLMSG_DONE = 3;
     public const ushort NLMSG_OVERRUN = 4;
 
+    public const ushort RTM_NEWLINK = 16;
+    public const ushort RTM_DELLINK = 17;
+    public const ushort RTM_GETLINK = 18;
+    public const ushort RTM_NEWADDR = 20;
+    public const ushort RTM_DELADDR = 21;
+    public const ushort RTM_GETADDR = 22;
     public const ushort RTM_NEWROUTE = 24;
     public const ushort RTM_DELROUTE = 25;
     public const ushort RTM_GETROUTE = 26;
+
+    // Multicast groups (linux/rtnetlink.h)
+    public const int RTNLGRP_NONE = 0;
+    public const int RTNLGRP_LINK = 1;
+    public const int RTNLGRP_NOTIFY = 2;
+    public const int RTNLGRP_NEIGH = 3;
+    public const int RTNLGRP_TC = 4;
+    public const int RTNLGRP_IPV4_IFADDR = 5;
+    public const int RTNLGRP_IPV4_MROUTE = 6;
+    public const int RTNLGRP_IPV4_ROUTE = 7;
+    public const int RTNLGRP_IPV4_RULE = 8;
+    public const int RTNLGRP_IPV6_IFADDR = 9;
+    public const int RTNLGRP_IPV6_MROUTE = 10;
+    public const int RTNLGRP_IPV6_ROUTE = 11;
+
+    // Socket options (SOL_NETLINK)
+    public const int SOL_NETLINK = 270;
+    public const int NETLINK_ADD_MEMBERSHIP = 1;
+    public const int NETLINK_DROP_MEMBERSHIP = 2;
 
     // nlmsghdr flags
     public const ushort NLM_F_REQUEST = 0x01;

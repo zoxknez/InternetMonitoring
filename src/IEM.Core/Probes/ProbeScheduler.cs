@@ -29,6 +29,7 @@ public sealed class ProbeScheduler : IAsyncDisposable
     private readonly Func<LinkSnapshot> _link;
     private readonly IRouteResolver _routes;
     private readonly IBoundIcmp? _boundIcmp;
+    private readonly INetworkChangeObserver _observer;
     private readonly HttpClient _httpClient;
     private readonly CancellationTokenSource _shutdown = new();
     private readonly SemaphoreSlim _deepWake = new(0, 1);
@@ -42,6 +43,7 @@ public sealed class ProbeScheduler : IAsyncDisposable
     /// which costs attribution and nothing else.
     /// </param>
     /// <param name="boundIcmp">Platform sender that can pin ICMP to a source address.</param>
+    /// <param name="observer">Monitors kernel network changes and evaluates TOCTOU path continuity.</param>
     public ProbeScheduler(
         ObservationStore store,
         ProbeOptions options,
@@ -49,7 +51,8 @@ public sealed class ProbeScheduler : IAsyncDisposable
         Func<LinkSnapshot> link,
         HttpClient? httpClient = null,
         IRouteResolver? routes = null,
-        IBoundIcmp? boundIcmp = null)
+        IBoundIcmp? boundIcmp = null,
+        INetworkChangeObserver? observer = null)
     {
         _store = store ?? throw new ArgumentNullException(nameof(store));
         _options = options ?? throw new ArgumentNullException(nameof(options));
@@ -57,6 +60,7 @@ public sealed class ProbeScheduler : IAsyncDisposable
         _link = link ?? throw new ArgumentNullException(nameof(link));
         _routes = routes ?? NullRouteResolver.Instance;
         _boundIcmp = boundIcmp;
+        _observer = observer ?? NullNetworkChangeObserver.Instance;
 
         _httpClient = httpClient ?? new HttpClient(new SocketsHttpHandler
         {
@@ -458,16 +462,22 @@ public sealed class ProbeScheduler : IAsyncDisposable
         SourceOf(path) is not null &&
         result.Outcome != ProbeOutcome.Skipped;
 
-    private static ProbeResult Stamp(ProbeResult result, long startedAtTicks, long completedAtTicks) =>
-        result with { StartedAtTicks = startedAtTicks, CompletedAtTicks = completedAtTicks };
+    private ProbeResult Stamp(ProbeResult result, long startedAtTicks, long completedAtTicks) =>
+        result with
+        {
+            StartedAtTicks = startedAtTicks,
+            CompletedAtTicks = completedAtTicks,
+            PathContinuity = _observer.EvaluateContinuity(startedAtTicks, completedAtTicks, result.Path),
+        };
 
-    private static ProbeResult Stamp(
+    private ProbeResult Stamp(
         ProbeResult result, long startedAtTicks, long completedAtTicks, ProbePath path, bool bound) =>
         result with
         {
             StartedAtTicks = startedAtTicks,
             CompletedAtTicks = completedAtTicks,
-            Path = path with { Bound = bound },
+            Path = path with { Bound = bound && result.Outcome != ProbeOutcome.Skipped },
+            PathContinuity = _observer.EvaluateContinuity(startedAtTicks, completedAtTicks, path),
         };
 
     private bool _disposed;

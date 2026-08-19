@@ -14,4 +14,8 @@
     <ProjectReference Include="..\IEM.Evidence\IEM.Evidence.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="IEM.Core.Tests" />
+  </ItemGroup>
+
 </Project>

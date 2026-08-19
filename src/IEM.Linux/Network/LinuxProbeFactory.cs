@@ -22,6 +22,8 @@ public sealed class LinuxProbeFactory : IPlatformProbeFactory
 
     public IBoundIcmp CreateBoundIcmp() => LinuxBoundIcmp.Instance;
 
+    public INetworkChangeObserver CreateObserver() => new Netlink.LinuxRtnetlinkObserver();
+
     private sealed class BasicLinkInspectionScope(ILinkInspector inspector) : IPlatformLinkInspectionScope
     {
         public ILinkInspector Inspector { get; } = inspector;
