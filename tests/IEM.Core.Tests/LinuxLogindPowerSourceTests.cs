@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using IEM.Core.Hosting;
@@ -10,8 +11,8 @@ using Xunit;
 namespace IEM.Core.Tests;
 
 /// <summary>
-/// Deterministic tests for Phase 3.1-6B LinuxLogindPowerSource.
-/// Verifies D-Bus signal mapping, subscriber isolation, exponential backoff reconnection, and lifecycle cleanup.
+/// Deterministic tests for Phase 3.1-6B-R1 LinuxLogindPowerSource.
+/// Verifies D-Bus signal mapping, subscriber isolation, backoff delay progression, onReady reset, and lifecycle cleanup.
 /// </summary>
 public sealed class LinuxLogindPowerSourceTests
 {
@@ -149,6 +150,50 @@ public sealed class LinuxLogindPowerSourceTests
     }
 
     [Fact]
+    public async Task Exponential_backoff_delays_grow_on_consecutive_failures_before_ready()
+    {
+        var observedDelays = new List<TimeSpan>();
+        var failCount = 0;
+        using var cts = new CancellationTokenSource();
+
+        using var source = new LinuxLogindPowerSource(
+            NullLogger<LinuxLogindPowerSource>.Instance,
+            () => new FailingLogindSignalTransport(),
+            retryDelays: [
+                TimeSpan.FromSeconds(1),
+                TimeSpan.FromSeconds(2),
+                TimeSpan.FromSeconds(5),
+                TimeSpan.FromSeconds(10),
+                TimeSpan.FromSeconds(30),
+            ],
+            delayFunc: (delay, token) =>
+            {
+                observedDelays.Add(delay);
+                if (++failCount >= 5)
+                {
+                    cts.Cancel();
+                }
+                return Task.CompletedTask;
+            });
+
+        try
+        {
+            await source.StartAsync(cts.Token);
+            await Task.Delay(100);
+        }
+        catch (OperationCanceledException)
+        {
+        }
+
+        Assert.Equal(5, observedDelays.Count);
+        Assert.Equal(TimeSpan.FromSeconds(1), observedDelays[0]);
+        Assert.Equal(TimeSpan.FromSeconds(2), observedDelays[1]);
+        Assert.Equal(TimeSpan.FromSeconds(5), observedDelays[2]);
+        Assert.Equal(TimeSpan.FromSeconds(10), observedDelays[3]);
+        Assert.Equal(TimeSpan.FromSeconds(30), observedDelays[4]);
+    }
+
+    [Fact]
     public async Task Transport_reconnect_recovers_after_exception_without_duplication()
     {
         var transport1 = new FakeLogindSignalTransport();
@@ -161,7 +206,8 @@ public sealed class LinuxLogindPowerSourceTests
             {
                 var idx = Interlocked.Increment(ref factoryCallCount);
                 return idx == 1 ? transport1 : transport2;
-            });
+            },
+            delayFunc: (_, _) => Task.CompletedTask);
 
         var resumeCount = 0;
         using var rSub = source.OnResumed(() => resumeCount++);
@@ -186,6 +232,17 @@ public sealed class LinuxLogindPowerSourceTests
         await runTask;
     }
 
+    private sealed class FailingLogindSignalTransport : ILogindSignalTransport
+    {
+        public Task ObservePrepareForSleepAsync(Func<bool, ValueTask> handler, Action onReady, CancellationToken cancellationToken)
+        {
+            // Fails before onReady
+            throw new InvalidOperationException("Failed to connect to D-Bus socket");
+        }
+
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    }
+
     private sealed class FakeLogindSignalTransport : ILogindSignalTransport
     {
         private readonly TaskCompletionSource<bool> _startedTcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -194,10 +251,11 @@ public sealed class LinuxLogindPowerSourceTests
 
         public Task WaitForStartAsync() => _startedTcs.Task;
 
-        public async Task ObservePrepareForSleepAsync(Func<bool, ValueTask> handler, CancellationToken cancellationToken)
+        public async Task ObservePrepareForSleepAsync(Func<bool, ValueTask> handler, Action onReady, CancellationToken cancellationToken)
         {
             _activeHandler = handler;
             _startedTcs.TrySetResult(true);
+            onReady();
 
             using var reg = cancellationToken.Register(() => _completedTcs.TrySetCanceled(cancellationToken));
             await _completedTcs.Task.ConfigureAwait(false);

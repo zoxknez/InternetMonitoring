@@ -16,9 +16,11 @@ internal sealed class TmdsLogindSignalTransport : ILogindSignalTransport
 
     public async Task ObservePrepareForSleepAsync(
         Func<bool, ValueTask> handler,
+        Action onReady,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(handler);
+        ArgumentNullException.ThrowIfNull(onReady);
 
         // System bus endpoint
         var address = DBusAddress.System;
@@ -52,10 +54,15 @@ internal sealed class TmdsLogindSignalTransport : ILogindSignalTransport
 
         _matchSubscription = matchSub;
 
-        // Keep running until cancellation
-        var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-        using var reg = cancellationToken.Register(() => tcs.TrySetResult(true));
-        await tcs.Task.ConfigureAwait(false);
+        // Signal that transport is connected and observer match is live
+        onReady();
+
+        // Await real connection disconnection or token cancellation
+        var disconnectReason = await _connection.DisconnectedAsync()
+            .WaitAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        throw disconnectReason ?? new System.IO.IOException("System D-Bus connection was closed.");
     }
 
     public async ValueTask DisposeAsync()

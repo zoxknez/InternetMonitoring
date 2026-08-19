@@ -31,19 +31,25 @@ public sealed class LinuxLogindPowerSource : BackgroundService, IPowerEventSourc
     private readonly List<Action> _resumeCallbacks = [];
     private readonly ILogger<LinuxLogindPowerSource> _logger;
     private readonly Func<ILogindSignalTransport> _transportFactory;
+    private readonly TimeSpan[] _retryDelays;
+    private readonly Func<TimeSpan, CancellationToken, Task> _delayFunc;
     private ILogindSignalTransport? _activeTransport;
 
     public LinuxLogindPowerSource(ILogger<LinuxLogindPowerSource> logger)
-        : this(logger, () => new TmdsLogindSignalTransport())
+        : this(logger, () => new TmdsLogindSignalTransport(), RetryDelays, Task.Delay)
     {
     }
 
     internal LinuxLogindPowerSource(
         ILogger<LinuxLogindPowerSource> logger,
-        Func<ILogindSignalTransport> transportFactory)
+        Func<ILogindSignalTransport> transportFactory,
+        TimeSpan[]? retryDelays = null,
+        Func<TimeSpan, CancellationToken, Task>? delayFunc = null)
     {
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _transportFactory = transportFactory ?? throw new ArgumentNullException(nameof(transportFactory));
+        _retryDelays = retryDelays ?? RetryDelays;
+        _delayFunc = delayFunc ?? Task.Delay;
     }
 
     /// <summary>Registers a callback invoked when the host system is suspending.</summary>
@@ -152,7 +158,6 @@ public sealed class LinuxLogindPowerSource : BackgroundService, IPowerEventSourc
                     _activeTransport = transport;
                 }
 
-                retryIndex = 0; // Reset retry counter on successful transport instantiation
                 await transport.ObservePrepareForSleepAsync(
                     isSuspending =>
                     {
@@ -166,6 +171,11 @@ public sealed class LinuxLogindPowerSource : BackgroundService, IPowerEventSourc
                         }
 
                         return ValueTask.CompletedTask;
+                    },
+                    onReady: () =>
+                    {
+                        // Reset backoff once transport connection and match rule are confirmed live
+                        retryIndex = 0;
                     },
                     stoppingToken).ConfigureAwait(false);
             }
@@ -202,10 +212,10 @@ public sealed class LinuxLogindPowerSource : BackgroundService, IPowerEventSourc
 
             if (stoppingToken.IsCancellationRequested) break;
 
-            var delay = RetryDelays[Math.Min(retryIndex++, RetryDelays.Length - 1)];
+            var delay = _retryDelays[Math.Min(retryIndex++, _retryDelays.Length - 1)];
             try
             {
-                await Task.Delay(delay, stoppingToken).ConfigureAwait(false);
+                await _delayFunc(delay, stoppingToken).ConfigureAwait(false);
             }
             catch (OperationCanceledException)
             {

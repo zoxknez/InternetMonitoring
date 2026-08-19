@@ -8,5 +8,6 @@ internal interface ILogindSignalTransport : IAsyncDisposable
 {
     Task ObservePrepareForSleepAsync(
         Func<bool, ValueTask> handler,
+        Action onReady,
         CancellationToken cancellationToken);
 }
