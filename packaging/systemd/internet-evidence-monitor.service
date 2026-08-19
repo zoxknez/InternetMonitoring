@@ -9,6 +9,7 @@ User=iem
 Group=iem
 SupplementaryGroups=iem-users
 ExecStart=/usr/lib/internet-evidence-monitor/IEM.Service.Linux
+WorkingDirectory=/var/lib/internet-evidence-monitor
 Restart=on-failure
 RestartSec=5s
 StateDirectory=internet-evidence-monitor

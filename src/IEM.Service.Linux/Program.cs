@@ -12,9 +12,11 @@ using Microsoft.Extensions.Logging;
 
 // Serbian culture as standard across all platforms
 CultureInfo.DefaultThreadCurrentCulture = SerbianText.Culture;
-CultureInfo.DefaultThreadCurrentUICulture = SerbianText.Culture;
-
-var builder = Host.CreateApplicationBuilder(args);
+var builder = Host.CreateApplicationBuilder(new HostApplicationBuilderSettings
+{
+    Args = args,
+    ContentRootPath = AppContext.BaseDirectory,
+});
 
 // systemd integration: registers SystemdLifetime, Type=notify notifications, and journal logging
 builder.Services.AddSystemd();
