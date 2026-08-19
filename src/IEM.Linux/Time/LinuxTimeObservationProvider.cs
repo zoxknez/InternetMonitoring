@@ -25,15 +25,36 @@ public sealed class LinuxTimeObservationProvider : ITimeObservationProvider
 
     private readonly ILinuxNativeClock _clock;
     private readonly Func<string, string>? _fileReader;
+    private readonly ILinuxAdjtimex _adjtimex;
 
-    public LinuxTimeObservationProvider() : this(new LinuxNativeClock(), null)
+    public LinuxTimeObservationProvider() : this(new LinuxNativeClock(), null, new LinuxAdjtimex())
     {
     }
 
-    internal LinuxTimeObservationProvider(ILinuxNativeClock clock, Func<string, string>? fileReader = null)
+    internal LinuxTimeObservationProvider(
+        ILinuxNativeClock clock,
+        Func<string, string>? fileReader = null,
+        ILinuxAdjtimex? adjtimex = null)
     {
         _clock = clock ?? throw new ArgumentNullException(nameof(clock));
         _fileReader = fileReader;
+        _adjtimex = adjtimex ?? new LinuxAdjtimex();
+    }
+
+    /// <summary>
+    /// Captures factual Linux kernel time discipline and synchronization provenance via adjtimex(2).
+    /// Strictly read-only; never alters kernel clock parameters.
+    /// </summary>
+    public LinuxTimeSyncProvenance CaptureTimeSyncProvenance()
+    {
+        var timex = new LinuxTimex();
+        var result = _adjtimex.Query(ref timex);
+        if (result < 0)
+        {
+            return LinuxTimeSyncProvenance.Unavailable($"adjtimex query failed with errno {-result}");
+        }
+
+        return LinuxTimeSyncProvenance.FromTimex(result, in timex);
     }
 
     public ClockSample CaptureClockSample(string bootInstanceId)
