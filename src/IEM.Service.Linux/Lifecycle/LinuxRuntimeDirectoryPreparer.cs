@@ -51,35 +51,26 @@ public sealed class RealPosixEnvironment : IPosixEnvironment
         gid = 0;
         if (!IsLinux) return true;
 
+        const int AT_FDCWD = -100;
+        const int AT_SYMLINK_NOFOLLOW = 0x100;
+        const uint STATX_BASIC_STATS = 0x7ff;
+
         try
         {
-            // statx syscall (SYS_statx: 332 on x86_64, 291 on ARM64)
-            var sysStatx = RuntimeInformation.ProcessArchitecture switch
-            {
-                Architecture.X64 => 332L,
-                Architecture.Arm64 => 291L,
-                _ => 332L
-            };
-
-            const int AT_FDCWD = -100;
-            const int AT_SYMLINK_NOFOLLOW = 0x100;
-            const uint STATX_BASIC_STATS = 0x7ff;
-
             var statxBuf = new byte[256];
-            var res = syscall(sysStatx, AT_FDCWD, path, AT_SYMLINK_NOFOLLOW, STATX_BASIC_STATS, statxBuf);
-            if (res == 0)
+            if (statx(AT_FDCWD, path, AT_SYMLINK_NOFOLLOW, STATX_BASIC_STATS, statxBuf) == 0)
             {
                 uid = BitConverter.ToUInt32(statxBuf, 20);
                 gid = BitConverter.ToUInt32(statxBuf, 24);
                 return true;
             }
-
-            return false;
         }
         catch
         {
-            return false;
+            // Fallback
         }
+
+        return false;
     }
 
     public bool SetGroupOwnership(string path, int gid)
@@ -134,7 +125,7 @@ public sealed class RealPosixEnvironment : IPosixEnvironment
     private static extern int chown([MarshalAs(UnmanagedType.LPStr)] string path, int owner, int group);
 
     [DllImport("libc", SetLastError = true)]
-    private static extern long syscall(long number, int dirfd, [MarshalAs(UnmanagedType.LPStr)] string pathname, int flags, uint mask, byte[] statxbuf);
+    private static extern int statx(int dirfd, [MarshalAs(UnmanagedType.LPStr)] string pathname, int flags, uint mask, byte[] statxbuf);
 }
 
 /// <summary>
