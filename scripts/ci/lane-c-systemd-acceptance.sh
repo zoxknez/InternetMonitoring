@@ -300,6 +300,15 @@ STATUS_UNIT_INSTALL="PASS"
 record_pass "Canonical unit file installed and daemon reloaded"
 
 echo "=============================================================================="
+echo "4.5 DIRECT DIAGNOSTIC EXECUTION AS USER iem"
+echo "=============================================================================="
+mkdir -p /run/internet-evidence-monitor /var/lib/internet-evidence-monitor
+chown -R iem:iem /run/internet-evidence-monitor /var/lib/internet-evidence-monitor
+chmod 0750 /run/internet-evidence-monitor
+chmod 0700 /var/lib/internet-evidence-monitor
+sudo -u iem NOTIFY_SOCKET=/tmp/test_notify.sock timeout 2s /usr/lib/internet-evidence-monitor/IEM.Service.Linux || true
+
+echo "=============================================================================="
 echo "5. START SERVICE AND TYPE=notify LIVE GATE"
 echo "=============================================================================="
 CURRENT_STAGE="STAGE_5_TYPE_NOTIFY"
