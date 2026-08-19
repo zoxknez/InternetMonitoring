@@ -1085,9 +1085,19 @@ NETLINK_ADD_MEMBERSHIP = 1
 obs_sock = socket.socket(AF_NETLINK, socket.SOCK_RAW, NETLINK_ROUTE)
 obs_sock.settimeout(4.0)
 
-groups = [1, 5, 7, 9, 11] # LINK, IPV4_IFADDR, IPV4_ROUTE, IPV6_IFADDR, IPV6_ROUTE
-for g in groups:
-    obs_sock.setsockopt(SOL_NETLINK, NETLINK_ADD_MEMBERSHIP, struct.pack('I', g))
+# Bind with multicast bitmask for groups 1, 5, 7, 9, 11
+group_mask = (1 << 0) | (1 << 4) | (1 << 6) | (1 << 8) | (1 << 10)
+try:
+    obs_sock.bind((0, group_mask))
+except Exception as e:
+    print(f"Bind fallback: {e}")
+    obs_sock.bind((0, 0))
+
+for g in [1, 5, 7, 9, 11]:
+    try:
+        obs_sock.setsockopt(SOL_NETLINK, NETLINK_ADD_MEMBERSHIP, struct.pack('I', g))
+    except Exception:
+        pass
 
 generation = 1
 events = []
@@ -1163,10 +1173,12 @@ for i in {1..30}; do
     sleep 0.05
 done
 
-# As test controller, inject real route event
-ip route add 192.0.2.222/32 dev lo 2>/dev/null || true
+# As test controller, inject real route and link events
+ip link add dummy_test_911 type dummy 2>/dev/null || true
+ip addr add 192.0.2.222/32 dev dummy_test_911 2>/dev/null || true
+ip link set dummy_test_911 up 2>/dev/null || true
 sleep 0.05
-ip route del 192.0.2.222/32 dev lo 2>/dev/null || true
+ip link del dummy_test_911 2>/dev/null || true
 touch /tmp/iem_observer_trigger_done
 
 wait ${OBS_PID} || true
