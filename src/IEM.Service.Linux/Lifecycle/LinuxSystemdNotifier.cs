@@ -15,6 +15,8 @@ public sealed class LinuxSystemdNotifier(
     ILogger<LinuxSystemdNotifier> logger,
     IHostApplicationLifetime lifetime) : IHostedService
 {
+    private delegate int SdNotifyFn(int unset_environment, [MarshalAs(UnmanagedType.LPStr)] string state);
+
     public static void SendNotify(string state, ILogger? log = null)
     {
         var socketPath = Environment.GetEnvironmentVariable("NOTIFY_SOCKET");
@@ -23,37 +25,48 @@ public sealed class LinuxSystemdNotifier(
             return;
         }
 
-        // 1. Try canonical libsystemd.so.0 sd_notify
+        // 1. Try canonical libsystemd sd_notify via NativeLibrary
         if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
         {
             try
             {
-                var ret = sd_notify(0, state);
-                if (ret > 0)
+                if (NativeLibrary.TryLoad("libsystemd.so.0", out var handle) ||
+                    NativeLibrary.TryLoad("libsystemd.so", out handle) ||
+                    NativeLibrary.TryLoad("systemd", out handle))
                 {
-                    log?.LogInformation("libsystemd sd_notify('{State}') uspešno poslat (ret={Ret})", state.TrimEnd(), ret);
-                    return;
+                    if (NativeLibrary.TryGetExport(handle, "sd_notify", out var funcPtr))
+                    {
+                        var notifyFunc = Marshal.GetDelegateForFunctionPointer<SdNotifyFn>(funcPtr);
+                        var ret = notifyFunc(0, state);
+                        if (ret > 0)
+                        {
+                            Console.WriteLine($"[systemd] sd_notify('{state.TrimEnd()}') via libsystemd success (ret={ret})");
+                            log?.LogInformation("libsystemd sd_notify('{State}') uspešno poslat (ret={Ret})", state.TrimEnd(), ret);
+                            return;
+                        }
+                    }
                 }
             }
-            catch
+            catch (Exception ex)
             {
-                // Fallback to direct managed socket
+                log?.LogDebug(ex, "libsystemd sd_notify attempt failed; falling back to UnixDomainSocket");
             }
         }
 
-        // 2. Direct managed socket fallback
+        // 2. Direct managed UnixDomainSocket fallback (.NET natively handles @ abstract sockets)
         try
         {
-            var cleanPath = socketPath.StartsWith('@') ? "\0" + socketPath[1..] : socketPath;
-            EndPoint endpoint = new UnixDomainSocketEndPoint(cleanPath);
+            EndPoint endpoint = new UnixDomainSocketEndPoint(socketPath);
 
             using var socket = new Socket(AddressFamily.Unix, SocketType.Dgram, ProtocolType.Unspecified);
             var payload = Encoding.UTF8.GetBytes(state.EndsWith('\n') ? state : state + "\n");
             socket.SendTo(payload, endpoint);
+            Console.WriteLine($"[systemd] sd_notify('{state.TrimEnd()}') via socket success to {socketPath}");
             log?.LogInformation("systemd sd_notify('{State}') poslat preko soketa na {Socket}", state.TrimEnd(), socketPath);
         }
         catch (Exception ex)
         {
+            Console.Error.WriteLine($"[systemd] sd_notify('{state.TrimEnd()}') error to {socketPath}: {ex.Message}");
             log?.LogWarning(ex, "Greška prilikom slanja systemd sd_notify('{State}') na {Socket}", state.TrimEnd(), socketPath);
         }
     }
@@ -81,7 +94,4 @@ public sealed class LinuxSystemdNotifier(
         SendNotify("STOPPING=1", logger);
         return Task.CompletedTask;
     }
-
-    [DllImport("libsystemd.so.0", EntryPoint = "sd_notify", SetLastError = true)]
-    private static extern int sd_notify(int unset_environment, [MarshalAs(UnmanagedType.LPStr)] string state);
 }

@@ -40,6 +40,7 @@ var runtimePrep = LinuxRuntimeDirectoryPreparer.Prepare(LinuxSystemStorageLayout
 
 if (!runtimePrep.IsValid)
 {
+    Console.Error.WriteLine($"[FATAL] Pre-flight greška: Validacija RuntimeDirectory nije uspela: {runtimePrep.Error}");
     logger?.LogCritical("Pre-flight greška: Validacija RuntimeDirectory nije uspela: {Error}", runtimePrep.Error);
     return MonitorWorker.FatalExitCode;
 }
