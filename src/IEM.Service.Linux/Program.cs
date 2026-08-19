@@ -25,7 +25,7 @@ builder.Services.AddSystemd();
 builder.Services.AddHostedService<LinuxSystemdNotifier>();
 
 // Platform adapter registration (Linux Composition Root)
-builder.Services.AddSingleton<IPlatformProbeFactory>(LinuxProbeFactoryBaseline.Instance);
+builder.Services.AddSingleton<IPlatformProbeFactory>(IEM.Linux.Network.LinuxProbeFactory.Instance);
 builder.Services.AddSingleton<IPowerEventSource>(LinuxPowerEventSourceStub.Instance);
 builder.Services.AddSingleton<IPlatformStorageLayout>(LinuxSystemStorageLayout.Instance);
 
