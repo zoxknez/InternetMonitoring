@@ -100,7 +100,7 @@ public sealed class LinuxAdjtimexTests
 
         Assert.Equal(-420, prov.OffsetRaw);
         Assert.Equal(timex.Freq, prov.FrequencyRaw);
-        Assert.Equal(12.5, prov.FrequencyPpm, precision: 4);
+        Assert.Equal(12.5, prov.FrequencyPpm!.Value, precision: 4);
         Assert.Equal(1500, prov.MaximumErrorMicroseconds);
         Assert.Equal(350, prov.EstimatedErrorMicroseconds);
         Assert.Equal(1, prov.PrecisionRaw);
@@ -167,7 +167,10 @@ public sealed class LinuxAdjtimexTests
         Assert.False(prov.Available);
         Assert.NotNull(prov.FailureReason);
         Assert.Contains("13", prov.FailureReason);
-        Assert.True(prov.Unsynchronized);
+        Assert.Null(prov.Unsynchronized);
+        Assert.Null(prov.RawKernelState);
+        Assert.Null(prov.RawStatusFlags);
+        Assert.Null(prov.FrequencyPpm);
     }
 
     [Fact]
@@ -196,7 +199,7 @@ public sealed class LinuxAdjtimexTests
         Assert.Equal(LinuxAdjtimex.TIME_OK, prov.RawKernelState);
         Assert.True(prov.PllEnabled);
         Assert.True(prov.NanosecondMode);
-        Assert.Equal(10.0, prov.FrequencyPpm);
+        Assert.Equal(10.0, prov.FrequencyPpm!.Value);
         Assert.Equal(37, prov.TaiOffsetSeconds);
     }
 
