@@ -37,3 +37,12 @@ jobs:
         run: |
           chmod +x scripts/ci/lane-c-systemd-acceptance.sh
           sudo bash scripts/ci/lane-c-systemd-acceptance.sh
+
+      - name: Upload Lane C Acceptance Artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lane-c-systemd-acceptance-ubuntu-26.04
+          path: |
+            artifacts/acceptance/3.1-2/
+          retention-days: 30
