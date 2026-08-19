@@ -9,7 +9,7 @@
     <InvariantGlobalization>false</InvariantGlobalization>
     <Product>Monitor internet dokaza</Product>
     <Company>Monitor internet dokaza</Company>
-    <Version>3.0.0-rc.1</Version>
+    <Version>3.0.0</Version>
     <NeutralLanguage>sr-Latn-RS</NeutralLanguage>
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
   </PropertyGroup>
