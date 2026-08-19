@@ -53,19 +53,28 @@ public sealed class RealPosixEnvironment : IPosixEnvironment
 
         try
         {
-            // stat structure buffer
-            var statBuf = new byte[256];
-            if (lstat(path, statBuf) != 0)
+            // statx syscall (SYS_statx: 332 on x86_64, 291 on ARM64)
+            var sysStatx = RuntimeInformation.ProcessArchitecture switch
             {
-                return false;
+                Architecture.X64 => 332L,
+                Architecture.Arm64 => 291L,
+                _ => 332L
+            };
+
+            const int AT_FDCWD = -100;
+            const int AT_SYMLINK_NOFOLLOW = 0x100;
+            const uint STATX_BASIC_STATS = 0x7ff;
+
+            var statxBuf = new byte[256];
+            var res = syscall(sysStatx, AT_FDCWD, path, AT_SYMLINK_NOFOLLOW, STATX_BASIC_STATS, statxBuf);
+            if (res == 0)
+            {
+                uid = BitConverter.ToUInt32(statxBuf, 20);
+                gid = BitConverter.ToUInt32(statxBuf, 24);
+                return true;
             }
 
-            // In Linux struct stat (x86_64):
-            // st_uid is at offset 28 (4 bytes), st_gid is at offset 32 (4 bytes)
-            // On arm64 Linux: st_uid is at offset 28, st_gid is at offset 32
-            uid = BitConverter.ToUInt32(statBuf, 28);
-            gid = BitConverter.ToUInt32(statBuf, 32);
-            return true;
+            return false;
         }
         catch
         {
@@ -125,7 +134,7 @@ public sealed class RealPosixEnvironment : IPosixEnvironment
     private static extern int chown([MarshalAs(UnmanagedType.LPStr)] string path, int owner, int group);
 
     [DllImport("libc", SetLastError = true)]
-    private static extern int lstat([MarshalAs(UnmanagedType.LPStr)] string path, byte[] buf);
+    private static extern long syscall(long number, int dirfd, [MarshalAs(UnmanagedType.LPStr)] string pathname, int flags, uint mask, byte[] statxbuf);
 }
 
 /// <summary>
