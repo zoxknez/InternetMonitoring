@@ -30,7 +30,7 @@ public sealed class WindowsCngKeyProvider : IEvidenceKeyProvider
     public Task<IEvidenceSigningIdentity> GetOrCreateIdentityAsync(CancellationToken ct = default)
     {
         // 1. Try to open existing TPM key
-        if (CngKey.Exists(_keyName, CngProvider.MicrosoftPlatformCryptoProvider, _openOptions))
+        if (SafeKeyExists(_keyName, CngProvider.MicrosoftPlatformCryptoProvider, _openOptions))
         {
             try
             {
@@ -50,7 +50,7 @@ public sealed class WindowsCngKeyProvider : IEvidenceKeyProvider
         }
 
         // 2. Try to open existing Software key
-        if (CngKey.Exists(_keyName, CngProvider.MicrosoftSoftwareKeyStorageProvider, _openOptions))
+        if (SafeKeyExists(_keyName, CngProvider.MicrosoftSoftwareKeyStorageProvider, _openOptions))
         {
             try
             {
@@ -125,7 +125,7 @@ public sealed class WindowsCngKeyProvider : IEvidenceKeyProvider
     /// </summary>
     public void DeleteKeyForTesting()
     {
-        if (CngKey.Exists(_keyName, CngProvider.MicrosoftPlatformCryptoProvider, _openOptions))
+        if (SafeKeyExists(_keyName, CngProvider.MicrosoftPlatformCryptoProvider, _openOptions))
         {
             try
             {
@@ -137,7 +137,7 @@ public sealed class WindowsCngKeyProvider : IEvidenceKeyProvider
             }
         }
 
-        if (CngKey.Exists(_keyName, CngProvider.MicrosoftSoftwareKeyStorageProvider, _openOptions))
+        if (SafeKeyExists(_keyName, CngProvider.MicrosoftSoftwareKeyStorageProvider, _openOptions))
         {
             try
             {
@@ -147,6 +147,19 @@ public sealed class WindowsCngKeyProvider : IEvidenceKeyProvider
             catch
             {
             }
+        }
+    }
+
+    private static bool SafeKeyExists(string keyName, CngProvider provider, CngKeyOpenOptions options)
+    {
+        try
+        {
+            return CngKey.Exists(keyName, provider, options);
+        }
+        catch (CryptographicException)
+        {
+            // Provider is not installed, not ready (e.g. TPM on VMs/CI), or key does not exist
+            return false;
         }
     }
 }

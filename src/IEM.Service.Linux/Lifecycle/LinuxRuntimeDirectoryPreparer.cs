@@ -64,6 +64,15 @@ public sealed class RealPosixEnvironment : IPosixEnvironment
                 gid = BitConverter.ToUInt32(statxBuf, 24);
                 return true;
             }
+
+            var lstatBuf = new byte[256];
+            if (lstat(path, lstatBuf) == 0)
+            {
+                // On 64-bit Linux (x86_64 / arm64), st_uid is at byte offset 28, st_gid at offset 32
+                uid = BitConverter.ToUInt32(lstatBuf, 28);
+                gid = BitConverter.ToUInt32(lstatBuf, 32);
+                return true;
+            }
         }
         catch
         {
@@ -125,7 +134,10 @@ public sealed class RealPosixEnvironment : IPosixEnvironment
     private static extern int chown([MarshalAs(UnmanagedType.LPStr)] string path, int owner, int group);
 
     [DllImport("libc", SetLastError = true)]
-    private static extern int statx(int dirfd, [MarshalAs(UnmanagedType.LPStr)] string pathname, int flags, uint mask, byte[] statxbuf);
+    private static extern int statx(int dirfd, [MarshalAs(UnmanagedType.LPStr)] string pathname, int flags, uint mask, [Out] byte[] statxbuf);
+
+    [DllImport("libc", EntryPoint = "lstat", SetLastError = true)]
+    private static extern int lstat([MarshalAs(UnmanagedType.LPStr)] string path, [Out] byte[] statbuf);
 }
 
 /// <summary>
