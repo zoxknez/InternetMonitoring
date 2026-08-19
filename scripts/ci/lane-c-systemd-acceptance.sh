@@ -17,7 +17,7 @@ set -euo pipefail
 # - Guaranteed JSON & Markdown evidence generation even on early failure
 # ==============================================================================
 
-ACCEPTANCE_DIR="artifacts/acceptance/3.1-2"
+ACCEPTANCE_DIR="artifacts/acceptance/3.1-6"
 mkdir -p "${ACCEPTANCE_DIR}"
 REPORT_JSON="${ACCEPTANCE_DIR}/systemd-live.json"
 REPORT_MD="${ACCEPTANCE_DIR}/acceptance-report.md"
@@ -53,6 +53,9 @@ STATUS_CORE_PROTOCOL_PARITY="NOT_TESTED"
 STATUS_GATEWAY_FIB_INTEGRATION="NOT_TESTED"
 STATUS_RTNETLINK_OBSERVER="NOT_TESTED"
 STATUS_NETNS_PROBE_MATRIX="NOT_TESTED"
+STATUS_TIME_KERNEL_PROVENANCE="NOT_TESTED"
+STATUS_LOGIND_DBUS_AVAILABILITY="NOT_TESTED"
+STATUS_SUSPEND_RESUME_CONTINUITY="NOT_TESTED"
 STATUS_START_WITHOUT_NETWORK="NOT_TESTED"
 
 # Environment metadata
@@ -115,7 +118,7 @@ write_evidence_reports() {
     # Write systemd-live.json with dynamic per-gate status
     cat << EOF > "${REPORT_JSON}"
 {
-  "acceptanceVersion": "3.1.2-live",
+  "acceptanceVersion": "3.1.6-live",
   "timestampUtc": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
   "commitSha": "${COMMIT_SHA}",
   "distro": "${DISTRO_NAME}",
@@ -146,6 +149,9 @@ write_evidence_reports() {
     "gatewayFibIntegration": "${STATUS_GATEWAY_FIB_INTEGRATION}",
     "rtnetlinkObserver": "${STATUS_RTNETLINK_OBSERVER}",
     "netnsProbeMatrix": "${STATUS_NETNS_PROBE_MATRIX}",
+    "timeKernelProvenance": "${STATUS_TIME_KERNEL_PROVENANCE}",
+    "logindDbusAvailability": "${STATUS_LOGIND_DBUS_AVAILABILITY}",
+    "suspendResumeContinuity": "${STATUS_SUSPEND_RESUME_CONTINUITY}",
     "failureRestart": "${STATUS_FAILURE_RESTART}",
     "fatalExitCode3": "${STATUS_FATAL_EXIT_CODE}",
     "startWithoutNetwork": "${STATUS_START_WITHOUT_NETWORK}"
@@ -177,7 +183,7 @@ EOF
 
     # Write Markdown summary report
     cat << EOF > "${REPORT_MD}"
-# 3.1-4 · Linux Host, Routing, Probing, Parity, Observer & Netns Matrix Lane C Live Acceptance Report
+# 3.1-6 · Linux Host + Network + Power + Time Live Acceptance Report
 
 - **Timestamp**: $(date -u +"%Y-%m-%d %H:%M:%S UTC")
 - **Commit**: \`${COMMIT_SHA}\`
@@ -216,6 +222,9 @@ EOF
 | Gateway & FIB Path Resolution Integration | **${STATUS_GATEWAY_FIB_INTEGRATION}** |
 | Rtnetlink Observer & Route TOCTOU Continuity | **${STATUS_RTNETLINK_OBSERVER}** |
 | Netns Probe Execution & Fault Injection Matrix | **${STATUS_NETNS_PROBE_MATRIX}** |
+| Linux Time, Boot & adjtimex Provenance | **${STATUS_TIME_KERNEL_PROVENANCE}** |
+| systemd-logind D-Bus Signal Availability | **${STATUS_LOGIND_DBUS_AVAILABILITY}** |
+| Suspend/Resume Dual-Clock Continuity | **${STATUS_SUSPEND_RESUME_CONTINUITY}** |
 | STOP Persistence & Cleanup | **${STATUS_STOP_LIFECYCLE}** |
 | RESTART Persistence & Restore | **${STATUS_RESTART_LIFECYCLE}** |
 | ProtectSystem=strict Mount Namespace | **${STATUS_PROTECT_SYSTEM}** |
@@ -246,11 +255,13 @@ cleanup_and_exit() {
     rm -rf /run/internet-evidence-monitor 2>/dev/null || true
     rm -rf /opt/iem-hardening-control-dir 2>/dev/null || true
 
-    # Invariant: If FAIL_COUNT > 0, process MUST exit with non-zero (1)
+    # Precedence logic: FAIL > unexpected exit > GATE INCOMPLETE (NOT_TESTED) > PASS
     if [ "${FAIL_COUNT}" -gt 0 ]; then
         exit 1
     elif [ "${orig_exit}" -ne 0 ]; then
         exit "${orig_exit}"
+    elif [ "${NOT_TESTED_COUNT}" -gt 0 ]; then
+        exit 2
     fi
 
     exit 0
@@ -1294,6 +1305,188 @@ else
     exit 1
 fi
 
+echo "=============================================================================="
+echo "9.13 LINUX TIME, BOOT & ADJTIMEX PROVENANCE ACCEPTANCE (STAGE 6F-A)"
+echo "=============================================================================="
+CURRENT_STAGE="STAGE_9_13_TIME_KERNEL_PROVENANCE"
+
+RUNNER_SRC_DIR="/tmp/iem_time_runner_src"
+RUNNER_BIN_DIR="/tmp/iem_time_runner_bin"
+rm -rf "${RUNNER_SRC_DIR}" "${RUNNER_BIN_DIR}"
+mkdir -p "${RUNNER_SRC_DIR}" "${RUNNER_BIN_DIR}"
+
+cat << EOF > "${RUNNER_SRC_DIR}/iem-time-runner.csproj"
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="${PWD}/src/IEM.Linux/IEM.Linux.csproj" />
+    <ProjectReference Include="${PWD}/src/IEM.Core/IEM.Core.csproj" />
+    <ProjectReference Include="${PWD}/src/IEM.Service.Linux/IEM.Service.Linux.csproj" />
+  </ItemGroup>
+</Project>
+EOF
+
+cat << 'EOF' > "${RUNNER_SRC_DIR}/Program.cs"
+using System;
+using System.IO;
+using System.Text.Json;
+using System.Threading;
+using System.Threading.Tasks;
+using IEM.Linux.Time;
+using IEM.Service.Linux.Lifecycle.Logind;
+using Tmds.DBus.Protocol;
+
+namespace IemTimeRunner;
+
+class Program
+{
+    static async Task<int> Main(string[] args)
+    {
+        try
+        {
+            var mode = args.Length > 0 ? args[0] : "all";
+
+            if (mode == "time" || mode == "all")
+            {
+                // 1. Production provider instantiation
+                var provider = new LinuxTimeObservationProvider();
+
+                // 2. Authoritative boot observation
+                var bobs = provider.CaptureBootObservation();
+
+                // 3. Clock sample
+                var sample = provider.CaptureClockSample(bobs.BootInstanceId);
+
+                // 4. Time sync provenance via adjtimex
+                var provenance = provider.CaptureTimeSyncProvenance();
+
+                // 5. Test Modes=0 enforcement with caller write flag
+                var timex = new LinuxTimex { Modes = 0x0001 }; // Caller sets ADJ_OFFSET
+                var adj = new LinuxAdjtimex();
+                var queryRes = adj.Query(ref timex);
+
+                var timeOutput = new
+                {
+                    bootInstanceId = bobs.BootInstanceId,
+                    bootIdentityBasis = bobs.BootIdentityBasis,
+                    capturedUtc = bobs.CapturedUtc,
+                    monotonicTimestamp = sample.MonotonicTimestamp,
+                    monotonicFrequency = sample.MonotonicFrequency,
+                    bootElapsed = sample.BootElapsedIncludingSuspend.TotalSeconds,
+                    activeElapsed = sample.ActiveElapsedExcludingSuspend.TotalSeconds,
+                    adjtimexAvailable = provenance.Available,
+                    rawKernelState = provenance.RawKernelState,
+                    rawStatusFlags = provenance.RawStatusFlags,
+                    unsynchronized = provenance.Unsynchronized,
+                    modesEnforcedZero = timex.Modes == 0,
+                    modesQuerySuccess = queryRes >= 0,
+                    queryResult = queryRes,
+                    frequencyPpm = provenance.FrequencyPpm,
+                    taiOffset = provenance.TaiOffsetSeconds
+                };
+
+                Console.WriteLine("IEM_TIME_PROVENANCE_JSON=" + JsonSerializer.Serialize(timeOutput));
+            }
+
+            if (mode == "logind" || mode == "all")
+            {
+                bool logindSuccess = false;
+                string? logindError = null;
+
+                try
+                {
+                    var transport = new TmdsLogindSignalTransport();
+                    using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+                    var readyTcs = new TaskCompletionSource<bool>();
+
+                    var observeTask = transport.ObservePrepareForSleepAsync(
+                        _ => ValueTask.CompletedTask,
+                        onReady: () => readyTcs.TrySetResult(true),
+                        cancellationToken: cts.Token);
+
+                    var completed = await Task.WhenAny(readyTcs.Task, observeTask);
+                    if (completed == readyTcs.Task && readyTcs.Task.Result)
+                    {
+                        logindSuccess = true;
+                    }
+                    cts.Cancel();
+                    await transport.DisposeAsync();
+                }
+                catch (Exception ex)
+                {
+                    logindError = ex.Message;
+                }
+
+                var logindOutput = new
+                {
+                    logindAvailable = logindSuccess,
+                    error = logindError
+                };
+
+                Console.WriteLine("IEM_LOGIND_JSON=" + JsonSerializer.Serialize(logindOutput));
+            }
+
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine("FATAL: " + ex);
+            return 1;
+        }
+    }
+}
+EOF
+
+dotnet build "${RUNNER_SRC_DIR}/iem-time-runner.csproj" -c Release -o "${RUNNER_BIN_DIR}" --nologo >/dev/null
+
+# Execute as unprivileged user iem
+TIME_RUN_OUTPUT=$(su -s /bin/bash iem -c "${RUNNER_BIN_DIR}/iem-time-runner time" 2>&1 || echo "ERROR")
+echo "Time runner output: ${TIME_RUN_OUTPUT}"
+
+TIME_JSON=$(echo "${TIME_RUN_OUTPUT}" | grep "IEM_TIME_PROVENANCE_JSON=" | cut -d= -f2- || echo "")
+
+if [ -n "${TIME_JSON}" ] && echo "${TIME_JSON}" | grep -q '"bootIdentityBasis":"LinuxKernelRandomBootId"' && echo "${TIME_JSON}" | grep -q '"modesEnforcedZero":true' && echo "${TIME_JSON}" | grep -q '"modesQuerySuccess":true'; then
+    STATUS_TIME_KERNEL_PROVENANCE="PASS"
+    record_pass "Linux native kernel clocks, boot_id, and read-only adjtimex provenance verified under unprivileged user iem"
+else
+    STATUS_TIME_KERNEL_PROVENANCE="FAIL"
+    record_fail "Linux time and kernel provenance verification failed: ${TIME_RUN_OUTPUT}"
+fi
+
+echo "=============================================================================="
+echo "9.14 LOGIND D-BUS AVAILABILITY (STAGE 6F-B1)"
+echo "=============================================================================="
+CURRENT_STAGE="STAGE_9_14_LOGIND_DBUS_AVAILABILITY"
+
+LOGIND_RUN_OUTPUT=$(su -s /bin/bash iem -c "${RUNNER_BIN_DIR}/iem-time-runner logind" 2>&1 || echo "ERROR")
+echo "Logind runner output: ${LOGIND_RUN_OUTPUT}"
+
+LOGIND_JSON=$(echo "${LOGIND_RUN_OUTPUT}" | grep "IEM_LOGIND_JSON=" | cut -d= -f2- || echo "")
+
+if [ -n "${LOGIND_JSON}" ] && echo "${LOGIND_JSON}" | grep -q '"logindAvailable":true'; then
+    STATUS_LOGIND_DBUS_AVAILABILITY="PASS"
+    record_pass "systemd-logind D-Bus PrepareForSleep match active and verified under user iem"
+else
+    STATUS_LOGIND_DBUS_AVAILABILITY="NOT_TESTED"
+    record_not_tested "systemd-logind D-Bus signal subscription unavailable in current container/runner environment"
+fi
+
+echo "=============================================================================="
+echo "9.15 SUSPEND/RESUME DUAL-CLOCK CONTINUITY (STAGE 6F-B2)"
+echo "=============================================================================="
+CURRENT_STAGE="STAGE_9_15_SUSPEND_RESUME_CONTINUITY"
+
+# Physical host suspend requires ACPI S3/sleep capability on bare-metal or supported hypervisor
+STATUS_SUSPEND_RESUME_CONTINUITY="NOT_TESTED"
+record_not_tested "Physical host suspend/resume is prohibited on virtualized CI runner (requires bare-metal or suspend-capable VM)"
+
+rm -rf "${RUNNER_SRC_DIR}" "${RUNNER_BIN_DIR}"
+
 EPHEMERAL_SENTINEL="${RUNTIME_DIR}/ephemeral-sentinel-1"
 touch "${EPHEMERAL_SENTINEL}"
 
@@ -1478,12 +1671,30 @@ else
 fi
 
 echo "=============================================================================="
-echo "15. START WITHOUT NETWORK (TRUTHFUL EVALUATION)"
+echo "15. START WITHOUT NETWORK (ISOLATED NETNS PROOF)"
 echo "=============================================================================="
 CURRENT_STAGE="STAGE_15_NETWORK_OFF"
 
-STATUS_START_WITHOUT_NETWORK="NOT_TESTED"
-record_not_tested "Start without network live network-off boot (Shared GitHub Actions VM runner cannot drop primary NIC without killing CI connection; static absence of network-online.target is verified deterministically in IEM.Core.Tests)"
+NO_NET_NS="iem_no_net_test_ns"
+ip netns del "${NO_NET_NS}" 2>/dev/null || true
+ip netns add "${NO_NET_NS}"
+
+# Launch service inside no-network namespace (no external interface, only down lo)
+set +e
+ip netns exec "${NO_NET_NS}" su -s /bin/bash iem -c "timeout 2 ${INSTALL_DIR}/IEM.Service.Linux" >/dev/null 2>&1
+NO_NET_EXIT=$?
+set -e
+
+ip netns del "${NO_NET_NS}" 2>/dev/null || true
+
+# timeout command returns 124 on SIGTERM timeout (service successfully started and ran), or 0
+if [ "${NO_NET_EXIT}" -eq 124 ] || [ "${NO_NET_EXIT}" -eq 0 ]; then
+    STATUS_START_WITHOUT_NETWORK="PASS"
+    record_pass "Service successfully starts and runs without network interfaces in isolated netns (Exit: ${NO_NET_EXIT})"
+else
+    STATUS_START_WITHOUT_NETWORK="FAIL"
+    record_fail "Service failed when started without network interfaces (Exit: ${NO_NET_EXIT})"
+fi
 
 echo "=============================================================================="
 echo "LANE C ACCEPTANCE EXECUTION FINISHED"

@@ -44,5 +44,5 @@ jobs:
         with:
           name: lane-c-systemd-acceptance-ubuntu-26.04
           path: |
-            artifacts/acceptance/3.1-2/
+            artifacts/acceptance/
           retention-days: 30
