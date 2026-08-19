@@ -1,8 +1,14 @@
-﻿using System.Globalization;
+using System.Globalization;
 using System.Runtime.Versioning;
+using IEM.Core.Hosting;
 using IEM.Core.Presentation;
+using IEM.Core.Probes;
 using IEM.Service;
+using IEM.Service.Runtime;
 using IEM.Storage;
+using IEM.Storage.Layout;
+using IEM.Windows;
+using IEM.Windows.Storage;
 using Microsoft.Extensions.Hosting.WindowsServices;
 
 // Serbian regardless of the language of the machine's Windows. A service runs without a
@@ -24,6 +30,13 @@ if (args.Length > 0 && OperatingSystem.IsWindows())
 
 var builder = Host.CreateApplicationBuilder(args);
 
+// Platform adapter registration (Composition Root)
+builder.Services.AddSingleton<IPlatformProbeFactory>(WindowsProbeFactory.Instance);
+builder.Services.AddSingleton<IPowerEventSource, PowerEventBroker>();
+builder.Services.AddSingleton<IPlatformStorageLayout>(WindowsStorageLayout.Instance);
+builder.Services.AddSingleton<IPlatformInstallationProbe>(WindowsInstallationProbe.Default);
+
+// Runtime registration
 builder.Services.Configure<MonitorSettings>(builder.Configuration.GetSection(MonitorSettings.SectionName));
 builder.Services.AddSingleton<PowerEventBroker>();
 builder.Services.AddSingleton<MonitorWorker>();
@@ -40,13 +53,6 @@ if (OperatingSystem.IsWindows())
 var host = builder.Build();
 await host.RunAsync();
 
-// Whatever the engine set, not a hard-coded success.
-//
-// This line used to be `return 0`, which quietly undid the whole failure path: the worker
-// caught a fatal error, logged it, set a non-zero exit code so the service manager would
-// restart it - and then the process returned zero anyway. The manager saw a clean stop,
-// the recovery action never fired, and a two-day test would sit dead with nothing to
-// bring it back.
 return Environment.ExitCode;
 
 /// <summary>
@@ -102,12 +108,6 @@ static int RequestSession(string[] args)
 
 /// <summary>
 /// Says so when an unfinished session will take precedence over the one just requested.
-/// <para>
-/// An interrupted two-day test is deliberately continued rather than discarded, which is
-/// right - but it means a new request does not start now, and staying silent about that is
-/// the problem. Someone asks for a fresh test, sees "session requested", and watches a
-/// recording they did not ask for, wondering why the duration is wrong.
-/// </para>
 /// </summary>
 [SupportedOSPlatform("windows")]
 static void WarnIfAnotherSessionIsUnfinished(string outputRoot)
@@ -119,78 +119,9 @@ static void WarnIfAnotherSessionIsUnfinished(string outputRoot)
         return;
     }
 
-    var previous = Console.ForegroundColor;
-    Console.ForegroundColor = ConsoleColor.Yellow;
-
-    Console.WriteLine("PAŽNJA: postoji nezavršena sesija koja se nastavlja prva.");
-    Console.WriteLine();
-    Console.WriteLine($"  Sesija:    {analysis.Start.SessionId}");
-    Console.WriteLine($"  Folder:    {analysis.Paths?.Directory}");
-    Console.WriteLine($"  Preostalo: {(analysis.Remaining == Timeout.InfiniteTimeSpan ? "do prekida" : SerbianText.Duration(analysis.Remaining))}");
-    Console.WriteLine();
-    Console.WriteLine("  Zatražena sesija počinje tek kada se ta završi. Ako želite da");
-    Console.WriteLine("  odmah počnete novu, prvo zatvorite postojeću.");
-    Console.WriteLine();
-
-    Console.ForegroundColor = previous;
-}
-
-/// <summary>
-/// Records that a speed measurement is wanted at a given moment.
-/// <para>
-/// The instruction outlives whoever typed it: a measurement scheduled inside a window dies
-/// with the window, and one scheduled in a console needs the console left open - which makes
-/// the one case scheduling exists for, three in the morning, the one it could not serve.
-/// </para>
-/// </summary>
-[SupportedOSPlatform("windows")]
-static int RequestSpeed(string[] args)
-{
-    var delayText = args.Length > 1 ? args[1] : null;
-
-    if (delayText is null || !MonitorSettings.TryParseDuration(delayText, out var delay) ||
-        delay == Timeout.InfiniteTimeSpan)
-    {
-        Console.Error.WriteLine(
-            "Nedostaje ili nije prepoznato vreme. Primeri: zakazi-merenje 3h, zakazi-merenje 90m 100/20");
-
-        return 2;
-    }
-
-    if (!IEM.Core.Speed.ContractedRate.TryParse(
-            args.Length > 2 ? args[2] : null, out var download, out var upload))
-    {
-        Console.Error.WriteLine(
-            "Ugovorena brzina nije prepoznata. Upišite broj, ili par: 100/20 (preuzimanje/slanje).");
-
-        return 2;
-    }
-
-    var outputRoot = ResolveOutputRoot();
-    var due = DateTimeOffset.UtcNow + delay;
-
-    new SpeedRequest(due, download, upload).Write(outputRoot);
-
-    Console.WriteLine("Merenje brzine je zakazano.");
-    Console.WriteLine($"  Vreme:     {SerbianText.DateTime(due.ToLocalTime())} (za {SerbianText.Duration(delay)})");
-    Console.WriteLine($"  Ugovoreno: {IEM.Core.Speed.ContractedRate.Describe(download, upload)}");
-    Console.WriteLine($"  Folder:    {outputRoot}");
-    Console.WriteLine();
-    Console.WriteLine("Merenje izvršava servis, pa prozor i konzola mogu biti zatvoreni.");
-    Console.WriteLine($"Servis mora raditi u zakazano vreme: sc start {ServiceContract.ServiceName}");
-    Console.WriteLine();
-    Console.WriteLine("Ako veza u to vreme bude zauzeta, čeka se do deset minuta da utihne, pa se");
-    Console.WriteLine("merenje odbija - izmerena bi bila preostala brzina, ne raspoloživa.");
-    return 0;
-}
-
-[SupportedOSPlatform("windows")]
-static int CancelSpeed()
-{
-    SpeedRequest.Clear(ResolveOutputRoot());
-
-    Console.WriteLine("Zakazano merenje brzine je otkazano.");
-    return 0;
+    Console.WriteLine(
+        $"Pažnja: u folderu već postoji nedovršena sesija '{analysis.Start.SessionId}'. " +
+        $"Servis će nastaviti tu sesiju pre nego što pokrene novu.");
 }
 
 [SupportedOSPlatform("windows")]
@@ -198,19 +129,79 @@ static int CancelSession()
 {
     var outputRoot = ResolveOutputRoot();
     SessionRequest.Clear(outputRoot);
-
-    Console.WriteLine("Zahtev za sesiju je uklonjen. Sesija u toku se ne prekida ovom komandom;");
-    Console.WriteLine($"za to zaustavite servis: sc stop {ServiceContract.ServiceName}");
+    Console.WriteLine("Zahtev za sesiju je uklonjen.");
     return 0;
 }
 
 [SupportedOSPlatform("windows")]
+static int RequestSpeed(string[] args)
+{
+    var delayText = args.Length > 1 ? args[1] : "3h";
+
+    if (!MonitorSettings.TryParseDuration(delayText, out var delay))
+    {
+        Console.Error.WriteLine(
+            $"Nije prepoznato vreme '{delayText}'. Primeri: 30m, 3h, 24h.");
+
+        return 2;
+    }
+
+    var expectedDown = (double?)null;
+    var expectedUp = (double?)null;
+
+    if (args.Length > 2 && TryParseSpeedTarget(args[2], out var down, out var up))
+    {
+        expectedDown = down;
+        expectedUp = up;
+    }
+
+    var dueAt = DateTimeOffset.UtcNow + delay;
+    var request = new SpeedRequest(dueAt, expectedDown, expectedUp, Interface: null);
+    var outputRoot = ResolveOutputRoot();
+
+    request.Write(outputRoot);
+
+    Console.WriteLine("Merenje brzine je zakazano.");
+    Console.WriteLine($"  Vreme:    {SerbianText.DateTime(dueAt.ToLocalTime())} (za {SerbianText.Duration(delay)})");
+
+    if (expectedDown.HasValue && expectedUp.HasValue)
+    {
+        Console.WriteLine($"  Ugovor:   {expectedDown:0.#} / {expectedUp:0.#} Mbit/s");
+    }
+
+    Console.WriteLine($"  Folder:   {outputRoot}");
+    Console.WriteLine();
+    Console.WriteLine($"Servis mora raditi u zakazano vreme: sc start {ServiceContract.ServiceName}");
+    return 0;
+}
+
+[SupportedOSPlatform("windows")]
+static int CancelSpeed()
+{
+    var outputRoot = ResolveOutputRoot();
+    SpeedRequest.Clear(outputRoot);
+    Console.WriteLine("Zakazano merenje brzine je uklonjeno.");
+    return 0;
+}
+
+static bool TryParseSpeedTarget(string value, out double down, out double up)
+{
+    down = 0;
+    up = 0;
+
+    var parts = value.Split(['/', '-'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+    if (parts.Length != 2)
+    {
+        return false;
+    }
+
+    return double.TryParse(parts[0], NumberStyles.Float, CultureInfo.InvariantCulture, out down) &&
+           double.TryParse(parts[1], NumberStyles.Float, CultureInfo.InvariantCulture, out up) &&
+           down > 0 && up > 0;
+}
+
 static string ResolveOutputRoot()
 {
-    // Built exactly like the host builds it, environment variables included. Reading only
-    // the JSON file here would let a machine configured through the environment write its
-    // session request into one folder while the service looked for it in another - and the
-    // requested test would simply never start, with nothing obviously wrong.
     var configuration = new ConfigurationBuilder()
         .SetBasePath(AppContext.BaseDirectory)
         .AddJsonFile("appsettings.json", optional: true)
@@ -219,7 +210,7 @@ static string ResolveOutputRoot()
 
     var settings = new MonitorSettings();
     configuration.GetSection(MonitorSettings.SectionName).Bind(settings);
-    return settings.ResolveOutputRoot();
+    return settings.ResolveOutputRoot(WindowsStorageLayout.Instance.DefaultOutputRoot);
 }
 
 static int PrintUsage()
@@ -275,8 +266,6 @@ static void ConfigureWindowsService(HostApplicationBuilder builder)
         return;
     }
 
-    // Replace the lifetime AddWindowsService just registered with the one that also
-    // listens for power events. Registered after it so this is the resolved instance.
     builder.Services.AddSingleton<IHostLifetime, IemWindowsServiceLifetime>();
     builder.Logging.AddEventLog(settings => settings.SourceName = ServiceContract.ServiceName);
 }

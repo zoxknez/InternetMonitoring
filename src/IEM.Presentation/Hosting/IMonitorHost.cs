@@ -1,10 +1,14 @@
 using IEM.Core;
 
-namespace IEM.App.Hosting;
+namespace IEM.Presentation.Hosting;
 
+/// <summary>
+/// Operational mode of the monitor host.
+/// Invariant 275: Both Service and InProcess hosts expose the same contract and use the same runtime engine.
+/// </summary>
 public enum HostKind
 {
-    /// <summary>Attached to the Windows service. Monitoring outlives this window.</summary>
+    /// <summary>Attached to the background/system service. Monitoring outlives this window/process.</summary>
     Service,
 
     /// <summary>Running the engine inside this process. Monitoring stops when the app does.</summary>
@@ -12,14 +16,9 @@ public enum HostKind
 }
 
 /// <summary>
-/// Where the measurements come from.
-/// <para>
-/// Two implementations exist because there are two honest ways to use this application.
-/// Someone preparing a complaint installs the service, so a two-day test survives reboots
-/// and a closed window. Someone who just wants to look at their connection for ten minutes
-/// should not have to install anything at all. The interface is identical either way, and
-/// the difference is stated plainly in the window rather than hidden.
-/// </para>
+/// Presentation-to-host interface contract.
+/// Abstracts the monitoring backend (system service vs in-process engine) for UI presentation layers.
+/// Invariant 275: Both Service and InProcess hosts expose the same contract and use the same runtime engine.
 /// </summary>
 public interface IMonitorHost : IAsyncDisposable
 {
@@ -28,7 +27,7 @@ public interface IMonitorHost : IAsyncDisposable
     /// <summary>True while a session is actually running.</summary>
     bool IsRunning { get; }
 
-    /// <summary>Raised on the UI thread whenever new measurements arrive.</summary>
+    /// <summary>Raised whenever new measurement snapshots arrive.</summary>
     event Action<MonitorSnapshot>? Updated;
 
     /// <summary>Raised when the host loses or regains contact with its source.</summary>

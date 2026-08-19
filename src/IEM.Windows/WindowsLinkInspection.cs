@@ -15,7 +15,7 @@ namespace IEM.Windows;
 /// </para>
 /// </summary>
 [SupportedOSPlatform("windows")]
-public sealed class WindowsLinkInspection : IAsyncDisposable
+public sealed class WindowsLinkInspection : IPlatformLinkInspectionScope
 {
     private readonly WlanScanCache _scanCache;
 

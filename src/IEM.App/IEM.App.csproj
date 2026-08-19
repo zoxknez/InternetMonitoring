@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
@@ -37,6 +37,7 @@
     <ProjectReference Include="..\IEM.Storage\IEM.Storage.csproj" />
     <ProjectReference Include="..\IEM.Evidence\IEM.Evidence.csproj" />
     <ProjectReference Include="..\IEM.Legal\IEM.Legal.csproj" />
+    <ProjectReference Include="..\IEM.Presentation\IEM.Presentation.csproj" />
     <ProjectReference Include="..\IEM.Windows\IEM.Windows.csproj" />
   </ItemGroup>
 

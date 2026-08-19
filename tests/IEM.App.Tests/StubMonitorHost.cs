@@ -1,5 +1,6 @@
 using IEM.App.Hosting;
 using IEM.Core;
+using IEM.Presentation.Hosting;
 
 namespace IEM.App.Tests;
 

@@ -1,28 +1,30 @@
-﻿using IEM.Core;
+using IEM.Core;
 using IEM.Core.Model;
+using IEM.Presentation.Hosting;
 using IEM.Core.Probes;
 using IEM.Storage;
 using IEM.Storage.Evidence;
-using IEM.Windows;
 
 namespace IEM.App.Hosting;
 
 /// <summary>
 /// Runs the engine inside this process.
-/// <para>
-/// The path for someone who wants to look at their connection without installing
-/// anything. Everything is recorded exactly as the service records it - same chain, same
-/// integrity, same report - with one difference the interface states plainly: closing the
-/// application ends the session, because there is nothing else keeping it alive.
-/// </para>
+/// Invariants 211 and 275: One Evidence Engine, injected platform probe factory.
 /// </summary>
-public sealed class InProcessMonitorHost(string outputRoot) : IMonitorHost
+public sealed class InProcessMonitorHost : IMonitorHost
 {
-    private readonly string _outputRoot = outputRoot;
+    private readonly string _outputRoot;
+    private readonly IPlatformProbeFactory _probeFactory;
 
     private CancellationTokenSource? _sessionCancellation;
     private Task? _session;
     private MonitorEngine? _engine;
+
+    public InProcessMonitorHost(string outputRoot, IPlatformProbeFactory probeFactory)
+    {
+        _outputRoot = outputRoot;
+        _probeFactory = probeFactory ?? throw new ArgumentNullException(nameof(probeFactory));
+    }
 
     public HostKind Kind => HostKind.InProcess;
 
@@ -80,29 +82,21 @@ public sealed class InProcessMonitorHost(string outputRoot) : IMonitorHost
         try
         {
             var startedAt = DateTimeOffset.Now;
-            // Wireless detail comes through the Windows layer, so a dropped Wi-Fi adapter can be
-            // told apart from a router that stopped broadcasting.
-            await using var linkInspection = WindowsLinkInspection.Create(interfaceName);
+            await using var linkInspection = await _probeFactory.CreateLinkInspectionAsync(interfaceName).ConfigureAwait(false);
             var inspector = linkInspection.Inspector;
             var link = inspector.Inspect();
 
             paths = SessionPaths.ForNewSession(_outputRoot, startedAt);
             var sessionId = $"S{startedAt:yyyyMMddHHmmss}";
 
-            // Routing is resolved per destination and probes are pinned to the source
-            // address it reports, so every measurement records which link carried it.
             MeasurementMarker.Clear(_outputRoot);
 
             await using var probeSource = new NetworkProbeSource(
                 ProbeOptions.Default,
                 inspector,
                 clock: null,
-                new RouteResolver(),
-                BoundPing.Instance,
-
-                // A measurement started from this window - or from a console beside it -
-                // saturates the line on purpose, so that period is excluded from assessment
-                // rather than recorded as delay and loss.
+                _probeFactory.CreateRouteResolver(),
+                _probeFactory.CreateBoundIcmp(),
                 () => MeasurementMarker.IsHeld(_outputRoot));
 
             var engine = new MonitorEngine(probeSource);
@@ -121,8 +115,6 @@ public sealed class InProcessMonitorHost(string outputRoot) : IMonitorHost
 
             recorder = EvidenceRecorder.Start(paths, engine, start);
 
-            // Same traces the service takes, so a session recorded here is not weaker
-            // evidence than one recorded by the service.
             await using var tracer = new IncidentPathTracer();
             var boundRecorder = recorder;
             tracer.TraceCompleted += boundRecorder.RecordTrace;
@@ -139,9 +131,6 @@ public sealed class InProcessMonitorHost(string outputRoot) : IMonitorHost
 
             await engine.RunAsync(duration, cancellationToken).ConfigureAwait(false);
 
-            // Stopped early means the user closed the window or pressed stop. The session
-            // is still closed off properly rather than abandoned - unlike the service,
-            // there is nothing here that could pick it up later.
             recorder.Complete(engine.Statistics, DateTimeOffset.UtcNow);
         }
         catch (OperationCanceledException)
@@ -177,11 +166,9 @@ public sealed class InProcessMonitorHost(string outputRoot) : IMonitorHost
         {
             recorder.Complete(_engine.Statistics, DateTimeOffset.UtcNow);
         }
-#pragma warning disable CA1031 // Best effort: the raw evidence is already on disk either way.
+#pragma warning disable CA1031
         catch (Exception)
         {
-            // The chain holds everything observed regardless of whether the closing entry
-            // made it, and the report can be rebuilt from it later.
         }
 #pragma warning restore CA1031
     }
@@ -192,7 +179,7 @@ public sealed class InProcessMonitorHost(string outputRoot) : IMonitorHost
         {
             Evidence.EvidencePackage.Build(paths);
         }
-#pragma warning disable CA1031 // A failed report must never discard a completed session.
+#pragma warning disable CA1031
         catch (Exception ex)
         {
             FaultChanged?.Invoke(

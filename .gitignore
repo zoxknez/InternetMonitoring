@@ -7,7 +7,8 @@ TestResults/
 
 # Objavljene arhive i objavljeni folderi. Namerno izvan git-a: tri stotine megabajta po
 # izdanju nemaju šta da traže u istoriji koda. Gotove arhive idu u GitHub Releases.
-artifacts/
+artifacts/*
+!artifacts/3.1-0/
 
 # Radna okruženja
 .vs/

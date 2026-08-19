@@ -107,3 +107,27 @@ nikada iz samog materijala koji se proverava. Verifikator zato ima tri ishoda, n
   vezuje samo trenutak potpisivanja.
 - Potpisivanje same aplikacije (Authenticode) menja to kome korisnik veruje pri instalaciji, ne
   koliko vredi dokaz koji ona proizvede.
+
+---
+
+## 3.1 Linux Threat Model — Dopune i granice (3.1-0 Draft)
+
+U 3.1 ciklusu Linux uvodi nove platform-specifične vektore napada i granice poverenja koje moraju biti striktno definisane:
+
+### 1. Unix Domain Socket (UDS) & Traversal kontrola
+- **Pretnja:** Neautorizovani lokalni korisnik ili proces pokušava pristup IPC kontrolnom kanalu (`/run/internet-evidence-monitor/control.sock`).
+- **Odbrana:** Dvoslojna filesystem kontrola. Parent direktorijum je `0750` `iem:iem-users`, a sam socket je `0660` `iem:iem-users`. Servisni nalog koristi `SupplementaryGroups=iem-users` da bezbedno postavi grupu bez `CAP_CHOWN`. Samo članovi grupe `iem-users` imaju traversal (`+x`) pravo do socket čvora.
+
+### 2. Stale Socket Hijacking & Symlink napadi
+- **Pretnja:** Zlonamerni lokalni proces postavlja symlink, FIFO ili tuđi socket na putanji `/run/internet-evidence-monitor/control.sock` kako bi preusmerio servis ili izazvao brisanje tuđih fajlova.
+- **Odbrana:** Stroga procedura bezbednog kreiranja po §11.3: isključivo `lstat` / `O_NOFOLLOW`. Dozvoljen je `unlink` samo nad potvrđenim `S_IFSOCK` čvorom čiji je owner `iem`, nakon što `connect()` potvrdi `ECONNREFUSED` / `ENOTCONN`. Nikada se ne vrši `unlink` naslepo, nikada nad symlinkom i nikada van očekivanog runtime direktorijuma.
+
+### 3. Identity Spoofing preko IPC-a
+- **Pretnja:** Klijentska aplikacija ili napadač šalje lažirani UID, SID ili administrativnu rolu unutar IPC JSON payload-a.
+- **Odbrana:** Sav klijentski identitetski payload se potpuno ignoriše. Autoritativni identitet se dobija isključivo iz kernela putem `SO_PEERCRED` (uid, gid, pid) i `SO_PEERGROUPS` (stvarne dopunske grupe konektovanog peer procesa). Ako se grupe ne mogu pouzdano utvrditi, autorizacija za uloge zavisne od grupa ide u fail-closed.
+
+### 4. Storage Izolacija i Export Granica
+- **Pretnja:** Malver ili kompromitovani GUI klijent pokušava direktnu modifikaciju `/var/lib/internet-evidence-monitor` ili servis kompromituje korisnički home folder.
+- **Odbrana:** Kanonski store je `0700` `iem:iem` — GUI proces u Installed modu nema filesystem ACL pristup niti pravo čitanja/pisanja. `CreateExport` funkcioniše isključivo tako što servis kreira verifikovani paket u staging zoni, autorizovani klijent ga preuzima preko IPC strima, a sam klijentski proces upisuje fajl u korisnički direktorijum. Time `ProtectHome=yes` na servisu ostaje 100% netaknut.
+- **Portable mod:** Koristi striktno validiran `XDG_STATE_HOME` (samo neprazne apsolutne putanje počevši sa `/`), gde je dokazni materijal jasno označen kao `UserOwned` i `SoftwareProtected`.
+

@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk.Worker">
+<Project Sdk="Microsoft.NET.Sdk.Worker">
 
   <PropertyGroup>
     <!--
@@ -34,6 +34,7 @@
     <ProjectReference Include="..\IEM.Core\IEM.Core.csproj" />
     <ProjectReference Include="..\IEM.Storage\IEM.Storage.csproj" />
     <ProjectReference Include="..\IEM.Evidence\IEM.Evidence.csproj" />
+    <ProjectReference Include="..\IEM.Service.Runtime\IEM.Service.Runtime.csproj" />
     <ProjectReference Include="..\IEM.Windows\IEM.Windows.csproj" />
   </ItemGroup>
 

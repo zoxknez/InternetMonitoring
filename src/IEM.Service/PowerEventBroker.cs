@@ -1,3 +1,4 @@
+using IEM.Core.Hosting;
 using Microsoft.Extensions.Hosting.WindowsServices;
 using Microsoft.Win32;
 
@@ -6,16 +7,8 @@ namespace IEM.Service;
 /// <summary>
 /// Carries suspend and resume notifications from whatever the host happens to be to
 /// whoever is monitoring.
-/// <para>
-/// This exists to answer a question the recorded data cannot answer on its own. When
-/// sampling stops for four hours, the log alone cannot distinguish a sleeping laptop from
-/// a starved process from a monitor that was quietly killed - and reporting "cause
-/// unknown" against a four-hour hole invites exactly the argument the report is meant to
-/// settle. Windows tells us when it suspends; taking it at its word turns a hole in the
-/// record into a documented one.
-/// </para>
 /// </summary>
-public sealed class PowerEventBroker : IDisposable
+public sealed class PowerEventBroker : IPowerEventSource
 {
     private readonly Lock _gate = new();
     private readonly List<Action> _suspendCallbacks = [];

@@ -66,14 +66,6 @@
         "resolved": "8.0.2",
         "contentHash": "3iE7UF7MQkCv1cxzCahz+Y/guQbTqieyxyaWKhrRO91itI9cOKO76OHeQDahqG4MmW5umr3CcCvGmK92lWNlbg=="
       },
-      "Microsoft.Extensions.Logging.Abstractions": {
-        "type": "Transitive",
-        "resolved": "8.0.3",
-        "contentHash": "dL0QGToTxggRLMYY4ZYX5AMwBb+byQBd/5dMiZE07Nv73o6I5Are3C7eQTh7K2+A4ct0PVISSr7TZANbiNb2yQ==",
-        "dependencies": {
-          "Microsoft.Extensions.DependencyInjection.Abstractions": "8.0.2"
-        }
-      },
       "Microsoft.TestPlatform.ObjectModel": {
         "type": "Transitive",
         "resolved": "17.14.1",
@@ -176,6 +168,13 @@
           "IEM.Storage": "[2.8.0-beta.4, )"
         }
       },
+      "iem.presentation": {
+        "type": "Project",
+        "dependencies": {
+          "IEM.Core": "[2.8.0-beta.4, )",
+          "IEM.Storage": "[2.8.0-beta.4, )"
+        }
+      },
       "iem.storage": {
         "type": "Project",
         "dependencies": {
@@ -199,6 +198,7 @@
           "IEM.Core": "[2.8.0-beta.4, )",
           "IEM.Evidence": "[2.8.0-beta.4, )",
           "IEM.Legal": "[2.8.0-beta.4, )",
+          "IEM.Presentation": "[2.8.0-beta.4, )",
           "IEM.Storage": "[2.8.0-beta.4, )",
           "IEM.Windows": "[2.8.0-beta.4, )"
         }
@@ -233,6 +233,15 @@
           "Microsoft.Data.Sqlite.Core": "10.0.11",
           "SQLitePCLRaw.bundle_e_sqlite3": "2.1.12",
           "SQLitePCLRaw.core": "2.1.12"
+        }
+      },
+      "Microsoft.Extensions.Logging.Abstractions": {
+        "type": "CentralTransitive",
+        "requested": "[10.0.11, )",
+        "resolved": "8.0.3",
+        "contentHash": "dL0QGToTxggRLMYY4ZYX5AMwBb+byQBd/5dMiZE07Nv73o6I5Are3C7eQTh7K2+A4ct0PVISSr7TZANbiNb2yQ==",
+        "dependencies": {
+          "Microsoft.Extensions.DependencyInjection.Abstractions": "8.0.2"
         }
       },
       "PDFsharp": {

@@ -1,16 +1,9 @@
-﻿using System.Globalization;
+using System.Globalization;
 
-using IEM.Storage;
-
-namespace IEM.Service;
+namespace IEM.Service.Runtime;
 
 /// <summary>
-/// What the service is supposed to be monitoring, as read from configuration.
-/// <para>
-/// Kept deliberately small. A background service that silently reconfigures itself is a
-/// service nobody can reason about after the fact, and this one exists to produce
-/// evidence about a specific test over a specific window.
-/// </para>
+/// Platform-neutral configuration settings for the monitoring runtime.
 /// </summary>
 public sealed class MonitorSettings
 {
@@ -26,31 +19,16 @@ public sealed class MonitorSettings
     public string? Interface { get; set; }
 
     /// <summary>
-    /// Where session folders are created. Empty falls back to <see cref="DefaultOutputRoot"/>.
-    /// <para>
-    /// Under ProgramData rather than a user's desktop: the service runs without a
-    /// logged-in user, and writing into a profile that may not be loaded is how background
-    /// services end up silently recording nothing.
-    /// </para>
+    /// Where session folders are created. If empty, the host composition root supplies the default.
     /// </summary>
     public string OutputRoot { get; set; } = string.Empty;
 
-    /// <summary>
-    /// Where sessions go when configuration does not say otherwise. Taken from the shared
-    /// contract so the interface looks in the same place the service writes to.
-    /// </summary>
-    public static string DefaultOutputRoot => ServiceContract.DefaultOutputRoot;
-
-    /// <summary>The configured output root, or the default when it is blank.</summary>
-    public string ResolveOutputRoot() =>
-        string.IsNullOrWhiteSpace(OutputRoot) ? DefaultOutputRoot : OutputRoot;
+    /// <summary>The configured output root, or the supplied fallback when it is blank.</summary>
+    public string ResolveOutputRoot(string fallback) =>
+        string.IsNullOrWhiteSpace(OutputRoot) ? fallback : OutputRoot;
 
     /// <summary>
     /// Whether to pick up an unfinished session on start instead of opening a new one.
-    /// <para>
-    /// On by default, because the service restarting mid-test is the ordinary case this
-    /// whole mechanism exists for.
-    /// </para>
     /// </summary>
     public bool ResumeUnfinished { get; set; } = true;
 
@@ -59,11 +37,6 @@ public sealed class MonitorSettings
 
     /// <summary>
     /// Start a session on service start even when nobody asked for one.
-    /// <para>
-    /// Off by default, and deliberately so. With it on, a machine that reboots the day
-    /// after a finished test would quietly begin another two-day session nobody wanted.
-    /// Turn it on only for a machine dedicated to measuring.
-    /// </para>
     /// </summary>
     public bool AutoStart { get; set; }
 
@@ -101,10 +74,10 @@ public sealed class MonitorSettings
         {
             's' => TimeSpan.FromSeconds(amount),
             'm' => TimeSpan.FromMinutes(amount),
-            'h' or 'č' => TimeSpan.FromHours(amount),
+            'h' => TimeSpan.FromHours(amount),
             'd' => TimeSpan.FromDays(amount),
             _ when char.IsDigit(suffix) => TimeSpan.FromMinutes(amount),
-            _ => TimeSpan.Zero,
+            _ => default,
         };
 
         return duration > TimeSpan.Zero;

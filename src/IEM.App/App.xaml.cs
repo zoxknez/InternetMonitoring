@@ -1,10 +1,11 @@
-﻿using System.Globalization;
+using System.Globalization;
 using System.IO;
 using System.Windows;
 using System.Windows.Markup;
 using IEM.App.Hosting;
 using IEM.App.ViewModels;
 using IEM.Core.Presentation;
+using IEM.Presentation.Hosting;
 using IEM.Storage;
 
 namespace IEM.App;
@@ -23,8 +24,6 @@ public partial class App : Application
         // English install, and the window would disagree with the report beside it.
         CultureInfo.DefaultThreadCurrentCulture = SerbianText.Culture;
         CultureInfo.DefaultThreadCurrentUICulture = SerbianText.Culture;
-        Thread.CurrentThread.CurrentCulture = SerbianText.Culture;
-        Thread.CurrentThread.CurrentUICulture = SerbianText.Culture;
 
         // WPF ignores the thread culture when formatting bindings unless told otherwise.
         FrameworkElement.LanguageProperty.OverrideMetadata(
@@ -47,10 +46,40 @@ public partial class App : Application
 
         base.OnStartup(e);
 
-        var outputRoot = ResolveOutputRoot(out var usingService);
-        IMonitorHost host = usingService
-            ? new ServiceMonitorHost(outputRoot)
-            : new InProcessMonitorHost(outputRoot);
+        var probe = new IEM.Windows.WindowsInstallationProbe();
+        var storageLayout = new IEM.Windows.Storage.WindowsStorageLayout();
+        var installState = probe.Probe();
+
+        IMonitorHost host;
+        string outputRoot;
+
+        if (installState.Presence == InstallationPresence.InstalledSystemService)
+        {
+            outputRoot = storageLayout.DefaultOutputRoot;
+            if (installState.Reachability == ServiceReachability.Reachable)
+            {
+                host = new ServiceMonitorHost(outputRoot);
+            }
+            else
+            {
+                // Invariant 276: INSTALLED_UNREACHABLE_NEVER_FALLS_BACK_TO_PORTABLE
+                host = new ServiceUnavailableMonitorHost(
+                    outputRoot,
+                    "Windows servis je instaliran, ali trenutno nije dostupan. Pokrenite servis pre početka nadzora.");
+            }
+        }
+        else if (installState.Presence == InstallationPresence.PortableOnly)
+        {
+            outputRoot = storageLayout.PortableOutputRoot;
+            host = new InProcessMonitorHost(outputRoot, IEM.Windows.WindowsProbeFactory.Instance);
+        }
+        else
+        {
+            outputRoot = storageLayout.DefaultOutputRoot;
+            host = new ServiceUnavailableMonitorHost(
+                outputRoot,
+                "Stanje instalacije servisa nije moguće pouzdano utvrditi.");
+        }
 
         MainWindow? window = null;
 
@@ -75,23 +104,6 @@ public partial class App : Application
         window.Show();
 
         _ = _shell.ConnectAsync();
-    }
-
-    /// <summary>
-    /// Decides which host to use and where sessions live.
-    /// <para>
-    /// The service is preferred when it is installed, because only it survives a closed
-    /// window and a reboot. Sessions then have to go where the service writes them, since
-    /// a low-privilege service account cannot write into this user's profile.
-    /// </para>
-    /// </summary>
-    private static string ResolveOutputRoot(out bool usingService)
-    {
-        usingService = ServiceContract.IsInstalled();
-
-        return usingService
-            ? ServiceContract.DefaultOutputRoot
-            : ServiceContract.PortableOutputRoot;
     }
 
     /// <summary>

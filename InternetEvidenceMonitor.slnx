@@ -4,7 +4,10 @@
     <Project Path="src/IEM.Cli/IEM.Cli.csproj" />
     <Project Path="src/IEM.Core/IEM.Core.csproj" />
     <Project Path="src/IEM.Evidence/IEM.Evidence.csproj" />
+    <Project Path="src/IEM.Presentation/IEM.Presentation.csproj" />
     <Project Path="src/IEM.Service/IEM.Service.csproj" />
+    <Project Path="src/IEM.Service.Linux/IEM.Service.Linux.csproj" />
+    <Project Path="src/IEM.Service.Runtime/IEM.Service.Runtime.csproj" />
     <Project Path="src/IEM.Storage/IEM.Storage.csproj" />
     <Project Path="src/IEM.Verification/IEM.Verification.csproj" />
     <Project Path="src/IEM.Verifier/IEM.Verifier.csproj" />

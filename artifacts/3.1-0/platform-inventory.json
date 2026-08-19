@@ -1,0 +1,238 @@
+{
+  "inventoryVersion": "3.1.0-baseline",
+  "generatedAt": "2026-08-19",
+  "baselineRelease": "3.0.0-rc1",
+  "status": "LOCKED",
+  "unmappedCoupling": [],
+  "modules": [
+    {
+      "name": "IEM.Windows",
+      "projectPath": "src/IEM.Windows/IEM.Windows.csproj",
+      "targetFramework": "net10.0-windows",
+      "platformSurface": "Windows Desktop & Service Host Adapters",
+      "types": [
+        {
+          "type": "IEM.Windows.BoundPing",
+          "file": "src/IEM.Windows/BoundPing.cs",
+          "platformDependencies": ["iphlpapi.dll (IcmpCreateFile, IcmpSendEcho2Ex, IcmpCloseHandle)"],
+          "category": "NativePInvoke / ICMP",
+          "targetContract": "IBoundIcmp",
+          "targetPhase": "3.1-6"
+        },
+        {
+          "type": "IEM.Windows.MeasurementPath",
+          "file": "src/IEM.Windows/MeasurementPath.cs",
+          "platformDependencies": ["NetworkInterface (Win32 OperationalStatus / Id)"],
+          "category": "NetworkAdapterInfo",
+          "targetContract": "IMeasurementPathResolver",
+          "targetPhase": "3.1-4"
+        },
+        {
+          "type": "IEM.Windows.NativeWifiRadio",
+          "file": "src/IEM.Windows/NativeWifiRadio.cs",
+          "platformDependencies": ["wlanapi.dll (WlanOpenHandle, WlanGetInterfaceCapability, WlanQueryInterface)"],
+          "category": "NativeWifi",
+          "targetContract": "IWifiRadioInspector",
+          "targetPhase": "3.1-7"
+        },
+        {
+          "type": "IEM.Windows.RouteResolver",
+          "file": "src/IEM.Windows/RouteResolver.cs",
+          "platformDependencies": ["iphlpapi.dll (GetBestRoute2)"],
+          "category": "NativePInvoke / Route",
+          "targetContract": "IRouteResolver",
+          "targetPhase": "3.1-4"
+        },
+        {
+          "type": "IEM.Windows.WindowsLinkInspection",
+          "file": "src/IEM.Windows/WindowsLinkInspection.cs",
+          "platformDependencies": ["NetworkInterface link rate / state"],
+          "category": "LinkInspection",
+          "targetContract": "ILinkInspector",
+          "targetPhase": "3.1-4"
+        },
+        {
+          "type": "IEM.Windows.WirelessDiagnostics",
+          "file": "src/IEM.Windows/WirelessDiagnostics.cs",
+          "platformDependencies": ["wlanapi.dll (WlanQueryInterface, WlanGetNetworkBssList)"],
+          "category": "NativeWifi",
+          "targetContract": "IWirelessDiagnosticsProvider",
+          "targetPhase": "3.1-7"
+        },
+        {
+          "type": "IEM.Windows.WlanLinkInspector",
+          "file": "src/IEM.Windows/WlanLinkInspector.cs",
+          "platformDependencies": ["wlanapi.dll"],
+          "category": "NativeWifi",
+          "targetContract": "IWlanLinkInspector",
+          "targetPhase": "3.1-7"
+        },
+        {
+          "type": "IEM.Windows.WlanScanCache",
+          "file": "src/IEM.Windows/WlanScanCache.cs",
+          "platformDependencies": ["wlanapi.dll BSS list"],
+          "category": "NativeWifi",
+          "targetContract": "IWlanScanCache",
+          "targetPhase": "3.1-7"
+        },
+        {
+          "type": "IEM.Windows.Crypto.WindowsCngKeyProvider",
+          "file": "src/IEM.Windows/Crypto/WindowsCngKeyProvider.cs",
+          "platformDependencies": ["CngKey", "CngProvider (MicrosoftPlatformCryptoProvider, MicrosoftSoftwareKeyStorageProvider)"],
+          "category": "CngCrypto",
+          "targetContract": "IEvidenceKeyProvider",
+          "targetPhase": "3.1-8"
+        },
+        {
+          "type": "IEM.Windows.Crypto.WindowsCngSigningIdentity",
+          "file": "src/IEM.Windows/Crypto/WindowsCngSigningIdentity.cs",
+          "platformDependencies": ["CngKey", "ECDsaCng"],
+          "category": "CngCrypto",
+          "targetContract": "IEvidenceSigningIdentity",
+          "targetPhase": "3.1-8"
+        },
+        {
+          "type": "IEM.Windows.Ipc.WindowsNamedPipeTransport",
+          "file": "src/IEM.Windows/Ipc/WindowsNamedPipeTransport.cs",
+          "platformDependencies": ["NamedPipeServerStream", "NamedPipeServerStreamAcl", "PipeSecurity", "WindowsIdentity (GetImpersonationUserName)"],
+          "category": "NamedPipes / WindowsIdentity",
+          "targetContract": "IIpcTransport",
+          "targetPhase": "3.1-3"
+        },
+        {
+          "type": "IEM.Windows.Storage.WindowsReparsePointGuard",
+          "file": "src/IEM.Windows/Storage/WindowsReparsePointGuard.cs",
+          "platformDependencies": ["kernel32.dll (GetFileAttributesW, FILE_ATTRIBUTE_REPARSE_POINT)"],
+          "category": "NativePInvoke / StorageGuard",
+          "targetContract": "IStoragePathGuard",
+          "targetPhase": "3.1-8"
+        },
+        {
+          "type": "IEM.Windows.Storage.WindowsSessionAclProvisioner",
+          "file": "src/IEM.Windows/Storage/WindowsSessionAclProvisioner.cs",
+          "platformDependencies": ["FileSystemAccessRule", "DirectorySecurity", "SecurityIdentifier (WellKnownSidType)"],
+          "category": "WindowsAcl",
+          "targetContract": "IStorageProtectionProvider",
+          "targetPhase": "3.1-8"
+        },
+        {
+          "type": "IEM.Windows.Time.WindowsTimeObservationProvider",
+          "file": "src/IEM.Windows/Time/WindowsTimeObservationProvider.cs",
+          "platformDependencies": ["kernel32.dll (GetSystemTimePreciseAsFileTime, QueryInterruptTimePrecise, QueryUnbiasedInterruptTimePrecise, QueryPerformanceCounter)"],
+          "category": "NativePInvoke / PreciseTime",
+          "targetContract": "ITimeObservationProvider",
+          "targetPhase": "3.1-5"
+        }
+      ]
+    },
+    {
+      "name": "IEM.Service",
+      "projectPath": "src/IEM.Service/IEM.Service.csproj",
+      "targetFramework": "net10.0",
+      "platformSurface": "Windows Service Host & Pipes",
+      "types": [
+        {
+          "type": "IEM.Service.IemWindowsServiceLifetime",
+          "file": "src/IEM.Service/IemWindowsServiceLifetime.cs",
+          "platformDependencies": ["System.ServiceProcess.ServiceBase"],
+          "category": "WindowsService",
+          "targetContract": "IPlatformServiceHost (Microsoft.Extensions.Hosting.Systemd / WindowsService)",
+          "targetPhase": "3.1-1 / 3.1-2"
+        },
+        {
+          "type": "IEM.Service.PowerEventBroker",
+          "file": "src/IEM.Service/PowerEventBroker.cs",
+          "platformDependencies": ["Microsoft.Win32.SystemEvents.PowerModeChanged", "OperatingSystem.IsWindows()"],
+          "category": "PowerEvents",
+          "targetContract": "IPowerEventSource (logind D-Bus on Linux)",
+          "targetPhase": "3.1-5"
+        },
+        {
+          "type": "IEM.Service.Program",
+          "file": "src/IEM.Service/Program.cs",
+          "platformDependencies": ["OperatingSystem.IsWindows()", "EventLog"],
+          "category": "HostComposition",
+          "targetContract": "IPlatformHostCompositionRoot",
+          "targetPhase": "3.1-1 / 3.1-2"
+        },
+        {
+          "type": "IEM.Service.ServiceInstaller",
+          "file": "src/IEM.Service/ServiceInstaller.cs",
+          "platformDependencies": ["EventLogInstaller", "sc.exe"],
+          "category": "Packaging / ServiceInstallation",
+          "targetContract": "Platform Packaging (.deb / .rpm / systemd unit)",
+          "targetPhase": "3.1-13"
+        },
+        {
+          "type": "IEM.Service.StatusPipeServer",
+          "file": "src/IEM.Service/StatusPipeServer.cs",
+          "platformDependencies": ["NamedPipeServerStream", "PipeSecurity", "OperatingSystem.IsWindows()"],
+          "category": "NamedPipes",
+          "targetContract": "IIpcTransport (Unified control.sock on Linux)",
+          "targetPhase": "3.1-1 / 3.1-3"
+        }
+      ]
+    },
+    {
+      "name": "IEM.Storage",
+      "projectPath": "src/IEM.Storage/IEM.Storage.csproj",
+      "targetFramework": "net10.0",
+      "platformSurface": "Shared Storage Contracts & Layout",
+      "types": [
+        {
+          "type": "IEM.Storage.ServiceContract",
+          "file": "src/IEM.Storage/ServiceContract.cs",
+          "platformDependencies": [
+            "Microsoft.Win32.Registry",
+            "Environment.SpecialFolder.CommonApplicationData",
+            "Environment.SpecialFolder.DesktopDirectory",
+            "OperatingSystem.IsWindows()"
+          ],
+          "category": "StorageLayout / Registry / SpecialFolder",
+          "targetContract": "IPlatformStorageLayout (LinuxStorageLayout / LinuxPortableStorageLayout) & IPlatformInstallationProbe",
+          "targetPhase": "3.1-1 / 3.1-8"
+        }
+      ]
+    },
+    {
+      "name": "IEM.App",
+      "projectPath": "src/IEM.App/IEM.App.csproj",
+      "targetFramework": "net10.0-windows",
+      "platformSurface": "WPF Desktop Application & Host Wiring",
+      "types": [
+        {
+          "type": "IEM.App.Hosting.ServicePipeClient",
+          "file": "src/IEM.App/Hosting/ServicePipeClient.cs",
+          "platformDependencies": ["NamedPipeClientStream"],
+          "category": "NamedPipes / Client",
+          "targetContract": "IIpcClientTransport (Unix Domain Socket client on Linux)",
+          "targetPhase": "3.1-1 / 3.1-3"
+        },
+        {
+          "type": "IEM.App.Hosting.ServiceMonitorHost",
+          "file": "src/IEM.App/Hosting/ServiceMonitorHost.cs",
+          "platformDependencies": ["ServicePipeClient", "ServiceContract.IsInstalled()"],
+          "category": "Hosting / Client",
+          "targetContract": "IMonitorHost (Installed Service Client)",
+          "targetPhase": "3.1-1"
+        },
+        {
+          "type": "IEM.App.Hosting.InProcessMonitorHost",
+          "file": "src/IEM.App/Hosting/InProcessMonitorHost.cs",
+          "platformDependencies": ["Direct wiring of IEM.Windows adapters (BoundPing, RouteResolver, etc.)"],
+          "category": "Hosting / InProcess",
+          "targetContract": "InProcessMonitorHost + Platform Adapter Factory",
+          "targetPhase": "3.1-1"
+        },
+        {
+          "type": "IEM.App.App",
+          "file": "src/IEM.App/App.xaml.cs",
+          "platformDependencies": ["System.Windows.Application (WPF)", "System.Threading.Mutex (Windows single instance)"],
+          "category": "WPF UI Host",
+          "targetContract": "IEM.Presentation (Shared ViewModels) + Avalonia/WPF Shells",
+          "targetPhase": "3.1-1 / 3.1-11"
+        }
+      ]
+    }
+  ]
+}

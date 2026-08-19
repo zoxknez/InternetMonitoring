@@ -1,0 +1,39 @@
+name: lane-c-systemd-acceptance
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  systemd-acceptance:
+    name: Ubuntu 26.04 Real systemd PID 1 Acceptance
+    runs-on: ubuntu-26.04
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore dependencies
+        run: dotnet restore InternetEvidenceMonitor.slnx --nologo
+
+      - name: Build solution
+        run: dotnet build InternetEvidenceMonitor.slnx -c Release --no-restore --nologo
+
+      - name: Deterministic Unit & Boundary Tests
+        run: dotnet test InternetEvidenceMonitor.slnx -c Release --no-build --nologo
+
+      - name: Run Lane C Real systemd PID 1 Acceptance
+        run: |
+          chmod +x scripts/ci/lane-c-systemd-acceptance.sh
+          sudo bash scripts/ci/lane-c-systemd-acceptance.sh
