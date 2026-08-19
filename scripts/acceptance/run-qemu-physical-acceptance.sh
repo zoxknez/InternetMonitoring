@@ -93,10 +93,13 @@ qemu-system-x86_64 \
 QEMU_EXIT=$?
 set -e
 
-echo "Extracting acceptance artifacts from QEMU disk..."
+echo "Extracting QEMU acceptance artifacts from disk..."
 mount "${DISK_IMG}" "${MOUNT_DIR}"
 mkdir -p /workspace/artifacts/acceptance/3.1-6
-cp -f "${MOUNT_DIR}/workspace/artifacts/acceptance/3.1-6/"* /workspace/artifacts/acceptance/3.1-6/ 2>/dev/null || true
+if [ -f "${MOUNT_DIR}/workspace/artifacts/acceptance/3.1-6/suspend-resume-physical.json" ]; then
+    cp -f "${MOUNT_DIR}/workspace/artifacts/acceptance/3.1-6/suspend-resume-physical.json" /workspace/artifacts/acceptance/3.1-6/suspend-resume-qemu.json
+    cp -f "${MOUNT_DIR}/workspace/artifacts/acceptance/3.1-6/suspend-resume-physical.md" /workspace/artifacts/acceptance/3.1-6/suspend-resume-qemu.md
+fi
 umount "${MOUNT_DIR}"
 rm -rf "${MOUNT_DIR}" "${DISK_IMG}"
 
