@@ -112,8 +112,17 @@ public sealed class MonitorWorker(
         if (plan is null)
         {
             logger.LogInformation(
-                "Nema zatražene sesije. Servis se zaustavlja. " +
-                "Sesiju pokrenite komandom: InternetEvidenceService.exe start-session 48h");
+                "Nema aktivne sesije. Servis je pokrenut i čeka u stanju mirovanja.");
+
+            Status = ServiceStatus.Idle;
+            try
+            {
+                await Task.Delay(Timeout.InfiniteTimeSpan, stoppingToken).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                // Expected shutdown
+            }
 
             return;
         }
