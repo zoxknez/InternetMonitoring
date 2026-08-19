@@ -689,8 +689,8 @@
     border-radius: 12px;
     padding: 20px 24px;
     margin: 18px auto 22px auto;
-    max-width: 960px;
     width: 100%;
+    max-width: 900px;
     box-shadow: 0 12px 30px -6px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.1);
     backdrop-filter: blur(16px);
     box-sizing: border-box;
@@ -700,7 +700,6 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    flex-wrap: wrap;
     gap: 12px;
     margin-bottom: 16px;
     border-bottom: 1px solid rgba(255, 255, 255, 0.1);
@@ -710,33 +709,49 @@
   .release-hero-header-left {
     display: flex;
     align-items: center;
-    flex-wrap: wrap;
     gap: 10px;
+    flex-wrap: wrap;
   }
   .release-hero-badge {
     background: linear-gradient(135deg, #1D4ED8, #3B82F6);
     color: #FFFFFF;
-    font-size: 0.76rem;
+    font-size: 0.74rem;
     font-weight: 700;
-    padding: 3px 10px;
+    padding: 3px 9px;
     border-radius: 20px;
     text-transform: uppercase;
     letter-spacing: 0.5px;
+    white-space: nowrap;
   }
   .release-hero-title {
-    font-size: 1.1rem;
+    font-size: 1.08rem;
     font-weight: 700;
     color: #FFFFFF;
+    white-space: nowrap;
   }
   .release-hero-stats {
     font-family: var(--font-mono);
-    font-size: 0.82rem;
+    font-size: 0.8rem;
     color: var(--muted);
     font-weight: 500;
+    white-space: nowrap;
+    margin-left: auto;
+    text-align: right;
+  }
+  @media (max-width: 680px) {
+    .release-hero-header {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 8px;
+    }
+    .release-hero-stats {
+      margin-left: 0;
+      text-align: left;
+    }
   }
   .release-hero-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
     gap: 14px 20px;
     margin-bottom: 16px;
     width: 100%;
@@ -763,12 +778,11 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    flex-wrap: wrap;
-    gap: 12px;
-    background: rgba(0, 0, 0, 0.35);
+    gap: 16px;
+    background: rgba(0, 0, 0, 0.4);
     border-radius: 8px;
-    padding: 10px 14px;
-    border: 1px solid rgba(255, 255, 255, 0.07);
+    padding: 10px 16px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
     width: 100%;
     box-sizing: border-box;
   }
@@ -777,17 +791,18 @@
     color: var(--muted);
     display: flex;
     align-items: center;
+    gap: 8px;
     flex-wrap: wrap;
-    gap: 6px;
   }
   .release-hero-footer-cmd code {
     color: #38BDF8;
     font-family: var(--font-mono);
     font-size: 0.8rem;
-    background: rgba(15, 23, 42, 0.8);
-    padding: 2px 6px;
+    background: rgba(15, 23, 42, 0.9);
+    padding: 3px 8px;
     border-radius: 4px;
-    border: 1px solid rgba(56, 189, 248, 0.25);
+    border: 1px solid rgba(56, 189, 248, 0.3);
+    white-space: nowrap;
   }
   .release-hero-footer-link {
     font-size: 0.84rem;
@@ -795,10 +810,22 @@
     text-decoration: none;
     font-weight: 600;
     white-space: nowrap;
+    margin-left: auto;
+    flex-shrink: 0;
   }
   .release-hero-footer-link:hover {
     color: #93C5FD;
     text-decoration: underline;
+  }
+  @media (max-width: 680px) {
+    .release-hero-footer {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 10px;
+    }
+    .release-hero-footer-link {
+      margin-left: 0;
+    }
   }
 
   /* ---- Platform Cards ------------------------------------------------------ */
@@ -1046,7 +1073,6 @@
         <span>Za uvid u Wi-Fi i mrežne rute: pokrenite kao <strong>Administrator</strong> ili instalirajte servis.</span>
       </div>
 
-      <!-- Latest Release Detailed Box (Ispod admin banera) -->
       <!-- Latest Release Detailed Box (Ispod admin banera) -->
       <div class="release-hero-box">
         <div class="release-hero-header">
