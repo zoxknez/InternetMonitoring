@@ -49,19 +49,24 @@ if [ ! -x "${TIME_RUNNER}" ]; then
     chmod 0755 "${TIME_RUNNER}"
 fi
 
+# Ensure system D-Bus daemon is running
+service dbus start 2>/dev/null || /etc/init.d/dbus start 2>/dev/null || systemctl start dbus 2>/dev/null || true
+
 # Canonical service accounts matching Lane C
 getent group iem-users >/dev/null 2>&1 || groupadd -r iem-users
 getent group iem >/dev/null 2>&1 || groupadd -r iem
 getent passwd iem >/dev/null 2>&1 || useradd -r -g iem -G iem-users -d /var/lib/internet-evidence-monitor -s /usr/sbin/nologin iem
 
 # 1. Launch unprivileged observer in background writing to regular log file (no FIFO EPIPE risk)
-OBS_LOG="/tmp/iem_suspend_obs.log"
+OBS_LOG="/var/log/iem_suspend_obs.log"
+mkdir -p /var/log
 rm -f "${OBS_LOG}"
 touch "${OBS_LOG}"
-chown iem:iem "${OBS_LOG}"
+chown iem:iem "${OBS_LOG}" 2>/dev/null || true
+chmod 0666 "${OBS_LOG}"
 
 echo "Starting IEM.TimeRunner suspend-observe as unprivileged user iem..."
-su -s /bin/bash iem -c "${TIME_RUNNER} suspend-observe" > "${OBS_LOG}" 2>&1 &
+su -s /bin/bash iem -c "${TIME_RUNNER} suspend-observe > '${OBS_LOG}' 2>&1" &
 LAUNCHER_PID=$!
 
 # 2. Poll log file for READY signal
@@ -93,17 +98,26 @@ echo "Observer PID=${OBSERVER_PID}, UID=${OBSERVER_UID}, GID=${OBSERVER_GID}, Ca
 
 echo "Observer is READY. Executing real host suspend for 3 seconds..."
 
-# 3. Trigger Real Host Suspend (rtcwake)
+# 3. Trigger Real Host Suspend (prefer logind systemctl suspend with rtcwake timer for PrepareForSleep signals)
 SUSPEND_TRIGGER_OK=false
 SUSPEND_METHOD="unknown"
 
 if command -v rtcwake >/dev/null 2>&1; then
-    if rtcwake -m mem -s 3; then
-        SUSPEND_TRIGGER_OK=true
-        SUSPEND_METHOD="rtcwake -m mem -s 3"
-    elif rtcwake -m freeze -s 3; then
-        SUSPEND_TRIGGER_OK=true
-        SUSPEND_METHOD="rtcwake -m freeze -s 3"
+    if command -v systemctl >/dev/null 2>&1 && systemctl is-active --quiet systemd-logind.service 2>/dev/null; then
+        if rtcwake -m no -s 3 2>/dev/null && systemctl suspend 2>/dev/null; then
+            SUSPEND_TRIGGER_OK=true
+            SUSPEND_METHOD="rtcwake -m no -s 3 && systemctl suspend"
+        fi
+    fi
+
+    if [ "${SUSPEND_TRIGGER_OK}" != "true" ]; then
+        if rtcwake -m mem -s 3; then
+            SUSPEND_TRIGGER_OK=true
+            SUSPEND_METHOD="rtcwake -m mem -s 3"
+        elif rtcwake -m freeze -s 3; then
+            SUSPEND_TRIGGER_OK=true
+            SUSPEND_METHOD="rtcwake -m freeze -s 3"
+        fi
     fi
 fi
 
@@ -162,6 +176,10 @@ SUSPEND_DUR=$(echo "${ACCEPTANCE_JSON}" | grep -o '"suspendDurationSeconds":[0-9
 BOOT_PRE=$(echo "${ACCEPTANCE_JSON}" | grep -o '"bootInstanceIdPre":"[^"]*"' | cut -d'"' -f4)
 BOOT_POST=$(echo "${ACCEPTANCE_JSON}" | grep -o '"bootInstanceIdPost":"[^"]*"' | cut -d'"' -f4)
 
+OBS_PID_FINAL=$(echo "${ACCEPTANCE_JSON}" | grep -o '"pid":[0-9]*' | cut -d: -f2 || echo "${OBSERVER_PID}")
+OBS_UID_FINAL=$(echo "${ACCEPTANCE_JSON}" | grep -o '"uid":"[^"]*"' | cut -d'"' -f4 | tr -d '\t' || echo "${OBSERVER_UID}")
+OBS_GID_FINAL=$(echo "${ACCEPTANCE_JSON}" | grep -o '"gid":"[^"]*"' | cut -d'"' -f4 | tr -d '\t' || echo "${OBSERVER_GID}")
+
 VERDICT="PASS"
 FAIL_REASONS=""
 
@@ -206,9 +224,9 @@ cat << EOF > "${REPORT_JSON}"
   "suspendMethod": "${SUSPEND_METHOD}",
   "processEvidence": {
     "user": "iem",
-    "observerPid": "${OBSERVER_PID}",
-    "uid": "${OBSERVER_UID}",
-    "gid": "${OBSERVER_GID}",
+    "observerPid": "${OBS_PID_FINAL}",
+    "uid": "${OBS_UID_FINAL}",
+    "gid": "${OBS_GID_FINAL}",
     "capEff": "${CAP_EFF}",
     "capAmb": "${CAP_AMB}"
   },
@@ -228,7 +246,7 @@ cat << EOF > "${REPORT_MD}"
 - **Fail Reasons**: ${FAIL_REASONS:-"None"}
 
 ## Process & Boundary Facts
-- **User**: \`iem\` (PID ${OBSERVER_PID}, UID ${OBSERVER_UID}, GID ${OBSERVER_GID})
+- **User**: \`iem\` (PID ${OBS_PID_FINAL}, UID ${OBS_UID_FINAL}, GID ${OBS_GID_FINAL})
 - **Capabilities**: \`CapEff=${CAP_EFF}\`, \`CapAmb=${CAP_AMB}\` (Zero capability verified)
 - **PrepareForSleep(true) captured**: $([ -n "${SLEEP_TRUE}" ] && echo "YES" || echo "NO")
 - **PrepareForSleep(false) captured**: $([ -n "${SLEEP_FALSE}" ] && echo "YES" || echo "NO")

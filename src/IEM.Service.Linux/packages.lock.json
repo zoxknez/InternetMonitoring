@@ -11,6 +11,12 @@
           "Microsoft.Extensions.Hosting": "10.0.11"
         }
       },
+      "Microsoft.NET.ILLink.Tasks": {
+        "type": "Direct",
+        "requested": "[10.0.0-preview.7.25380.108, )",
+        "resolved": "10.0.0-preview.7.25380.108",
+        "contentHash": "YfGJxYNPgM+Kekl7o1W/UR3pSBgZ8ZtTdbQgu2Vf8WfTolNG3fVHFdxU8NzNaio4DzwmGLldEEL9IzvQOLE3SQ=="
+      },
       "Tmds.DBus.Protocol": {
         "type": "Direct",
         "requested": "[0.94.2, )",
@@ -396,6 +402,24 @@
           "Microsoft.Extensions.Logging.Abstractions": "8.0.3",
           "System.Security.Cryptography.Pkcs": "8.0.1"
         }
+      },
+      "System.Security.Cryptography.Pkcs": {
+        "type": "CentralTransitive",
+        "requested": "[10.0.0, )",
+        "resolved": "10.0.0",
+        "contentHash": "UPWqLSygJlFerRi9XNIuM0a1VC8gHUIufyP24xQ0sc+XimqUAEcjpOz9DhKpyDjH+5B/wO3RpC0KpkEeDj/ddg=="
+      }
+    },
+    "net10.0/linux-x64": {
+      "SQLitePCLRaw.lib.e_sqlite3": {
+        "type": "Transitive",
+        "resolved": "2.1.12",
+        "contentHash": "fWi8Dbknuhgg72fWinIdjXVaqO1hHL4YBBwVLnr7e1c9TAZwJ0QE38j9syW1hwx6HaqEVTwI+O07WPdZn8Rp0w=="
+      },
+      "System.Diagnostics.EventLog": {
+        "type": "Transitive",
+        "resolved": "10.0.11",
+        "contentHash": "QTXEoQBzz00SFWbo7nAg1Ogd4f99lwqcO9uAJ7MYSLEUR28f6As32QktrqG2Fr9cfAfd1GjLyGYspE7Ipj7P6w=="
       },
       "System.Security.Cryptography.Pkcs": {
         "type": "CentralTransitive",
