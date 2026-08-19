@@ -126,7 +126,7 @@ public sealed partial class ShellViewModel : ObservableObject, IAsyncDisposable
         {
             try
             {
-                await Task.Delay(3000);
+                await Task.Delay(500);
                 var result = await _updateService.CheckForUpdatesAsync(force: false);
                 if (result.Availability == global::IEM.Presentation.Updates.UpdateAvailability.UpdateAvailable ||
                     result.Availability == global::IEM.Presentation.Updates.UpdateAvailability.PreviewAvailable ||

@@ -138,6 +138,15 @@
                         <TextBlock Style="{StaticResource Display}" FontSize="17"
                                    VerticalAlignment="Center" Text="Internet Monitoring" />
 
+                        <Border Visibility="{Binding IsUpdateBannerVisible, Converter={StaticResource BoolToVisible}}"
+                                Background="#1E3A8A" BorderBrush="#3B82F6" BorderThickness="1"
+                                CornerRadius="12" Padding="8,2" Margin="10,0,0,0" VerticalAlignment="Center">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="NOVA VERZIJA: " FontSize="10.5" FontWeight="Bold" Foreground="#93C5FD" />
+                                <TextBlock Text="{Binding UpdateVersionText}" FontSize="10.5" FontWeight="Bold" Foreground="#FFFFFF" />
+                            </StackPanel>
+                        </Border>
+
                         <!-- Both hidden once a test is running: the line of session facts that
                              replaces them says what is being measured, which by then is what the
                              reader wants, and sharing the band left both of them truncated. -->

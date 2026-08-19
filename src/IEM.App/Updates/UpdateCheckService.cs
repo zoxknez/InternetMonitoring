@@ -15,10 +15,22 @@ public sealed class UpdateCheckService : IUpdateCheckService
     private const string StableManifestUrl = "https://raw.githubusercontent.com/zoxknez/InternetMonitoring/main/updates/windows/stable.json";
     private const string PreviewManifestUrl = "https://raw.githubusercontent.com/zoxknez/InternetMonitoring/main/updates/windows/preview.json";
 
-    private static readonly HttpClient HttpClient = new()
+    private static readonly HttpClient HttpClient = CreateHttpClient();
+
+    private static HttpClient CreateHttpClient()
     {
-        Timeout = TimeSpan.FromSeconds(5),
-    };
+        var handler = new HttpClientHandler
+        {
+            AutomaticDecompression = System.Net.DecompressionMethods.All
+        };
+        var client = new HttpClient(handler)
+        {
+            Timeout = TimeSpan.FromSeconds(10),
+        };
+        client.DefaultRequestHeaders.Add("User-Agent", "InternetEvidenceMonitor/3.0");
+        client.DefaultRequestHeaders.Add("Accept", "application/json, text/plain, */*");
+        return client;
+    }
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -55,14 +67,15 @@ public sealed class UpdateCheckService : IUpdateCheckService
                 return UpdateCheckResult.UpToDate();
             }
 
-            if (Preferences.LastCheckUtc.HasValue &&
-                DateTimeOffset.UtcNow - Preferences.LastCheckUtc.Value < TimeSpan.FromHours(24))
+            if (Preferences.SnoozedUntilUtc.HasValue &&
+                DateTimeOffset.UtcNow < Preferences.SnoozedUntilUtc.Value)
             {
                 return UpdateCheckResult.UpToDate();
             }
         }
 
-        var url = targetChannel == UpdateChannel.Preview ? PreviewManifestUrl : StableManifestUrl;
+        var baseUrl = targetChannel == UpdateChannel.Preview ? PreviewManifestUrl : StableManifestUrl;
+        var url = $"{baseUrl}?t={DateTimeOffset.UtcNow.ToUnixTimeSeconds()}";
 
         try
         {

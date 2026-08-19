@@ -97,7 +97,9 @@ public partial class AboutWindow : Window
         }
         else
         {
-            UpdateStatusText.Text = "Provera trenutno nije uspela (nema mreže ili je server nedostupan).";
+            UpdateStatusText.Text = string.IsNullOrWhiteSpace(result.ErrorMessage)
+                ? "Provera trenutno nije uspela (nema mreže ili je server nedostupan)."
+                : $"Provera nije uspela: {result.ErrorMessage}";
         }
     }
 
