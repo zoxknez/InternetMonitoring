@@ -86,37 +86,6 @@
 
         <!-- ===================== Header & Update Banner ===================== -->
         <StackPanel Grid.Row="0">
-            <!-- Update Notification Banner -->
-            <Border x:Name="UpdateBanner"
-                    Visibility="{Binding IsUpdateBannerVisible, Converter={StaticResource BoolToVisible}}"
-                    Background="#1E293B" BorderBrush="#3B82F6" BorderThickness="0,0,0,1" Padding="0,8">
-                <Grid MaxWidth="1300" Margin="22,0">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-                    
-                    <Border Background="#2563EB" CornerRadius="4" Padding="6,2" Margin="0,0,12,0" VerticalAlignment="Center">
-                        <TextBlock Text="NOVA VERZIJA" FontSize="10.5" FontWeight="Bold" Foreground="#FFFFFF" />
-                    </Border>
-
-                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
-                        <TextBlock Text="Dostupna je nova verzija: " FontSize="12.5" Foreground="#E2E8F0" VerticalAlignment="Center" />
-                        <TextBlock Text="{Binding UpdateVersionText}" FontWeight="Bold" FontSize="12.5" Foreground="#60A5FA" Margin="0,0,12,0" VerticalAlignment="Center" />
-                        <Button Style="{StaticResource LinkButton}" Content="Pogledaj izmene"
-                                Command="{Binding OpenReleaseNotesCommand}" FontSize="12" Margin="0,0,12,0" VerticalAlignment="Center" />
-                    </StackPanel>
-
-                    <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
-                        <Button Style="{StaticResource Primary}" Content="Preuzmi"
-                                Command="{Binding DownloadUpdateCommand}" Padding="12,4" FontSize="11.5" Margin="0,0,8,0" />
-                        <Button Style="{StaticResource Secondary}" Content="Podseti me kasnije"
-                                Command="{Binding DismissUpdateCommand}" Padding="10,4" FontSize="11.5" />
-                    </StackPanel>
-                </Grid>
-            </Border>
-
             <Border Background="{StaticResource HeaderFill}" Padding="0,13">
                 <Grid MaxWidth="1300" Margin="22,0">
                     <Grid.ColumnDefinitions>
@@ -191,7 +160,7 @@
             </Border>
 
             <!-- Non-intrusive Update Notification Banner -->
-            <Border Background="#1A2744" BorderBrush="#2563EB" BorderThickness="0,0,0,1" Padding="0,8"
+            <Border x:Name="UpdateBanner" Background="#1A2744" BorderBrush="#2563EB" BorderThickness="0,0,0,1" Padding="0,8"
                     Visibility="{Binding IsUpdateBannerVisible, Converter={StaticResource BoolToVisible}}">
                 <Grid MaxWidth="1300" Margin="22,0">
                     <Grid.ColumnDefinitions>
@@ -204,24 +173,22 @@
                             <TextBlock Text="NOVA VERZIJA" FontSize="9.5" FontWeight="Bold" Foreground="#93C5FD" />
                         </Border>
                         <TextBlock VerticalAlignment="Center" FontSize="12.5" Foreground="#F1F5F9">
-                            <Run Text="Internet Evidence Monitor" FontWeight="SemiBold" />
+                            <Run Text="Monitor internet dokaza " FontWeight="SemiBold" />
                             <Run Text="{Binding UpdateVersionText, Mode=OneWay}" FontWeight="Bold" Foreground="#60A5FA" />
                             <Run Text=" je dostupan." />
-                            <Run Text=" — " Foreground="#475569" />
-                            <Run Text="{Binding UpdateSummaryText, Mode=OneWay}" Foreground="#94A3B8" />
                         </TextBlock>
                     </StackPanel>
 
                     <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
-                        <Button Style="{StaticResource Secondary}" Content="Šta je novo"
+                        <Button Style="{StaticResource Secondary}" Content="Pogledaj izmene"
                                 Padding="10,4" FontSize="11" Margin="0,0,8,0"
                                 Command="{Binding OpenReleaseNotesCommand}" />
-                        <Button Style="{StaticResource Primary}" Content="Preuzmi ažuriranje"
+                        <Button Style="{StaticResource Primary}" Content="Preuzmi"
                                 Padding="12,4" FontSize="11" FontWeight="SemiBold" Margin="0,0,8,0"
                                 Command="{Binding DownloadUpdateCommand}" />
                         <Button Style="{StaticResource Secondary}" Content="Podseti me kasnije"
                                 Padding="10,4" FontSize="11"
-                                Command="{Binding SnoozeUpdateCommand}" />
+                                Command="{Binding DismissUpdateCommand}" />
                     </StackPanel>
                 </Grid>
             </Border>
