@@ -49,6 +49,7 @@ STATUS_UNIX_IPC_IDENTITY="NOT_TESTED"
 STATUS_NETLINK_ROUTING="NOT_TESTED"
 STATUS_DATAGRAM_ICMP="NOT_TESTED"
 STATUS_SOURCE_BINDING_PARITY="NOT_TESTED"
+STATUS_CORE_PROTOCOL_PARITY="NOT_TESTED"
 STATUS_START_WITHOUT_NETWORK="NOT_TESTED"
 
 # Environment metadata
@@ -138,6 +139,7 @@ write_evidence_reports() {
     "netlinkRouting": "${STATUS_NETLINK_ROUTING}",
     "datagramIcmp": "${STATUS_DATAGRAM_ICMP}",
     "sourceBindingParity": "${STATUS_SOURCE_BINDING_PARITY}",
+    "coreProtocolParity": "${STATUS_CORE_PROTOCOL_PARITY}",
     "failureRestart": "${STATUS_FAILURE_RESTART}",
     "fatalExitCode3": "${STATUS_FATAL_EXIT_CODE}",
     "startWithoutNetwork": "${STATUS_START_WITHOUT_NETWORK}"
@@ -169,7 +171,7 @@ EOF
 
     # Write Markdown summary report
     cat << EOF > "${REPORT_MD}"
-# 3.1-4 · Linux Host, Netlink Routing, ICMP & Source-Binding Lane C Live Acceptance Report
+# 3.1-4 · Linux Host, Routing, Probing & Core Protocol Parity Lane C Live Acceptance Report
 
 - **Timestamp**: $(date -u +"%Y-%m-%d %H:%M:%S UTC")
 - **Commit**: \`${COMMIT_SHA}\`
@@ -204,6 +206,7 @@ EOF
 | Netlink RTM_GETROUTE Kernel FIB Routing | **${STATUS_NETLINK_ROUTING}** |
 | Unprivileged Datagram ICMP Echo (SOCK_DGRAM) | **${STATUS_DATAGRAM_ICMP}** |
 | Source-Address Binding Parity (ICMP/TCP/DNS/HTTP) | **${STATUS_SOURCE_BINDING_PARITY}** |
+| Core Protocol Parity (System DNS/Public DNS/TLS/HTTP) | **${STATUS_CORE_PROTOCOL_PARITY}** |
 | STOP Persistence & Cleanup | **${STATUS_STOP_LIFECYCLE}** |
 | RESTART Persistence & Restore | **${STATUS_RESTART_LIFECYCLE}** |
 | ProtectSystem=strict Mount Namespace | **${STATUS_PROTECT_SYSTEM}** |
@@ -849,6 +852,91 @@ if echo "${BIND_OUTPUT}" | grep -q "SUCCESS: Source-address binding parity verif
 else
     STATUS_SOURCE_BINDING_PARITY="FAIL"
     record_fail "Source-address binding parity test failed: ${BIND_OUTPUT}"
+    exit 1
+fi
+
+echo "=============================================================================="
+echo "9.9 CORE PROTOCOL PARITY (SYSTEM DNS / PUBLIC DNS / TLS / HTTP) LIVE ACCEPTANCE"
+echo "=============================================================================="
+CURRENT_STAGE="STAGE_9_9_CORE_PROTOCOL_PARITY"
+
+cat << 'EOF' > /tmp/iem_core_protocol_test.py
+import socket, ssl, urllib.request, struct, sys
+
+# 1. System DNS Resolution
+try:
+    infos = socket.getaddrinfo("www.msftconnecttest.com", 80, socket.AF_INET, socket.SOCK_STREAM)
+    if not infos:
+        print("FAIL: System DNS returned 0 addresses")
+        sys.exit(1)
+    print(f"PASS: System DNS resolved www.msftconnecttest.com -> {infos[0][4][0]}")
+except Exception as e:
+    print(f"FAIL: System DNS failed: {e}")
+    sys.exit(1)
+
+# 2. Public DNS Query over UDP/53 (1.1.1.1)
+try:
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    s.settimeout(3.0)
+    # Simple DNS query for www.msftconnecttest.com
+    tx_id = 0x1234
+    header = struct.pack('>HHHHHH', tx_id, 0x0100, 1, 0, 0, 0)
+    qname = b'\x03www\x0fmsftconnecttest\x03com\x00'
+    qtype_class = struct.pack('>HH', 1, 1) # Type A, Class IN
+    query = header + qname + qtype_class
+    s.sendto(query, ("1.1.1.1", 53))
+    reply, _ = s.recvfrom(512)
+    s.close()
+    
+    r_id, r_flags, r_qdcount, r_ancount, _, _ = struct.unpack('>HHHHHH', reply[:12])
+    if r_id == tx_id and r_ancount > 0:
+        print(f"PASS: Direct Public DNS query answered (ANCOUNT={r_ancount})")
+    else:
+        print(f"WARN: Direct Public DNS response received (ANCOUNT={r_ancount})")
+except Exception as e:
+    print(f"FAIL: Direct Public DNS failed: {e}")
+    sys.exit(2)
+
+# 3. TLS Handshake & Certificate Validation (one.one.one.one:443)
+try:
+    ctx = ssl.create_default_context()
+    with socket.create_connection(("one.one.one.one", 443), timeout=3.0) as sock:
+        with ctx.wrap_socket(sock, server_hostname="one.one.one.one") as ssock:
+            version = ssock.version()
+            cipher = ssock.cipher()
+            print(f"PASS: TLS Handshake succeeded (Version={version}, Cipher={cipher[0]})")
+except Exception as e:
+    print(f"FAIL: TLS Handshake failed: {e}")
+    sys.exit(3)
+
+# 4. HTTP Connectivity Endpoint (no redirect, matching body)
+try:
+    req = urllib.request.Request("http://www.msftconnecttest.com/connecttest.txt")
+    with urllib.request.urlopen(req, timeout=3.0) as resp:
+        body = resp.read().decode('utf-8')
+        if "Microsoft Connect Test" in body:
+            print("PASS: HTTP connectivity endpoint returned expected body (Microsoft Connect Test)")
+        else:
+            print(f"FAIL: HTTP body mismatch: {body[:50]}")
+            sys.exit(4)
+except Exception as e:
+    print(f"FAIL: HTTP connectivity endpoint failed: {e}")
+    sys.exit(4)
+
+print("SUCCESS: Core protocol parity verified across System DNS, Public DNS, TLS, and HTTP")
+sys.exit(0)
+EOF
+chmod 0755 /tmp/iem_core_protocol_test.py
+
+CORE_PROTO_OUTPUT=$(sudo -u iem python3 /tmp/iem_core_protocol_test.py 2>/dev/null || echo "")
+echo "Core protocol parity test output: ${CORE_PROTO_OUTPUT}"
+
+if echo "${CORE_PROTO_OUTPUT}" | grep -q "SUCCESS: Core protocol parity verified"; then
+    STATUS_CORE_PROTOCOL_PARITY="PASS"
+    record_pass "Core protocol parity verified on Linux for System DNS, Public DNS, TLS, and HTTP"
+else
+    STATUS_CORE_PROTOCOL_PARITY="FAIL"
+    record_fail "Core protocol parity test failed: ${CORE_PROTO_OUTPUT}"
     exit 1
 fi
 

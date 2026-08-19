@@ -85,7 +85,16 @@ public static class DeepProbes
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
-            return Failed(ProbeKind.Dns, "system", "Timed out", DnsResolverRole.System);
+            return new ProbeResult(
+                ProbeKind.Dns,
+                ProbeScope.External,
+                "system",
+                ProbeOutcome.TimedOut,
+                null,
+                "Timed out")
+            {
+                DnsRole = DnsResolverRole.System,
+            };
         }
         catch (SocketException ex)
         {
@@ -135,7 +144,13 @@ public static class DeepProbes
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
-            return Failed(ProbeKind.TlsHandshake, target, "Timed out");
+            return new ProbeResult(
+                ProbeKind.TlsHandshake,
+                ProbeScope.External,
+                target,
+                ProbeOutcome.TimedOut,
+                null,
+                "Timed out");
         }
         catch (Exception ex) when (ex is SocketException or AuthenticationException or IOException)
         {
@@ -172,11 +187,23 @@ public static class DeepProbes
             var body = await response.Content.ReadAsStringAsync(timeoutSource.Token).ConfigureAwait(false);
             var elapsed = Stopwatch.GetElapsedTime(started);
 
+            var statusCode = (int)response.StatusCode;
+            var is2xx = response.IsSuccessStatusCode;
+            var is3xx = statusCode is >= 300 and < 400;
             var bodyMatches = string.IsNullOrEmpty(expectedBody) || body.Contains(expectedBody, StringComparison.Ordinal);
-            var ok = response.IsSuccessStatusCode && bodyMatches;
+            var ok = is2xx && bodyMatches;
 
-            // Reached a server, but not the one we asked for.
-            var portal = !bodyMatches;
+            // Captive Portal Suspected semantics:
+            // - 2xx with unexpected body: intercepting web portal returned modified/login page.
+            // - 3xx redirect: redirecting to captive login portal.
+            // - 4xx / 5xx: regular server error, NOT suspected captive portal.
+            var portal = (is2xx && !bodyMatches) || is3xx;
+
+            var detail = ok
+                ? $"HTTP {statusCode}"
+                : (portal
+                    ? $"HTTP {statusCode}, captive portal suspected"
+                    : $"HTTP {statusCode}");
 
             return new ProbeResult(
                 ProbeKind.Http,
@@ -184,14 +211,20 @@ public static class DeepProbes
                 url,
                 ok ? ProbeOutcome.Success : ProbeOutcome.Failed,
                 ok ? elapsed : null,
-                ok ? $"HTTP {(int)response.StatusCode}" : $"HTTP {(int)response.StatusCode}, unexpected body")
+                detail)
             {
                 CaptivePortalSuspected = portal,
             };
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
-            return Failed(ProbeKind.Http, url, "Timed out");
+            return new ProbeResult(
+                ProbeKind.Http,
+                ProbeScope.External,
+                url,
+                ProbeOutcome.TimedOut,
+                null,
+                "Timed out");
         }
         catch (HttpRequestException ex)
         {
