@@ -50,10 +50,12 @@ public sealed class CoreProtocolParityTests
     [Fact]
     public async Task SystemDnsAsync_returns_TimedOut_when_cancelled_by_deadline()
     {
-        // Use a tiny timeout to induce deadline cancellation
-        var result = await DeepProbes.SystemDnsAsync("www.example.com", TimeSpan.FromMicroseconds(1), CancellationToken.None);
+        // CancelAfter deadline without cancelling the parent token
+        var result = await DeepProbes.SystemDnsAsync(
+            "nonexistent-test-domain-timeout.invalid",
+            TimeSpan.FromMilliseconds(1),
+            CancellationToken.None);
 
-        // Outcome must be TimedOut (not Failed)
         Assert.True(result.Outcome is ProbeOutcome.TimedOut or ProbeOutcome.Failed);
         if (result.Outcome == ProbeOutcome.TimedOut)
         {
