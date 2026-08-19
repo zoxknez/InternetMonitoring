@@ -682,6 +682,125 @@
   .ver-content p { color: var(--muted); font-size: 0.9rem; margin-bottom: 6px; }
   .ver-content ul { margin: 0; padding-left: 16px; color: var(--muted); font-size: 0.88rem; display: grid; gap: 4px; }
 
+  /* ---- Release Hero Box ---------------------------------------------------- */
+  .release-hero-box {
+    background: rgba(15, 23, 42, 0.85);
+    border: 1px solid rgba(59, 130, 246, 0.35);
+    border-radius: 12px;
+    padding: 20px 24px;
+    margin: 18px auto 22px auto;
+    max-width: 960px;
+    width: 100%;
+    box-shadow: 0 12px 30px -6px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(16px);
+    box-sizing: border-box;
+    text-align: left;
+  }
+  .release-hero-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-bottom: 16px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    padding-bottom: 12px;
+    width: 100%;
+  }
+  .release-hero-header-left {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  .release-hero-badge {
+    background: linear-gradient(135deg, #1D4ED8, #3B82F6);
+    color: #FFFFFF;
+    font-size: 0.76rem;
+    font-weight: 700;
+    padding: 3px 10px;
+    border-radius: 20px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .release-hero-title {
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: #FFFFFF;
+  }
+  .release-hero-stats {
+    font-family: var(--font-mono);
+    font-size: 0.82rem;
+    color: var(--muted);
+    font-weight: 500;
+  }
+  .release-hero-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 14px 20px;
+    margin-bottom: 16px;
+    width: 100%;
+  }
+  .release-hero-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+  }
+  .release-hero-icon {
+    font-size: 1.1rem;
+    line-height: 1.3;
+    flex-shrink: 0;
+  }
+  .release-hero-text {
+    font-size: 0.88rem;
+    color: #CBD5E1;
+    line-height: 1.45;
+  }
+  .release-hero-text strong {
+    color: #FFFFFF;
+  }
+  .release-hero-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 12px;
+    background: rgba(0, 0, 0, 0.35);
+    border-radius: 8px;
+    padding: 10px 14px;
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    width: 100%;
+    box-sizing: border-box;
+  }
+  .release-hero-footer-cmd {
+    font-size: 0.82rem;
+    color: var(--muted);
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .release-hero-footer-cmd code {
+    color: #38BDF8;
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+    background: rgba(15, 23, 42, 0.8);
+    padding: 2px 6px;
+    border-radius: 4px;
+    border: 1px solid rgba(56, 189, 248, 0.25);
+  }
+  .release-hero-footer-link {
+    font-size: 0.84rem;
+    color: #60A5FA;
+    text-decoration: none;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  .release-hero-footer-link:hover {
+    color: #93C5FD;
+    text-decoration: underline;
+  }
+
   /* ---- Platform Cards ------------------------------------------------------ */
   .plat-card {
     background: var(--surface);
@@ -928,74 +1047,76 @@
       </div>
 
       <!-- Latest Release Detailed Box (Ispod admin banera) -->
-      <div class="release-hero-box" style="background: rgba(15, 23, 42, 0.75); border: 1px solid rgba(59, 130, 246, 0.35); border-radius: 12px; padding: 18px 22px; margin: 16px 0 20px 0; box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.1);">
-        <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; margin-bottom: 12px; border-bottom: 1px solid rgba(255, 255, 255, 0.08); padding-bottom: 10px;">
-          <div style="display: flex; align-items: center; gap: 10px;">
-            <span style="background: linear-gradient(135deg, #1D4ED8, #3B82F6); color: #fff; font-size: 0.78rem; font-weight: 700; padding: 3px 9px; border-radius: 20px; text-transform: uppercase; letter-spacing: 0.5px;">Aktuelno Izdanje</span>
-            <strong style="font-size: 1.05rem; color: #F8FAFC;">Internet Evidence Monitor v3.0.0-rc.1</strong>
+      <!-- Latest Release Detailed Box (Ispod admin banera) -->
+      <div class="release-hero-box">
+        <div class="release-hero-header">
+          <div class="release-hero-header-left">
+            <span class="release-hero-badge">Aktuelno Izdanje</span>
+            <span class="release-hero-title">Internet Evidence Monitor v3.0.0-rc.1</span>
             <span class="chip" style="background: rgba(16, 185, 129, 0.15); color: #6EE7B7; border-color: rgba(16, 185, 129, 0.3);">Release Candidate</span>
           </div>
-          <div style="font-family: var(--font-mono); font-size: 0.8rem; color: var(--muted);">
+          <div class="release-hero-stats">
             210 Invarijanti · 840 Testova · 100% Lokalno
           </div>
         </div>
 
-        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px 20px; margin-bottom: 14px;">
-          <div style="display: flex; align-items: flex-start; gap: 8px;">
-            <span style="color: #60A5FA; font-size: 1rem; line-height: 1.2;">🔒</span>
-            <div style="font-size: 0.88rem; color: #CBD5E1; line-height: 1.45;">
-              <strong style="color: #F1F5F9;">Kriptografski potpisani manifest:</strong> RFC 8785 JSON-C14N kanonizacija i digitalni potpis (<span class="mono" style="font-size: 0.82rem; color: #93C5FD;">manifest.sig</span>).
+        <div class="release-hero-grid">
+          <div class="release-hero-item">
+            <span class="release-hero-icon">🔒</span>
+            <div class="release-hero-text">
+              <strong>Kriptografski potpisani manifest:</strong> RFC 8785 JSON-C14N kanonizacija i digitalni potpis (<span class="mono" style="font-size: 0.82rem; color: #93C5FD;">manifest.sig</span>).
             </div>
           </div>
-          <div style="display: flex; align-items: flex-start; gap: 8px;">
-            <span style="color: #34D399; font-size: 1rem; line-height: 1.2;">⏱️</span>
-            <div style="font-size: 0.88rem; color: #CBD5E1; line-height: 1.45;">
-              <strong style="color: #F1F5F9;">Nezavisni vremenski žig:</strong> RFC 3161 TSA overa vremena sertifikovanog autoriteta treće strane.
+          <div class="release-hero-item">
+            <span class="release-hero-icon">⏱️</span>
+            <div class="release-hero-text">
+              <strong>Nezavisni vremenski žig:</strong> RFC 3161 TSA overa vremena sertifikovanog autoriteta treće strane.
             </div>
           </div>
-          <div style="display: flex; align-items: flex-start; gap: 8px;">
-            <span style="color: #F59E0B; font-size: 1rem; line-height: 1.2;">🛡️</span>
-            <div style="font-size: 0.88rem; color: #CBD5E1; line-height: 1.45;">
-              <strong style="color: #F1F5F9;">Zasebni verifikator (<span class="mono" style="font-size: 0.82rem; color: #FDE68A;">iem-verifier</span>):</strong> Samostalni alat za verifikaciju integriteta i lanca dokaza.
+          <div class="release-hero-item">
+            <span class="release-hero-icon">🛡️</span>
+            <div class="release-hero-text">
+              <strong>Zasebni verifikator (<span class="mono" style="font-size: 0.82rem; color: #FDE68A;">iem-verifier</span>):</strong> Samostalni alat za proveru integriteta i lanca dokaza.
             </div>
           </div>
-          <div style="display: flex; align-items: flex-start; gap: 8px;">
-            <span style="color: #A78BFA; font-size: 1rem; line-height: 1.2;">📊</span>
-            <div style="font-size: 0.88rem; color: #CBD5E1; line-height: 1.45;">
-              <strong style="color: #F1F5F9;">Evidence Quality Engine:</strong> Automatske ocene dokazne snage (Strong / Moderate / Limited).
+          <div class="release-hero-item">
+            <span class="release-hero-icon">📊</span>
+            <div class="release-hero-text">
+              <strong>Evidence Quality Engine:</strong> Automatske ocene dokazne snage (Strong / Moderate / Limited).
             </div>
           </div>
-          <div style="display: flex; align-items: flex-start; gap: 8px;">
-            <span style="color: #38BDF8; font-size: 1rem; line-height: 1.2;">💤</span>
-            <div style="font-size: 0.88rem; color: #CBD5E1; line-height: 1.45;">
-              <strong style="color: #F1F5F9;">Detekcija mirovanja (Sleep/Suspend):</strong> Mirovanje računara se nikada ne računa lažno kao prekid veze.
+          <div class="release-hero-item">
+            <span class="release-hero-icon">💤</span>
+            <div class="release-hero-text">
+              <strong>Detekcija mirovanja (Sleep/Suspend):</strong> Mirovanje računara se nikada ne računa kao prekid veze.
             </div>
           </div>
-          <div style="display: flex; align-items: flex-start; gap: 8px;">
-            <span style="color: #F472B6; font-size: 1rem; line-height: 1.2;">🖥️</span>
-            <div style="font-size: 0.88rem; color: #CBD5E1; line-height: 1.45;">
-              <strong style="color: #F1F5F9;">4 celine interfejsa:</strong> MONITOR (nadzor uživo), EVIDENCE (dokazi), CASE (prigovor), SPEED (brzina).
+          <div class="release-hero-item">
+            <span class="release-hero-icon">🖥️</span>
+            <div class="release-hero-text">
+              <strong>4 celine interfejsa:</strong> MONITOR (nadzor uživo), EVIDENCE (dokazi), CASE (prigovor), SPEED (brzina).
             </div>
           </div>
-          <div style="display: flex; align-items: flex-start; gap: 8px;">
-            <span style="color: #FB7185; font-size: 1rem; line-height: 1.2;">🔔</span>
-            <div style="font-size: 0.88rem; color: #CBD5E1; line-height: 1.45;">
-              <strong style="color: #F1F5F9;">Sistem obaveštavanja o verzijama:</strong> Ugrađena proveravanja bez telemetrije i bez uticaja na merenja.
+          <div class="release-hero-item">
+            <span class="release-hero-icon">🔔</span>
+            <div class="release-hero-text">
+              <strong>Sistem obaveštavanja o verzijama:</strong> Ugrađena provera bez telemetrije i bez uticaja na merenja.
             </div>
           </div>
-          <div style="display: flex; align-items: flex-start; gap: 8px;">
-            <span style="color: #4ADE80; font-size: 1rem; line-height: 1.2;">📁</span>
-            <div style="font-size: 0.88rem; color: #CBD5E1; line-height: 1.45;">
-              <strong style="color: #F1F5F9;">Redigovani paket:</strong> Maskiranje privatnih IP adresa i SSID-eva uz matematički dokaz porekla.
+          <div class="release-hero-item">
+            <span class="release-hero-icon">📁</span>
+            <div class="release-hero-text">
+              <strong>Redigovani paket:</strong> Maskiranje privatnih IP adresa i SSID-eva uz matematički dokaz porekla.
             </div>
           </div>
         </div>
 
-        <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; background: rgba(0, 0, 0, 0.25); border-radius: 6px; padding: 8px 12px; border: 1px solid rgba(255, 255, 255, 0.05);">
-          <div style="font-size: 0.82rem; color: var(--muted);">
-            Provera heša (<span class="mono">SHA-256</span>): <code style="color: #38BDF8; font-family: var(--font-mono); font-size: 0.8rem;">Get-FileHash .\InternetEvidenceMonitor-3.0.0-rc.1-win-x64.exe -Algorithm SHA256</code>
+        <div class="release-hero-footer">
+          <div class="release-hero-footer-cmd">
+            <span>Provera heša (<span class="mono">SHA-256</span>):</span>
+            <code>Get-FileHash .\InternetEvidenceMonitor-3.0.0-rc.1-win-x64.exe -Algorithm SHA256</code>
           </div>
-          <a href="https://github.com/zoxknez/InternetMonitoring/releases/tag/v3.0.0-rc.1" target="_blank" rel="noopener" style="font-size: 0.82rem; color: #60A5FA; text-decoration: none; font-weight: 600;">
+          <a class="release-hero-footer-link" href="https://github.com/zoxknez/InternetMonitoring/releases/tag/v3.0.0-rc.1" target="_blank" rel="noopener">
             Pogledaj kompletne release beleške na GitHub-u &rarr;
           </a>
         </div>
