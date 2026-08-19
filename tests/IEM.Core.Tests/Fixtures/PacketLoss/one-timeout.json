@@ -1,0 +1,37 @@
+{
+  "TargetId": "TargetA",
+  "TargetAddress": "1.1.1.1",
+  "AddressFamily": 0,
+  "ProbeType": 0,
+  "SampleStartedUtc": "2026-08-19T12:00:01+00:00",
+  "SampleEndedUtc": "2026-08-19T12:00:20+00:00",
+  "Methodology": {
+    "ProbeCount": 20,
+    "IntervalMs": 500,
+    "TimeoutMs": 1500,
+    "PayloadBytes": 32,
+    "SamplingMethod": "FixedInterval"
+  },
+  "ScheduledCount": 20,
+  "ExecutedCount": 20,
+  "EligibleCount": 20,
+  "ReplyCount": 19,
+  "NoReplyCount": 1,
+  "ExplicitErrorCount": 0,
+  "LocalFailureCount": 0,
+  "NoReplyRatio": 0.05,
+  "Rtt": {
+    "SampleCount": 19,
+    "MinMs": 10,
+    "MedianMs": 12,
+    "P95Ms": 14,
+    "MaxMs": 14,
+    "PercentileMethod": "NearestRank"
+  },
+  "DelayVariation": {
+    "Method": "ConsecutiveReplyAbsoluteDifference",
+    "SampleCount": 18,
+    "MedianMs": 1,
+    "P95Ms": 4
+  }
+}

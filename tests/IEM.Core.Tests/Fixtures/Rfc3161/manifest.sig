@@ -1,0 +1,1 @@
+{"signature":"golden_manifest_sig"}

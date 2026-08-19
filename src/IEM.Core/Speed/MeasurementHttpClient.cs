@@ -1,7 +1,9 @@
+using System.Net;
 using System.Net.Http;
 using System.Net.Sockets;
 
 namespace IEM.Core.Speed;
+
 
 /// <summary>
 /// The HTTP client a speed measurement runs on, built in one place.
@@ -25,13 +27,19 @@ public static class MeasurementHttpClient
     /// Told about every socket the client connects. Null for the latency probes, which travel
     /// on their own client and describe nothing about the transfer's path.
     /// </param>
-    public static HttpClient Create(ConnectionObserver? observer = null)
+    /// <param name="intent">Whether to observe the system-chosen path or force a requested interface.</param>
+    /// <param name="bindLocalAddress">When forcing a requested interface, the local IP address to bind to.</param>
+    public static HttpClient Create(
+        ConnectionObserver? observer = null,
+        MeasurementIntent intent = MeasurementIntent.ObserveSystemPath,
+        IPAddress? bindLocalAddress = null)
     {
         var handler = new SocketsHttpHandler { UseProxy = false };
 
-        if (observer is not null)
+        if (observer is not null || intent == MeasurementIntent.MeasureRequestedInterface)
         {
-            handler.ConnectCallback = (context, cancellationToken) => ConnectAsync(observer, context, cancellationToken);
+            handler.ConnectCallback = (context, cancellationToken) =>
+                ConnectAsync(observer, intent, bindLocalAddress, context, cancellationToken);
         }
 
         return new HttpClient(handler);
@@ -39,15 +47,11 @@ public static class MeasurementHttpClient
 
     /// <summary>
     /// Opens the connection the way the handler would, and records where it went.
-    /// <para>
-    /// Nothing is bound and nothing is forced: the question this answers is which way the
-    /// system chooses, so the socket is left to the ordinary route lookup and only observed
-    /// afterwards. Binding it to a chosen adapter is a different measurement with a different
-    /// meaning, and it comes separately.
-    /// </para>
     /// </summary>
     private static async ValueTask<Stream> ConnectAsync(
-        ConnectionObserver observer,
+        ConnectionObserver? observer,
+        MeasurementIntent intent,
+        IPAddress? bindLocalAddress,
         SocketsHttpConnectionContext context,
         CancellationToken cancellationToken)
     {
@@ -57,10 +61,15 @@ public static class MeasurementHttpClient
 
         try
         {
+            if (intent == MeasurementIntent.MeasureRequestedInterface && bindLocalAddress is not null)
+            {
+                socket.Bind(new IPEndPoint(bindLocalAddress, 0));
+            }
+
             await socket.ConnectAsync(context.DnsEndPoint, cancellationToken).ConfigureAwait(false);
 
             // After the connect, because before it there is no local endpoint to read.
-            observer.Record(socket.LocalEndPoint, socket.RemoteEndPoint);
+            observer?.Record(socket.LocalEndPoint, socket.RemoteEndPoint, intent);
 
             return new NetworkStream(socket, ownsSocket: true);
         }
@@ -71,3 +80,4 @@ public static class MeasurementHttpClient
         }
     }
 }
+

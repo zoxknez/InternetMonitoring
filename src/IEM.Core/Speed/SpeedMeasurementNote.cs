@@ -144,6 +144,12 @@ public sealed record SpeedMeasurementNote(
     /// </summary>
     public PathAgreementState ActualPathState { get; init; } = PathAgreementState.Unknown;
 
+    /// <summary>Whether the measurement was unforced or forced to a requested interface.</summary>
+    public MeasurementIntent Intent { get; init; } = MeasurementIntent.ObserveSystemPath;
+
+    /// <summary>Tunnel indication inference, if detected.</summary>
+    public TunnelIndication Tunnel { get; init; } = TunnelIndication.Unknown;
+
     /// <summary>How many connections the measurement opened, as observed.</summary>
     public int ObservedConnections { get; init; }
 
@@ -206,6 +212,8 @@ public sealed record SpeedMeasurementNote(
             LoadedLatencyLabel = result.LoadedLatencyGrade?.Label(),
             RouteState = conditions.RouteState,
             ActualPathState = conditions.ActualPath.State,
+            Intent = conditions.Intent,
+            Tunnel = conditions.Tunnel,
             ObservedConnections = conditions.ActualPath.Attempts.Count,
             UnresolvedConnections = conditions.ActualPath.UnresolvedCount,
             ObservedInterfaces =
@@ -219,6 +227,7 @@ public sealed record SpeedMeasurementNote(
             FindingSchemaVersion = CurrentFindingSchemaVersion,
         };
     }
+
 
     private static readonly JsonSerializerOptions Json = new()
     {

@@ -397,4 +397,39 @@ public static class SpeedText
         "VPN je isključen.",
         "Wi-Fi na računaru je isključen, da saobraćaj ne bi otišao tim putem.",
     ];
+
+    /// <summary>Serbian label for measurement intent.</summary>
+    public static string Label(this MeasurementIntent intent) => intent switch
+    {
+        MeasurementIntent.ObserveSystemPath => "posmatranje sistemske putanje",
+        MeasurementIntent.MeasureRequestedInterface => "nametnuta putanja kroz izabrani adapter",
+        _ => intent.ToString(),
+    };
+
+    /// <summary>Serbian description for tunnel indication.</summary>
+    public static string Describe(this TunnelIndication tunnel)
+    {
+        ArgumentNullException.ThrowIfNull(tunnel);
+
+        return tunnel.State switch
+        {
+            TunnelState.Detected => tunnel.Signals.Count > 0
+                ? $"detektovan tunel/VPN ({string.Join(", ", tunnel.Signals)})"
+                : "detektovan tunel/VPN",
+            TunnelState.NotDetected => "tunel/VPN nije detektovan",
+            _ => "status tunela nije proveravan",
+        };
+    }
+
+    /// <summary>Serbian explanation for throughput measurement refusal.</summary>
+    public static string Explain(this ThroughputRefusal refusal) => refusal switch
+    {
+        ThroughputRefusal.LinkBusy => "veza je bila zauzeta.",
+        ThroughputRefusal.NotIdleLongEnough => "veza nije bila dovoljno dugo mirna.",
+        ThroughputRefusal.ConnectionUnhealthy => "veza nije radila ispravno.",
+        ThroughputRefusal.NoResponse => "server za merenje nije odgovorio.",
+        ThroughputRefusal.NoRouteFromRequestedInterface => "nema rute sa izabranog mrežnog adaptera ka meti merenja.",
+        _ => "nepoznat razlog.",
+    };
 }
+

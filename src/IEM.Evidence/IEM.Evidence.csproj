@@ -6,7 +6,9 @@
 
   <ItemGroup>
     <PackageReference Include="PDFsharp" />
+    <PackageReference Include="System.Security.Cryptography.Pkcs" />
   </ItemGroup>
+
 
   <!--
     The fonts travel inside the assembly rather than beside it.

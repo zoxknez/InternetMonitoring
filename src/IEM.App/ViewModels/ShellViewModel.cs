@@ -78,6 +78,22 @@ public sealed partial class ShellViewModel : ObservableObject, IAsyncDisposable
     [ObservableProperty]
     private IReadOnlyList<LatencyPoint> _latency = [];
 
+    [ObservableProperty]
+    private ShellTab _activeTab = ShellTab.Monitor;
+
+    public MonitorViewModel MonitorTab { get; } = new();
+    public EvidenceViewModel EvidenceTab { get; } = new();
+    public CaseViewModel CaseTab { get; } = new();
+    public SpeedViewModel SpeedTab { get; } = new();
+
+    public void ApplyPresentationSnapshot(PresentationSnapshot snapshot)
+    {
+        ArgumentNullException.ThrowIfNull(snapshot);
+        MonitorTab.ApplySnapshot(snapshot);
+        EvidenceTab.ApplySnapshot(snapshot);
+        CaseTab.ApplySnapshot(snapshot);
+    }
+
     public ShellViewModel(IMonitorHost host, string outputRoot)
     {
         _host = host ?? throw new ArgumentNullException(nameof(host));

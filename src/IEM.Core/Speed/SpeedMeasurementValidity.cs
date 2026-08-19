@@ -98,11 +98,18 @@ public sealed record SpeedMeasurementConditions(
     /// </summary>
     public PathAgreement ActualPath { get; init; } = PathAgreement.NotObserved;
 
+    /// <summary>What the measurement intended regarding path selection.</summary>
+    public MeasurementIntent Intent => ActualPath.Intent;
+
+    /// <summary>What was established about possible tunnels on the path.</summary>
+    public TunnelIndication Tunnel => ActualPath.Tunnel;
+
     /// <summary>
     /// What the customer is paying for in the sending direction, when the contract states it
     /// separately - which for cable and DSL it nearly always does.
     /// </summary>
     public double? ContractedUploadMbps { get; init; }
+
 
     /// <summary>What was measured in the sending direction, when that half ran.</summary>
     public double? MeasuredUploadMbps { get; init; }

@@ -188,11 +188,12 @@ public sealed class SpeedWorker(
             Status = Status with
             {
                 State = SpeedState.Refused,
-                Message = "Merenje nije izvršeno; server za merenje nije odgovorio.",
+                Message = $"Merenje nije izvršeno: {result.Refusal.Explain()}",
             };
 
             return;
         }
+
 
         var conditions = new SpeedMeasurementConditions(
             link.Medium,

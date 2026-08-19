@@ -53,11 +53,40 @@ brisanje imena iz dokumenta koji je po formi dokaz je loš presedan baš u ovom 
 Pravo rešenje je **redigovan paket za deljenje** (P1 ispod): kad on postoji, primer se pravi
 njime i pitanje nestaje.
 
-### 0.4 Sledeća faza koda: 3.0-1b
+### 0.4 Završene sve faze: 3.0-1b, 3.0-2, 3.0-3, 3.0-4, 3.0-5, 3.0-6, 3.0-7, 3.0-8, 3.0-9, 3.0-10, 3.0-11, 3.0-12, 3.0-13, 3.0-14, 3.0-15, 3.0-16 i 3.0-17 — ZAVRŠEN IEM 3.0.0 RELEASE MILESTONE!
 
-`Forced` putanja merenja - `MeasurementIntent { ObserveSystemPath, MeasureRequestedInterface }`,
-soket vezan za izabrani adapter, i `MeasurementStatus = NotExecuted` sa razlogom
-`NoRouteFromRequestedInterface` umesto „0 Mbps". Opisano u `ROADMAP-3.0.md`.
+- `3.0-1b · Forced` putanja merenja je završena: `MeasurementIntent`, soket bind, `NoRouteFromRequestedInterface` umesto „0 Mbps", `TunnelIndication` i `ActualMeasurementPathConfirmed`.
+- `3.0-2 · Potpisan manifest` je završen: `EvidenceManifest`, RFC 8785 JSON Canonicalization (`JsonCanonicalizer`), atomski `manifest.json`, inventar fajlova, Invarijante 19 i 20, `SignatureEnvelope` ugovor i golden cross-platform fixture.
+- `3.0-3 · Ključevi i potpisivanje` je završeno: `IEvidenceSigningIdentity`, `IEvidenceKeyProvider`, deterministički `KeyId` (Invarijanta 21), zabrana tihe rotacije (Invarijanta 22), Windows CNG TPM/Software KSP (`WindowsCngKeyProvider`), atomski `manifest.sig` (`ManifestSigner`, Invarijanta 23) i zaštita privatnog ključa (Invarijanta 24).
+- `3.0-4 · Vremenski žig treće strane` je završen: RFC 3161/RFC 5816 TSA klijent i verifikator (`Rfc3161TimestampClient`, `Rfc3161TimestampVerifier`), MessageImprint nad sirovim bajtovima `manifest.sig` (Invarijanta 25), 128-bitni nonce, čuvanje zahteva i odgovora (`timestamp.tsq`, `timestamp.tsr`), podrška za prekid mreže (`TrustedTime = Pending`), atomski upis pre publikovanja (Invarijanta 26), bezbedan retry bez regeneracije dokaza (Invarijanta 27), offline sertifikati i golden fixture.
+- `3.0-5 · Zaseban verifikator` je završen: `IEM.Verification` biblioteka i `iem-verifier` CLI alat, dvodimenzionalni model rezultata (Integritet/Poverenje), stabilni exit kodovi (0, 10, 20, 30, 40, 50), bezbednost putanja van paketa (Invarijanta 29), nezavisna provera ključa (Invarijanta 30), 100% offline rad (Invarijanta 31), read-only operacije (Invarijanta 32) i golden forensic fixtures.
+- `3.0-6 · Višestruke probe i gubitak odgovora po meti` je završeno: `TargetProbeAttempt` opservacije, `TargetProbeStatistics` uzorci, Invarijanta 33 (lokalni kvar nije mrežni loss), Invarijanta 34 (zabrana prosečivanja preko meta), Invarijanta 35 (timeout nije sintetisani RTT), Invarijanta 36 (eksplicitno imenovani metod varijacije kašnjenja `ConsecutiveReplyAbsoluteDifference`), Invarijanta 37 (razdvajanje IPv4/IPv6), Invarijanta 38 (izostanak odgovora ne tvrdi lokaciju drop-a), Nearest-Rank percentili i golden fixtures.
+- `3.0-7 · Zdravlje meta` je završeno: `TargetHealthSnapshot` nepromenljivi niz snimaka, Invarijanta 39 (odsustvo odgovora nikada ne tvrdi ICMP unsupported), Invarijanta 40 (nepromenljivost ranijih dokaza), Invarijanta 41 (nema retroaktivnog menjanja težine), Invarijanta 42 (obrazloženo i vidljivo isključenje meta `EvidenceContribution = Suspended`), Invarijanta 43 (zajednički pad peer meta nikada ne izoluje pojedinačnu metu kao nezdravu), Invarijanta 44 (deterministička obnovljivost istorije), Invarijanta 45 (stroga izolacija po endpoint-u i IPv4/IPv6 porodici adresa).
+- `3.0-8 · Šta ruter ume` je završeno: `GatewayCapabilityObservation` sirova opažanja, `GatewayCapabilityProfile` naučeni profil, `GatewayAssessmentSnapshot` bihevioralna procena, Invarijanta 46 (izostanak odgovora nikada nije unsupported), Invarijanta 47 (pozitivno dokazivanje), Invarijanta 48 (append-only istorija), Invarijanta 49 (trenutni pad ne poništava istorijski dokazanu sposobnost), Invarijanta 50 (ARP/NDP uspeh ne dokazuje forwarding), Invarijanta 51 (postojanje rute ne dokazuje dostupnost prolaza), Invarijanta 52 (učenje se ne zamrzava), Invarijanta 53 (opseg vezan za GatewayIdentity i mrežni kontekst), Invarijanta 54 (deterministička obnovljivost).
+- `3.0-9 · Zdravlje sopstvenih proba` je završeno: `ProbeExecutionAttempt` operativne činjenice, `ProbeFailureClassification` klasifikacija domena greške (`FailedNetwork`, `FailedRemote`, `FailedLocalSystem`, `InternalError`, `Timeout`, `Unknown`), `ProbeHealthSnapshot` procena zdravlja mehanizma proba, Invarijanta 55 (lokalni neuspeh nikada nije mrežni pad), Invarijanta 56 (dvosmislen neuspeh ostaje Unknown), Invarijanta 57 (timeout opisuje nedovršenost u roku a ne uzrok), Invarijanta 58 (izvorni OS kodovi su ulazni dokaz a ne semantika), Invarijanta 59 (interni bag nikada ne svedoči o padu mreže), Invarijanta 60 (FailedRemote zahteva pozitivan protokolski odgovor), Invarijanta 61 (FailedNetwork ne nagađa nedokazani uzrok), Invarijanta 62 (eksplicitna podobnost dokaza `Eligible`/`Ineligible`), Invarijanta 63 (jedan lokalni pad ne proglašava mehanizam nezdravim), Invarijanta 64 (opseg po implementaciji i kontekstu), Invarijanta 65 (append-only), Invarijanta 66 (obnovljivost).
+- `3.0-10 · Raspored foldera i prava pristupa` je završeno: `SessionLayoutDescriptor` (`layout.json`), `SessionPathResolver`, `StorageAreaPolicy` (`Raw/`, `Derived/`, `Evidence/`, `Exports/`), životni ciklus sesije (`Provisioning` $\to$ `Active` $\to$ `Sealing` $\to$ `Sealed`), `WindowsReparsePointGuard` (zaštita od junction/symlink napada), `WindowsSessionAclProvisioner` (`IStorageProtectionProvider`), Invarijante 67 do 82.
+- `3.0-11 · Komande preko platformskog IPC-a` je završeno: `IIpcTransport`, `PlatformPeerIdentity`, `IpcRequestEnvelope`/`IpcResponseEnvelope`, dužinski prefiksirano uokviravanje `IpcMessageFraming` (do 1 MB), `IpcCommandDispatcher` sa eksplicitnom listom komandi, fail-closed autorizacijom `IpcAuthorizationPolicy`, `ControlCommandObserved` operativnim auditom, `WindowsNamedPipeTransport` sa DACL-om i preuzimanjem SID-a, Invarijante 83 do 96.
+- `3.0-12 · Boot id i neprekidnost vremena` je završeno: `BootObservation`, `ClockSample`, `ClockContinuityAssessment` (detekcija skokova sata i intervala spavanja/suspend), `BootIdentityAssessment`, `EvidenceTime`, `WindowsTimeObservationProvider` (visokoprecizni QPC i unbiased interrupt time), Invarijante 97 do 113.
+- `3.0-13 · Ocena kvaliteta dokaza (Evidence Quality Engine)` je završeno: `EvidenceQualitySubject` sa opsegom tvrdnje (`QualityPurpose`), `EvidenceQualityInterval`, `QualityEligibility` (`Full`, `Reduced`, `Ineligible`, `NotObservable`), `EvidenceCoverage` sa eksplicitnim imeniocem, hard gates, pojasne ocene `Strong`/`Moderate`/`Limited`/`Insufficient`, odvojenost integriteta paketa i poverenja od istinitosti merenja, Invarijante 114 do 131.
+- `3.0-14 · Jedan model dokumenta (Unified Report Document Model)` je završeno: `ReportDocumentModel` kanonska prezentaciona projekcija, `EvidenceAnalysisSnapshot`, `ReportCompositionProfile` (`Technical`, `Complaint`, `Ratel`), tipizirano AST stablo blokova (`ReportBlock`), `ReportClaim` sa čuvanjem epistemološke klase i porekla, `ReportValue` sa eksplicitnim tipovima, `HtmlReportRenderer`, `CsvReportProjection`, `ComplaintNarrativeComposer`, `RatelRegulatoryComposer`, Invarijante 132 do 150.
+- `3.0-15 · Preuređen prozor (MONITOR / EVIDENCE / CASE / SPEED)` je završeno: `PresentationSnapshot` nepromenljivi atomski snimak, `PresentationRevisionTracker` zaštita od starijih revizija, `ShellTab` navigacija, `MonitorViewModel` sa jasnim razdvajanjem spavanja računara (`HostSuspended`) od mrežnog prekida, `EvidenceViewModel` sa razdvojenim integritetom, poverenjem i kvalitetom, `CaseViewModel` sa izolacijom korisničkih beleški (`UserStatement`) od tehničkih dokaza, `SpeedViewModel` sa zabranom lažnog `0 Mbps` na odbijeno merenje, Invarijante 151 do 173.
+- `3.0-16 · Redigovani paket za deljenje (Redacted Evidence Package)` je završeno: `RedactionManifest` sa hešom originalnog manifesta, `RedactionPolicy` (`StandardPrivacy`, `StrictAnonymization`), `RedactionEngine` (determinističko maskiranje/uklanjanje bez menjanja originala), `RedactedPackageVerifier`, Invarijante 174 do 190.
+- `3.0-17 · Instalacija i izdanje (Release Identity, Authenticode Gate, SBOM & Lifecycle)` je završeno: `ReleaseIdentity`, `AuthenticodeSignatureState`, `ReleaseGateEvaluator`, `SbomGenerator` (SPDX/CycloneDX), `InstallerAcceptanceSimulator` (garancija očuvanja korisničkih dokaza na upgrade/uninstall), Invarijante 191 do 210.
+
+Sve planirane faze 3.0 ciklusa su **100% implementirane i verifikovane** sa **781 automatskim testom** bez ijednog neuspeha.
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 ---
 

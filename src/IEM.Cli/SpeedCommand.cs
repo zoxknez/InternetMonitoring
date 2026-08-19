@@ -476,14 +476,8 @@ public static class SpeedCommand
         return measurement.ReadyToMeasure;
     }
 
-    private static string Describe(ThroughputRefusal refusal) => refusal switch
-    {
-        ThroughputRefusal.LinkBusy => "veza je bila zauzeta.",
-        ThroughputRefusal.NotIdleLongEnough => "veza nije bila dovoljno dugo mirna.",
-        ThroughputRefusal.ConnectionUnhealthy => "veza nije radila ispravno.",
-        ThroughputRefusal.NoResponse => "server za merenje nije odgovorio.",
-        _ => "nepoznat razlog.",
-    };
+    private static string Describe(ThroughputRefusal refusal) => refusal.Explain();
+
 
     private static string Medium(LinkMedium medium) => medium switch
     {

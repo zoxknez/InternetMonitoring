@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyName>IEM.Verification</AssemblyName>
+    <RootNamespace>IEM.Verification</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\IEM.Evidence\IEM.Evidence.csproj" />
+    <ProjectReference Include="..\IEM.Storage\IEM.Storage.csproj" />
+  </ItemGroup>
+
+</Project>

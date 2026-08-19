@@ -41,6 +41,9 @@ public sealed record ConnectionAttempt(
 {
     public AddressFamily Family => RemoteAddress.AddressFamily;
 
+    /// <summary>The intent under which this connection was opened.</summary>
+    public MeasurementIntent Intent { get; init; } = MeasurementIntent.ObserveSystemPath;
+
     /// <summary>The adapter that owns <see cref="LocalAddress"/>, or null when none could be matched.</summary>
     public NetworkInterfaceIdentity? Observed { get; init; }
 
@@ -61,6 +64,9 @@ public sealed record ConnectionAttempt(
 public interface ILocalAddressMap
 {
     NetworkInterfaceIdentity? For(IPAddress localAddress);
+
+    /// <summary>Finds a local IP address assigned to the given interface.</summary>
+    IPAddress? FindAddressForInterface(string interfaceId, AddressFamily family = AddressFamily.InterNetwork);
 }
 
 /// <summary>Reads the machine's own adapters. Portable; no platform API beyond the framework.</summary>
@@ -86,6 +92,30 @@ public sealed class SystemLocalAddressMap : ILocalAddressMap
         // Null rather than a guess. An address the machine does not claim is a finding in its
         // own right, and inventing an adapter for it would be the substitution this project
         // spends its releases removing.
+        return null;
+    }
+
+    public IPAddress? FindAddressForInterface(string interfaceId, AddressFamily family = AddressFamily.InterNetwork)
+    {
+        ArgumentNullException.ThrowIfNull(interfaceId);
+
+        foreach (var adapter in NetworkInterface.GetAllNetworkInterfaces())
+        {
+            if (!string.Equals(adapter.Id, interfaceId, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            foreach (var unicast in adapter.GetIPProperties().UnicastAddresses)
+            {
+                var addr = Unmap(unicast.Address);
+                if (addr.AddressFamily == family && !IPAddress.IsLoopback(addr))
+                {
+                    return addr;
+                }
+            }
+        }
+
         return null;
     }
 
@@ -134,7 +164,7 @@ public sealed class ConnectionObserver(ILocalAddressMap? addresses = null, IEM.C
     /// Records a connected socket. Called from the connect callback, on several threads at
     /// once - the transfer opens three connections per direction.
     /// </summary>
-    public void Record(EndPoint? local, EndPoint? remote)
+    public void Record(EndPoint? local, EndPoint? remote, MeasurementIntent intent = MeasurementIntent.ObserveSystemPath)
     {
         if (local is not IPEndPoint from || remote is not IPEndPoint to)
         {
@@ -150,6 +180,7 @@ public sealed class ConnectionObserver(ILocalAddressMap? addresses = null, IEM.C
 
         var attempt = new ConnectionAttempt(fromAddress, from.Port, toAddress, to.Port, _clock.UtcNow)
         {
+            Intent = intent,
             Observed = _addresses.For(fromAddress),
         };
 
@@ -159,3 +190,4 @@ public sealed class ConnectionObserver(ILocalAddressMap? addresses = null, IEM.C
         }
     }
 }
+

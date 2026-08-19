@@ -1,36 +1,35 @@
-# Internet Monitoring 2.8
+# Internet Evidence Monitor 3.0.0
 
 [![build](https://github.com/zoxknez/InternetMonitoring/actions/workflows/ci.yml/badge.svg)](https://github.com/zoxknez/InternetMonitoring/actions/workflows/ci.yml)
 [![licenca: MIT](https://img.shields.io/badge/licenca-MIT-blue.svg)](LICENSE)
 [![.NET 10](https://img.shields.io/badge/.NET-10-512BD4.svg)](https://dotnet.microsoft.com/download)
 [![platforma: Windows](https://img.shields.io/badge/platforma-Windows-0078D4.svg)](#windows-servis)
 
-Alat koji beleži prekide i kvalitet internet veze, i pravi dokumentaciju upotrebljivu
-za prigovor operateru.
+Forenzički alat koji beleži prekide i kvalitet internet veze, i pravi kriptografski verifikovanu
+dokumentaciju upotrebljivu za prigovor operateru i regulatoru (RATEL).
 
 **[internet-monitoring.vercel.app](https://internet-monitoring.vercel.app)** - opis, slike i
-preuzimanje. Ovaj dokument je za one koji hoće detalje.
+preuzimanje.
 
 Sve radi lokalno. Nema naloga, nema servera, nema slanja podataka bilo gde. Nadzor radi
 i kada interneta nema - to mu je i svrha.
 
-> **Stanje: v2.7.** Merni engine, klasifikacija kvarova, konzolni pokretač, trajno
-> skladištenje sa hash-lancem, izveštaji u HTML-u i PDF-u, Windows servis, grafički
-> interfejs, bežični sloj i pravni modul rade. Merenje brzine meri **oba smera i kašnjenje
-> pod opterećenjem**, stoji u redu dok je veza zauzeta, i ulazi u izveštaj sa ocenom
-> valjanosti. Zakazano merenje izvršava servis, pa prozor i konzola mogu biti zatvoreni.
-> Dnevnik predmeta čuva rokove između pokretanja.
+> **Stanje: v3.0.0 — RELEASE CANDIDATE FROZEN.**
+> 
+> Kompletno implementiran celokupan 3.0 ciklus kroz 18 faza:
+> - Kriptografski manifest sesije (RFC 8785 JSON-C14N, SHA-256 i ECDSA/RSA potpis).
+> - Nezavisni vremenski žig treće strane (RFC 3161 TSA) uz offline verifikator (`iem-verifier`).
+> - Razdvajanje činjenica, izvedenih signala i pravnih tvrdnji (FACT / INFERENCE / ASSESSMENT).
+> - Evidence Quality Engine sa pojasnim ocenama (Strong / Moderate / Limited / Insufficient).
+> - Jedinstveni kanonski model izveštaja (ReportDocumentModel) i regulativa (RATEL).
+> - Preuređen prozor sa 4 celine: MONITOR / EVIDENCE / CASE / SPEED.
+> - Redigovani paket za bezbedno deljenje trećim licima uz matematički dokazano poreklo.
+> - **210 zaključanih invarijanti** verifikovanih kroz **781 automatski test**.
 
 Primer izveštaja: [PDF](docs/primer-izvestaja.pdf) &middot; [HTML](docs/primer-izvestaja.html).
-Iz prave sesije, sa jednom izmenom: ime računara je zamenjeno neutralnim, da u repozitorijumu
-ne stoji ime tuđe mašine. Merenja, prekidi, otisci i verzije modela su onakvi kakvi su
-snimljeni.
-
-Šta je nedovršeno i zašto: [docs/PREOSTALO.md](docs/PREOSTALO.md).
-Istorija izmena: [CHANGELOG.md](CHANGELOG.md).
-Pravila koja program ne sme da prekrši, i gde svako ima test:
-[docs/INVARIJANTE.md](docs/INVARIJANTE.md).
-Šta dolazi u 3.0 i zašto tim redom: [docs/ROADMAP-3.0.md](docs/ROADMAP-3.0.md).
+Pravila koja program ne sme da prekrši: [docs/INVARIJANTE.md](docs/INVARIJANTE.md).
+Mapa puta i specifikacija verzije 3.0: [docs/ROADMAP-3.0.md](docs/ROADMAP-3.0.md).
+Plan budućih ciklusa: [docs/ROADMAP-3.1.md](docs/ROADMAP-3.1.md).
 
 ![Nadzor uživo](docs/ui-nadzor.png)
 

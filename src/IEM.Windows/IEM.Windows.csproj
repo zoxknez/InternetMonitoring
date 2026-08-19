@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <!--
@@ -12,7 +12,9 @@
 
   <ItemGroup>
     <ProjectReference Include="..\IEM.Core\IEM.Core.csproj" />
+    <ProjectReference Include="..\IEM.Evidence\IEM.Evidence.csproj" />
   </ItemGroup>
+
 
   <ItemGroup>
     <!--

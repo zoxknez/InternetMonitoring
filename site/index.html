@@ -580,12 +580,12 @@
 <div class="wrap">
   <section class="hero">
     <div class="stack">
-      <p class="eyebrow">Windows · slobodan softver · 2.8.0-beta.4</p>
+      <p class="eyebrow">Windows · slobodan softver · 3.0.0 (Release Candidate)</p>
       <h1>Dokaz da veza pada, napisan tako da operater nema šta da ospori.</h1>
       <p class="lede">
-        Program beleži prekide i kvalitet internet veze i od toga pravi dokumentaciju
-        upotrebljivu za prigovor operateru. Radi lokalno. Nema naloga, nema servera, ne šalje
-        podatke nigde - snimljeno ostaje u folderu sesije, a vi odlučujete kome ćete ga poslati.
+        Program beleži prekide i kvalitet internet veze i od toga pravi kriptografski verifikovanu
+        dokumentaciju za prigovor operateru i regulatoru (RATEL). Radi lokalno. Nema naloga, nema servera,
+        ne šalje podatke nigde - snimljeno ostaje u zaštićenoj strukturi sesije.
       </p>
     </div>
 
@@ -604,16 +604,16 @@
       <span style="--c: var(--ok)"><i></i>ispravno</span>
       <span style="--c: var(--degraded)"><i></i>pogoršano</span>
       <span style="--c: var(--down)"><i></i>prekid</span>
-      <span style="--c: var(--unmeasured)"><i></i>nije mereno</span>
+      <span style="--c: var(--unmeasured)"><i></i>nije mereno / mirovanje</span>
       <span style="--c: var(--planned)"><i></i>preostalo po planu</span>
     </div>
 
     <div class="cta" style="margin-top: 32px;">
-      <a class="btn" href="https://github.com/zoxknez/InternetMonitoring/releases/download/v2.8.0-beta.4/InternetMonitoring-2.8.0-beta.4-win-x64.exe">
+      <a class="btn" href="https://github.com/zoxknez/InternetMonitoring/releases/tag/v3.0.0-rc.1">
         <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
           <path d="M0 2.2 6.4 1.3v5.9H0zM7.3 1.2 16 0v7.2H7.3zM0 8.1h6.4V14L0 13.1zM7.3 8.1H16V16l-8.7-1.2z" />
         </svg>
-        Preuzmi za Windows
+        Preuzmi v3.0.0-rc.1
       </a>
       <a class="btn ghost" href="https://github.com/zoxknez/InternetMonitoring">
         <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
@@ -623,8 +623,8 @@
       </a>
       <a class="btn ghost" href="#preuzimanje">Ostale verzije</a>
       <span class="cta-note">
-        Jedan fajl, 65 MB. Ništa se ne instalira.<br />
-        Otvoren kod pod MIT licencom - sve što program tvrdi može da se proveri u izvoru.
+        Jedan fajl ili instalater sa Windows servisom.<br />
+        Otvoren kod pod MIT licencom · 210 formalnih invarijanti · Potpisan Authenticode i RFC 3161 TSA žig.
       </span>
     </div>
 
@@ -639,25 +639,24 @@
           <strong>Pokrenite program kao administrator.</strong>
           <p>
             Desni klik na preuzeti fajl <span class="keys">&rarr; Pokreni kao administrator</span>,
-            ili iz PowerShell-a jednom komandom - <a href="#powershell">uputstvo je niže</a>.
-            Bez toga program ne može da pročita sve što mu treba od sistema.
+            ili pokrenite kao Windows servis koji radi neprekidno u pozadini.
           </p>
         </div>
       </div>
 
       <div class="latest">
         <div class="latest-head">
-          <span class="ver-tag">2.8.0-beta.4</span>
-          <span class="chip">Poslednja verzija</span>
-          <span class="ver-date">18.08.2026.</span>
+          <span class="ver-tag">3.0.0-rc.1</span>
+          <span class="chip">Release Candidate</span>
+          <span class="ver-date">19.08.2026.</span>
         </div>
-        <h3>Zaustavljanje pita šta dalje, i prozor ima jednu veličinu</h3>
+        <h3>Kompletna forenzička i kriptografska arhitektura</h3>
         <ul>
-          <li>pri zaustavljanju iskoči pitanje: napraviti izveštaj, samo stati, ili nastaviti</li>
-          <li>uklonjeni GPU efekti - najverovatniji uzrok belog ekrana koji su testeri prijavili</li>
-          <li>prozor je fiksiran na 1280 × 900: ništa se ne skroluje i ništa nije odsečeno</li>
+          <li>potpisani manifest dokaza (RFC 8785 JSON-C14N + SHA-256 + ECDSA/RSA)</li>
+          <li>nezavisni vremenski žig treće strane (RFC 3161 TSA) i offline verifikator (<span class="mono">iem-verifier</span>)</li>
+          <li>preuređen prozor: MONITOR, EVIDENCE, CASE, SPEED sa redigovanim paketom za deljenje</li>
         </ul>
-        <p class="more"><a href="#verzije">Šta je bilo u prethodnim verzijama &rarr;</a></p>
+        <p class="more"><a href="#verzije">Pregled svih novina u 3.0 &rarr;</a></p>
       </div>
     </div>
   </section>
@@ -963,8 +962,30 @@ Start-Process .\iem-2.8.0-beta.4-win-x64.exe -Verb RunAs `
     <div class="versions" id="spisak-verzija">
       <div class="ver">
         <div class="ver-mark">
+          <span class="ver-tag">3.0.0-rc.1</span>
+          <span class="chip">Trenutna (RC)</span>
+          <span class="ver-date">19.08.2026.</span>
+        </div>
+        <div class="ver-body">
+          <h3>Forenzički integritet, RFC 3161 TSA žig, ocena kvaliteta i novi interfejs</h3>
+          <p>
+            Kompletno zatvoren lanac dokaza od sirovih sondi do regulatornog izveštaja (RATEL) i
+            redigovanog paketa za bezbedno deljenje.
+          </p>
+          <ul>
+            <li>kriptografski manifest sesije (RFC 8785 JSON Canonicalization, SHA-256 i ECDSA/RSA potpis)</li>
+            <li>nezavisni vremenski žig treće strane (RFC 3161 TSA) uz offline verifikaciju</li>
+            <li>Evidence Quality Engine: pojasne ocene pouzdanosti (Strong / Moderate / Limited / Insufficient)</li>
+            <li>preuređen prozor sa 4 celine: MONITOR, EVIDENCE, CASE, SPEED</li>
+            <li>redigovani paket za deljenje sa matematički dokazanim poreklom do originala</li>
+            <li>210 formalnih sistemskih invarijanti pokrivenih sa 781 automatskim testom</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="ver">
+        <div class="ver-mark">
           <span class="ver-tag">2.8.0-beta.4</span>
-          <span class="chip">Trenutna</span>
           <span class="ver-date">18.08.2026.</span>
         </div>
         <div class="ver-body">

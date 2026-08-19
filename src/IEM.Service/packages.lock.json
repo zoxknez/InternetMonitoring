@@ -338,11 +338,6 @@
         "resolved": "10.0.11",
         "contentHash": "QTXEoQBzz00SFWbo7nAg1Ogd4f99lwqcO9uAJ7MYSLEUR28f6As32QktrqG2Fr9cfAfd1GjLyGYspE7Ipj7P6w=="
       },
-      "System.Security.Cryptography.Pkcs": {
-        "type": "Transitive",
-        "resolved": "8.0.1",
-        "contentHash": "CoCRHFym33aUSf/NtWSVSZa99dkd0Hm7OCZUxORBjRB16LNhIEOf8THPqzIYlvKM0nNDAPTRBa1FxEECrgaxxA=="
-      },
       "System.ServiceProcess.ServiceController": {
         "type": "Transitive",
         "resolved": "10.0.11",
@@ -357,21 +352,23 @@
       "iem.evidence": {
         "type": "Project",
         "dependencies": {
-          "IEM.Storage": "[2.7.0, )",
-          "PDFsharp": "[6.2.4, )"
+          "IEM.Storage": "[2.8.0-beta.4, )",
+          "PDFsharp": "[6.2.4, )",
+          "System.Security.Cryptography.Pkcs": "[10.0.0, )"
         }
       },
       "iem.storage": {
         "type": "Project",
         "dependencies": {
-          "IEM.Core": "[2.7.0, )",
+          "IEM.Core": "[2.8.0-beta.4, )",
           "Microsoft.Data.Sqlite": "[10.0.11, )"
         }
       },
       "iem.windows": {
         "type": "Project",
         "dependencies": {
-          "IEM.Core": "[2.7.0, )",
+          "IEM.Core": "[2.8.0-beta.4, )",
+          "IEM.Evidence": "[2.8.0-beta.4, )",
           "ManagedNativeWifi": "[3.0.2, )"
         }
       },
@@ -401,6 +398,12 @@
           "Microsoft.Extensions.Logging.Abstractions": "8.0.3",
           "System.Security.Cryptography.Pkcs": "8.0.1"
         }
+      },
+      "System.Security.Cryptography.Pkcs": {
+        "type": "CentralTransitive",
+        "requested": "[10.0.0, )",
+        "resolved": "10.0.0",
+        "contentHash": "UPWqLSygJlFerRi9XNIuM0a1VC8gHUIufyP24xQ0sc+XimqUAEcjpOz9DhKpyDjH+5B/wO3RpC0KpkEeDj/ddg=="
       }
     },
     "net10.0-windows7.0/win-arm64": {
@@ -420,11 +423,6 @@
         "resolved": "10.0.11",
         "contentHash": "QTXEoQBzz00SFWbo7nAg1Ogd4f99lwqcO9uAJ7MYSLEUR28f6As32QktrqG2Fr9cfAfd1GjLyGYspE7Ipj7P6w=="
       },
-      "System.Security.Cryptography.Pkcs": {
-        "type": "Transitive",
-        "resolved": "8.0.1",
-        "contentHash": "CoCRHFym33aUSf/NtWSVSZa99dkd0Hm7OCZUxORBjRB16LNhIEOf8THPqzIYlvKM0nNDAPTRBa1FxEECrgaxxA=="
-      },
       "System.ServiceProcess.ServiceController": {
         "type": "Transitive",
         "resolved": "10.0.11",
@@ -432,6 +430,12 @@
         "dependencies": {
           "System.Diagnostics.EventLog": "10.0.11"
         }
+      },
+      "System.Security.Cryptography.Pkcs": {
+        "type": "CentralTransitive",
+        "requested": "[10.0.0, )",
+        "resolved": "10.0.0",
+        "contentHash": "UPWqLSygJlFerRi9XNIuM0a1VC8gHUIufyP24xQ0sc+XimqUAEcjpOz9DhKpyDjH+5B/wO3RpC0KpkEeDj/ddg=="
       }
     },
     "net10.0-windows7.0/win-x64": {
@@ -451,11 +455,6 @@
         "resolved": "10.0.11",
         "contentHash": "QTXEoQBzz00SFWbo7nAg1Ogd4f99lwqcO9uAJ7MYSLEUR28f6As32QktrqG2Fr9cfAfd1GjLyGYspE7Ipj7P6w=="
       },
-      "System.Security.Cryptography.Pkcs": {
-        "type": "Transitive",
-        "resolved": "8.0.1",
-        "contentHash": "CoCRHFym33aUSf/NtWSVSZa99dkd0Hm7OCZUxORBjRB16LNhIEOf8THPqzIYlvKM0nNDAPTRBa1FxEECrgaxxA=="
-      },
       "System.ServiceProcess.ServiceController": {
         "type": "Transitive",
         "resolved": "10.0.11",
@@ -463,6 +462,12 @@
         "dependencies": {
           "System.Diagnostics.EventLog": "10.0.11"
         }
+      },
+      "System.Security.Cryptography.Pkcs": {
+        "type": "CentralTransitive",
+        "requested": "[10.0.0, )",
+        "resolved": "10.0.0",
+        "contentHash": "UPWqLSygJlFerRi9XNIuM0a1VC8gHUIufyP24xQ0sc+XimqUAEcjpOz9DhKpyDjH+5B/wO3RpC0KpkEeDj/ddg=="
       }
     }
   }

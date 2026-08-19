@@ -21,6 +21,9 @@ public enum ThroughputRefusal
 
     /// <summary>The link went idle but not for long enough to trust.</summary>
     NotIdleLongEnough,
+
+    /// <summary>The socket was bound to a requested interface that has no route to the destination.</summary>
+    NoRouteFromRequestedInterface,
 }
 
 /// <param name="Refusal">Why it did not run, when it did not.</param>
@@ -31,6 +34,12 @@ public sealed record ThroughputResult(
     ThroughputRefusal Refusal)
 {
     public bool Ran => Refusal == ThroughputRefusal.None;
+
+    /// <summary>What the measurement intended regarding path selection.</summary>
+    public MeasurementIntent Intent { get; init; } = MeasurementIntent.ObserveSystemPath;
+
+    /// <summary>What was established about possible tunnels on the path.</summary>
+    public TunnelIndication Tunnel { get; init; } = TunnelIndication.Unknown;
 
     /// <summary>
     /// Sending rate, or null when the upload half did not run or nothing got through.
@@ -65,13 +74,17 @@ public sealed record ThroughputResult(
     public LoadedLatencyGrade? LoadedLatencyGrade =>
         LatencyIncreaseUnderLoad is { } increase ? Speed.LoadedLatency.Grade(increase) : null;
 
-    public static ThroughputResult Refused(ThroughputRefusal reason) =>
-        new(0, 0, TimeSpan.Zero, reason);
+    public static ThroughputResult Refused(ThroughputRefusal reason, MeasurementIntent intent = MeasurementIntent.ObserveSystemPath) =>
+        new(0, 0, TimeSpan.Zero, reason) { Intent = intent };
 }
 
 public sealed record ThroughputOptions
 {
     public static readonly ThroughputOptions Default = new();
+
+    /// <summary>Whether to observe the system path or measure a requested interface.</summary>
+    public MeasurementIntent Intent { get; init; } = MeasurementIntent.ObserveSystemPath;
+
 
     /// <summary>
     /// Where the payload is fetched from.
@@ -288,7 +301,11 @@ public sealed class ThroughputMeasurement(
 
         if (download.Bytes == 0 || download.Elapsed <= TimeSpan.Zero)
         {
-            return ThroughputResult.Refused(ThroughputRefusal.NoResponse);
+            var refusal = _options.Intent == MeasurementIntent.MeasureRequestedInterface
+                ? ThroughputRefusal.NoRouteFromRequestedInterface
+                : ThroughputRefusal.NoResponse;
+
+            return ThroughputResult.Refused(refusal, _options.Intent);
         }
 
         var upload = _options.MeasureUpload
@@ -301,6 +318,7 @@ public sealed class ThroughputMeasurement(
 
         return new ThroughputResult(download.Mbps, download.Bytes, download.Elapsed, ThroughputRefusal.None)
         {
+            Intent = _options.Intent,
             // Zero bytes sent means the sending half did not happen, not that the line
             // cannot send - so it is reported as missing rather than as a rate of nought.
             UploadMbps = upload is { Bytes: > 0 } ? upload.Mbps : null,
@@ -310,6 +328,7 @@ public sealed class ThroughputMeasurement(
             DownloadLoadedLatency = download.Latency,
             UploadLoadedLatency = upload?.Latency,
         };
+
     }
 
     private enum Direction

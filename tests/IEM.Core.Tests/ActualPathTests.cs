@@ -230,11 +230,19 @@ public sealed class ActualPathTests
             IPAddress.Parse(address).Equals(localAddress)
                 ? new NetworkInterfaceIdentity(interfaceId, interfaceId)
                 : null;
+
+        public IPAddress? FindAddressForInterface(string requestedId, AddressFamily family = AddressFamily.InterNetwork) =>
+            string.Equals(requestedId, interfaceId, StringComparison.OrdinalIgnoreCase) && family == AddressFamily.InterNetwork
+                ? IPAddress.Parse(address)
+                : null;
     }
 
     private sealed class StubAddressMap(string? interfaceId) : ILocalAddressMap
     {
         public NetworkInterfaceIdentity? For(IPAddress localAddress) =>
             interfaceId is null ? null : new NetworkInterfaceIdentity(interfaceId, interfaceId);
+
+        public IPAddress? FindAddressForInterface(string requestedId, AddressFamily family = AddressFamily.InterNetwork) => null;
     }
 }
+

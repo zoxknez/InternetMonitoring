@@ -39,6 +39,12 @@ public sealed record PathAgreement
 
     public PathAgreementState State { get; init; } = PathAgreementState.Unknown;
 
+    /// <summary>The intent under which the sockets were opened.</summary>
+    public MeasurementIntent Intent { get; init; } = MeasurementIntent.ObserveSystemPath;
+
+    /// <summary>What was established about possible tunnels on the path.</summary>
+    public TunnelIndication Tunnel { get; init; } = TunnelIndication.Unknown;
+
     /// <summary>The adapter the measurement claims to describe.</summary>
     public string? RequestedInterfaceId { get; init; }
 
@@ -59,13 +65,27 @@ public sealed record PathAgreement
         [.. Attempts.Select(attempt => attempt.Family).Distinct()];
 
     /// <summary>
+    /// Whether the actual measurement path is fully confirmed without any stray or unresolved connections.
+    /// </summary>
+    public bool IsConfirmed => State == PathAgreementState.Match && UnresolvedCount == 0 && Attempts.Count > 0;
+
+    public bool ActualMeasurementPathConfirmed => IsConfirmed;
+
+    /// <summary>
     /// Compares what was observed against the adapter the measurement is filed under.
     /// </summary>
     /// <param name="requestedInterfaceId">
     /// The adapter the figure will be attributed to. Null means nothing was named, so there is
     /// nothing to agree or disagree with - the connections are still recorded.
     /// </param>
-    public static PathAgreement Of(string? requestedInterfaceId, IReadOnlyList<ConnectionAttempt> attempts)
+    /// <param name="attempts">Connections observed during the measurement.</param>
+    /// <param name="intent">Whether the sockets were forced or observed.</param>
+    /// <param name="tunnel">Tunnel diagnosis, if checked.</param>
+    public static PathAgreement Of(
+        string? requestedInterfaceId,
+        IReadOnlyList<ConnectionAttempt> attempts,
+        MeasurementIntent intent = MeasurementIntent.ObserveSystemPath,
+        TunnelIndication? tunnel = null)
     {
         ArgumentNullException.ThrowIfNull(attempts);
 
@@ -73,6 +93,8 @@ public sealed record PathAgreement
         {
             RequestedInterfaceId = requestedInterfaceId,
             Attempts = attempts,
+            Intent = intent,
+            Tunnel = tunnel ?? TunnelIndication.Unknown,
         };
 
         if (string.IsNullOrWhiteSpace(requestedInterfaceId))
@@ -98,3 +120,4 @@ public sealed record PathAgreement
         };
     }
 }
+
