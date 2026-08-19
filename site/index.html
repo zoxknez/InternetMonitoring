@@ -1172,6 +1172,52 @@
         </tbody>
       </table>
     </div>
+
+    <!-- Release Highlights & Checksum Verification Box -->
+    <div class="grid two" style="margin-top: 24px; gap: 16px;">
+      <!-- Highlights Card -->
+      <div class="glass-card" style="background: rgba(30, 41, 59, 0.5); border-color: rgba(59, 130, 246, 0.25);">
+        <div class="card-top">
+          <div class="card-icon" style="background: rgba(59, 130, 246, 0.15); color: #60A5FA;">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+          </div>
+          <span class="card-badge" style="background: rgba(59, 130, 246, 0.2); color: #93C5FD;">Verzija 3.0.0-rc.1</span>
+        </div>
+        <h3 style="color: #F8FAFC; margin-bottom: 8px;">Šta donosi aktuelna verzija 3.0:</h3>
+        <ul style="margin: 0; padding-left: 18px; color: var(--muted); font-size: 0.92rem; line-height: 1.6;">
+          <li><strong>Kriptografski potpisani manifest:</strong> Deterministički JSON-C14N sa digitalnim potpisom (RFC 8785).</li>
+          <li><strong>Nezavisni vremenski žig (RFC 3161 TSA):</strong> Spoljna overa vremena za offline pravnu validaciju.</li>
+          <li><strong>Zasebni verifikator (<span class="mono">iem-verifier</span>):</strong> Samostalni alat za proveru integriteta dokaza.</li>
+          <li><strong>Evidence Quality Engine:</strong> Automatska ocena dokazne snage (Strong / Moderate / Limited).</li>
+          <li><strong>Detekcija mirovanja računara:</strong> Sleep/Suspend stanja se nikada ne beleže lažno kao mrežni prekid.</li>
+          <li><strong>4 celine u prozoru:</strong> MONITOR, EVIDENCE, CASE i SPEED za kompletan uvid.</li>
+          <li><strong>Ugrađen sistem obaveštenja:</strong> Nenametljiva provera novih verzija sa Stable i Preview kanalima.</li>
+        </ul>
+      </div>
+
+      <!-- Verification & Requirements Card -->
+      <div class="glass-card" style="background: rgba(30, 41, 59, 0.5); border-color: rgba(148, 163, 184, 0.2);">
+        <div class="card-top">
+          <div class="card-icon" style="background: rgba(16, 185, 129, 0.15); color: #34D399;">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+          </div>
+          <span class="card-badge" style="background: rgba(16, 185, 129, 0.2); color: #6EE7B7;">Integritet & Zahtevi</span>
+        </div>
+        <h3 style="color: #F8FAFC; margin-bottom: 8px;">Provera autentičnosti i privatnost:</h3>
+        <p style="color: var(--muted); font-size: 0.9rem; margin-bottom: 12px;">
+          Svi paketi su samostalni (<em>self-contained</em>) i ne zahtevaju instalaciju .NET okruženja. Podaci se čuvaju 100% lokalno.
+        </p>
+        <div style="background: #0F172A; border: 1px solid #334155; border-radius: 6px; padding: 10px 12px; margin-bottom: 10px;">
+          <div style="font-size: 0.78rem; color: #94A3B8; margin-bottom: 4px; font-family: var(--font-mono);">PROVERA SHA-256 KONTROLNE SUME:</div>
+          <code style="font-size: 0.82rem; color: #38BDF8; font-family: var(--font-mono); word-break: break-all; display: block;">
+            Get-FileHash .\InternetEvidenceMonitor-3.0.0-rc.1-win-x64.exe -Algorithm SHA256
+          </code>
+        </div>
+        <p style="color: var(--faint); font-size: 0.82rem; margin: 0; line-height: 1.5;">
+          Podržani sistemi: Windows 10 (1809+) i Windows 11 (x64 / ARM64). Za administratorske funkcije servisa potrebna su administratorska prava.
+        </p>
+      </div>
+    </div>
   </div>
 </section>
 

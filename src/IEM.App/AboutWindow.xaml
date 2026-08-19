@@ -1,4 +1,4 @@
-﻿<Window x:Class="IEM.App.AboutWindow"
+<Window x:Class="IEM.App.AboutWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="O programu"
@@ -111,6 +111,22 @@
                     </DataTemplate>
                 </ItemsControl.ItemTemplate>
             </ItemsControl>
+
+            <Border Background="{StaticResource Sunken}" BorderBrush="{StaticResource Border}"
+                    BorderThickness="1" CornerRadius="6" Padding="14,10" Margin="0,14,0,0">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel VerticalAlignment="Center">
+                        <TextBlock Text="AŽURIRANJA" Style="{StaticResource Label}" Margin="0,0,0,3" />
+                        <TextBlock x:Name="UpdateStatusText" Text="Automatska provera novih verzija je uključena." FontSize="11.5" Foreground="{StaticResource Muted}" />
+                    </StackPanel>
+                    <Button x:Name="CheckUpdatesButton" Grid.Column="1" Style="{StaticResource Secondary}"
+                            Content="Proveri ažuriranja" Padding="12,5" FontSize="11" Click="OnCheckUpdates" />
+                </Grid>
+            </Border>
         </StackPanel>
 
         <Border Grid.Row="2" Background="{StaticResource Sunken}" BorderBrush="{StaticResource Border}"

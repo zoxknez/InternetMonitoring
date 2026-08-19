@@ -67,5 +67,39 @@ public partial class AboutWindow : Window
         }
     }
 
+    private async void OnCheckUpdates(object sender, RoutedEventArgs e)
+    {
+        CheckUpdatesButton.IsEnabled = false;
+        UpdateStatusText.Text = "Provera dostupnih ažuriranja u toku...";
+
+        var service = new Updates.UpdateCheckService();
+        var result = await service.CheckForUpdatesAsync(force: true);
+
+        CheckUpdatesButton.IsEnabled = true;
+
+        if (result.Availability == global::IEM.Presentation.Updates.UpdateAvailability.UpdateAvailable ||
+            result.Availability == global::IEM.Presentation.Updates.UpdateAvailability.PreviewAvailable ||
+            result.Availability == global::IEM.Presentation.Updates.UpdateAvailability.CriticalUpdateAvailable)
+        {
+            UpdateStatusText.Text = $"Dostupna je nova verzija: {result.Manifest?.Version}!";
+            if (!string.IsNullOrEmpty(result.Manifest?.DownloadUrl))
+            {
+                try
+                {
+                    Process.Start(new ProcessStartInfo(result.Manifest.DownloadUrl) { UseShellExecute = true });
+                }
+                catch { }
+            }
+        }
+        else if (result.Availability == global::IEM.Presentation.Updates.UpdateAvailability.UpToDate)
+        {
+            UpdateStatusText.Text = "Koristite najnoviju verziju programa.";
+        }
+        else
+        {
+            UpdateStatusText.Text = "Provera trenutno nije uspela (nema mreže ili je server nedostupan).";
+        }
+    }
+
     private void OnClose(object sender, RoutedEventArgs e) => Close();
 }

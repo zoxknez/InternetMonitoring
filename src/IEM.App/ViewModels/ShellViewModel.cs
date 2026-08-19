@@ -82,6 +82,23 @@ public sealed partial class ShellViewModel : ObservableObject, IAsyncDisposable
     [ObservableProperty]
     private ShellTab _activeTab = ShellTab.Monitor;
 
+    private readonly global::IEM.Presentation.Updates.IUpdateCheckService _updateService = new Updates.UpdateCheckService();
+
+    [ObservableProperty]
+    private bool _isUpdateBannerVisible;
+
+    [ObservableProperty]
+    private string _updateVersionText = string.Empty;
+
+    [ObservableProperty]
+    private string _updateSummaryText = "Dostupna su nova poboljšanja i ispravke.";
+
+    [ObservableProperty]
+    private string _updateReleaseNotesUrl = string.Empty;
+
+    [ObservableProperty]
+    private string _updateDownloadUrl = string.Empty;
+
     public MonitorViewModel MonitorTab { get; } = new();
     public EvidenceViewModel EvidenceTab { get; } = new();
     public CaseViewModel CaseTab { get; } = new();
@@ -103,6 +120,63 @@ public sealed partial class ShellViewModel : ObservableObject, IAsyncDisposable
 
         _host.Updated += OnUpdated;
         _host.FaultChanged += OnHostFaultChanged;
+
+        // Non-blocking, fail-closed background update check
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await Task.Delay(3000);
+                var result = await _updateService.CheckForUpdatesAsync(force: false);
+                if (result.Availability == global::IEM.Presentation.Updates.UpdateAvailability.UpdateAvailable ||
+                    result.Availability == global::IEM.Presentation.Updates.UpdateAvailability.PreviewAvailable ||
+                    result.Availability == global::IEM.Presentation.Updates.UpdateAvailability.CriticalUpdateAvailable)
+                {
+                    Application.Current?.Dispatcher?.Invoke(() =>
+                    {
+                        UpdateVersionText = result.Manifest?.Version ?? string.Empty;
+                        UpdateReleaseNotesUrl = result.Manifest?.ReleaseNotesUrl ?? string.Empty;
+                        UpdateDownloadUrl = result.Manifest?.DownloadUrl ?? string.Empty;
+                        IsUpdateBannerVisible = true;
+                    });
+                }
+            }
+            catch
+            {
+                // Silent fail-closed
+            }
+        });
+    }
+
+    [RelayCommand]
+    private void OpenReleaseNotes()
+    {
+        if (!string.IsNullOrEmpty(UpdateReleaseNotesUrl))
+        {
+            try { Process.Start(new ProcessStartInfo(UpdateReleaseNotesUrl) { UseShellExecute = true }); } catch { }
+        }
+    }
+
+    [RelayCommand]
+    private void DownloadUpdate()
+    {
+        if (!string.IsNullOrEmpty(UpdateDownloadUrl))
+        {
+            try { Process.Start(new ProcessStartInfo(UpdateDownloadUrl) { UseShellExecute = true }); } catch { }
+        }
+    }
+
+    [RelayCommand]
+    private void SnoozeUpdate()
+    {
+        _updateService.Snooze(TimeSpan.FromHours(24));
+        IsUpdateBannerVisible = false;
+    }
+
+    [RelayCommand]
+    private void DismissUpdate()
+    {
+        IsUpdateBannerVisible = false;
     }
 
     /// <summary>
