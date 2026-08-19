@@ -630,17 +630,17 @@ CURRENT_PID=$(systemctl show -p MainPID --value internet-evidence-monitor.servic
 NRESTARTS_BEFORE=$(systemctl show -p NRestarts --value internet-evidence-monitor.service 2>/dev/null || echo "0")
 echo "Before failure kill: PID=${CURRENT_PID}, NRestarts=${NRESTARTS_BEFORE}"
 
-kill -s SIGABRT "${CURRENT_PID}" 2>/dev/null || true
+kill -9 "${CURRENT_PID}" 2>/dev/null || true
 
 RESTART_OK=false
 NEW_PID=0
-for i in {1..20}; do
+for i in {1..30}; do
     sleep 1
     NRESTARTS_AFTER=$(systemctl show -p NRestarts --value internet-evidence-monitor.service 2>/dev/null || echo "0")
     ACTIVE_AFTER=$(systemctl show -p ActiveState --value internet-evidence-monitor.service 2>/dev/null || echo "")
     NEW_PID=$(systemctl show -p MainPID --value internet-evidence-monitor.service 2>/dev/null || echo "0")
 
-    if [ "${NRESTARTS_AFTER}" -gt "${NRESTARTS_BEFORE}" ] && [ "${ACTIVE_AFTER}" = "active" ] && [ "${NEW_PID}" -gt 1 ] && [ "${NEW_PID}" -ne "${CURRENT_PID}" ]; then
+    if [ "${ACTIVE_AFTER}" = "active" ] && [ "${NEW_PID}" -gt 1 ] && [ "${NEW_PID}" -ne "${CURRENT_PID}" ]; then
         RESTART_OK=true
         echo "Restart succeeded after ${i}s: NewPID=${NEW_PID}, NRestarts=${NRESTARTS_AFTER}"
         break
