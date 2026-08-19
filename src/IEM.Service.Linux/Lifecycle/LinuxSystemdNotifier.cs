@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Sockets;
+using System.Runtime.InteropServices;
 using System.Text;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -8,8 +9,7 @@ namespace IEM.Service.Linux.Lifecycle;
 
 /// <summary>
 /// Robust, direct systemd sd_notify implementation for Type=notify services.
-/// Guarantees READY=1 and STOPPING=1 signals are sent to $NOTIFY_SOCKET
-/// regardless of IHostLifetime container replacement quirks.
+/// Uses native libsystemd sd_notify as primary with zero-dependency POSIX socket fallback.
 /// </summary>
 public sealed class LinuxSystemdNotifier(
     ILogger<LinuxSystemdNotifier> logger,
@@ -23,16 +23,34 @@ public sealed class LinuxSystemdNotifier(
             return;
         }
 
+        // 1. Try canonical libsystemd.so.0 sd_notify
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+        {
+            try
+            {
+                var ret = sd_notify(0, state);
+                if (ret > 0)
+                {
+                    log?.LogInformation("libsystemd sd_notify('{State}') uspešno poslat (ret={Ret})", state.TrimEnd(), ret);
+                    return;
+                }
+            }
+            catch
+            {
+                // Fallback to direct managed socket
+            }
+        }
+
+        // 2. Direct managed socket fallback
         try
         {
-            EndPoint endpoint = socketPath.StartsWith('@')
-                ? new UnixDomainSocketEndPoint("\0" + socketPath[1..])
-                : new UnixDomainSocketEndPoint(socketPath);
+            var cleanPath = socketPath.StartsWith('@') ? "\0" + socketPath[1..] : socketPath;
+            EndPoint endpoint = new UnixDomainSocketEndPoint(cleanPath);
 
             using var socket = new Socket(AddressFamily.Unix, SocketType.Dgram, ProtocolType.Unspecified);
             var payload = Encoding.UTF8.GetBytes(state.EndsWith('\n') ? state : state + "\n");
             socket.SendTo(payload, endpoint);
-            log?.LogInformation("systemd sd_notify('{State}') uspešno poslat na {Socket}", state.TrimEnd(), socketPath);
+            log?.LogInformation("systemd sd_notify('{State}') poslat preko soketa na {Socket}", state.TrimEnd(), socketPath);
         }
         catch (Exception ex)
         {
@@ -42,9 +60,12 @@ public sealed class LinuxSystemdNotifier(
 
     public Task StartAsync(CancellationToken cancellationToken)
     {
+        // Notify immediately on service start
+        SendNotify("READY=1\nSTATUS=Monitor internet dokaza je spreman i aktivan.", logger);
+
         lifetime.ApplicationStarted.Register(() =>
         {
-            SendNotify("READY=1\nSTATUS=Monitor internet dokaza je spreman i aktivan.", logger);
+            SendNotify("READY=1\nSTATUS=Monitor internet dokaza je aktivan.", logger);
         });
 
         lifetime.ApplicationStopping.Register(() =>
@@ -60,4 +81,7 @@ public sealed class LinuxSystemdNotifier(
         SendNotify("STOPPING=1", logger);
         return Task.CompletedTask;
     }
+
+    [DllImport("libsystemd.so.0", EntryPoint = "sd_notify", SetLastError = true)]
+    private static extern int sd_notify(int unset_environment, [MarshalAs(UnmanagedType.LPStr)] string state);
 }
