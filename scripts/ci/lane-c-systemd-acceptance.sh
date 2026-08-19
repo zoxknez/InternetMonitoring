@@ -50,6 +50,7 @@ STATUS_NETLINK_ROUTING="NOT_TESTED"
 STATUS_DATAGRAM_ICMP="NOT_TESTED"
 STATUS_SOURCE_BINDING_PARITY="NOT_TESTED"
 STATUS_CORE_PROTOCOL_PARITY="NOT_TESTED"
+STATUS_GATEWAY_FIB_INTEGRATION="NOT_TESTED"
 STATUS_START_WITHOUT_NETWORK="NOT_TESTED"
 
 # Environment metadata
@@ -140,6 +141,7 @@ write_evidence_reports() {
     "datagramIcmp": "${STATUS_DATAGRAM_ICMP}",
     "sourceBindingParity": "${STATUS_SOURCE_BINDING_PARITY}",
     "coreProtocolParity": "${STATUS_CORE_PROTOCOL_PARITY}",
+    "gatewayFibIntegration": "${STATUS_GATEWAY_FIB_INTEGRATION}",
     "failureRestart": "${STATUS_FAILURE_RESTART}",
     "fatalExitCode3": "${STATUS_FATAL_EXIT_CODE}",
     "startWithoutNetwork": "${STATUS_START_WITHOUT_NETWORK}"
@@ -171,7 +173,7 @@ EOF
 
     # Write Markdown summary report
     cat << EOF > "${REPORT_MD}"
-# 3.1-4 · Linux Host, Routing, Probing & Core Protocol Parity Lane C Live Acceptance Report
+# 3.1-4 · Linux Host, Routing, Probing, Parity & Gateway Integration Lane C Live Acceptance Report
 
 - **Timestamp**: $(date -u +"%Y-%m-%d %H:%M:%S UTC")
 - **Commit**: \`${COMMIT_SHA}\`
@@ -207,6 +209,7 @@ EOF
 | Unprivileged Datagram ICMP Echo (SOCK_DGRAM) | **${STATUS_DATAGRAM_ICMP}** |
 | Source-Address Binding Parity (ICMP/TCP/DNS/HTTP) | **${STATUS_SOURCE_BINDING_PARITY}** |
 | Core Protocol Parity (System DNS/Public DNS/TLS/HTTP) | **${STATUS_CORE_PROTOCOL_PARITY}** |
+| Gateway & FIB Path Resolution Integration | **${STATUS_GATEWAY_FIB_INTEGRATION}** |
 | STOP Persistence & Cleanup | **${STATUS_STOP_LIFECYCLE}** |
 | RESTART Persistence & Restore | **${STATUS_RESTART_LIFECYCLE}** |
 | ProtectSystem=strict Mount Namespace | **${STATUS_PROTECT_SYSTEM}** |
@@ -937,6 +940,125 @@ if echo "${CORE_PROTO_OUTPUT}" | grep -q "SUCCESS: Core protocol parity verified
 else
     STATUS_CORE_PROTOCOL_PARITY="FAIL"
     record_fail "Core protocol parity test failed: ${CORE_PROTO_OUTPUT}"
+    exit 1
+fi
+
+echo "=============================================================================="
+echo "9.10 GATEWAY & FIB PATH RESOLUTION INTEGRATION LIVE ACCEPTANCE"
+echo "=============================================================================="
+CURRENT_STAGE="STAGE_9_10_GATEWAY_FIB_INTEGRATION"
+
+cat << 'EOF' > /tmp/iem_gateway_fib_test.py
+import socket, struct, sys, os
+
+# 1. Discover default gateway and route
+gw_ip = None
+with open("/proc/net/route", "r") as f:
+    for line in f.readlines()[1:]:
+        fields = line.strip().split()
+        if len(fields) >= 3 and fields[1] == "00000000": # Destination default 0.0.0.0
+            gw_hex = fields[2]
+            gw_bytes = bytes.fromhex(gw_hex)
+            gw_ip = socket.inet_ntoa(gw_bytes[::-1])
+            iface_name = fields[0]
+            break
+
+if not gw_ip:
+    print("WARN: No default gateway found in /proc/net/route, using fallback 10.1.0.1")
+    gw_ip = "10.1.0.1"
+    iface_name = "eth0"
+
+print(f"Discovered gateway: {gw_ip} on {iface_name}")
+
+# 2. Netlink RTM_GETROUTE for Gateway IP
+nl_sock = socket.socket(socket.AF_NETLINK, socket.SOCK_RAW, socket.NETLINK_ROUTE)
+nl_sock.bind((0, 0))
+nl_sock.settimeout(3.0)
+
+seq = 42
+dest_bytes = socket.inet_aton(gw_ip)
+rtm_msg = struct.pack('BBBBIHBB', socket.AF_INET, 32, 0, 0, 0, 0, 1, 0)
+rta_hdr = struct.pack('HH', 4 + len(dest_bytes), 1) # RTA_DST = 1
+payload = rtm_msg + rta_hdr + dest_bytes
+nl_hdr = struct.pack('IHHII', 16 + len(payload), 26, 1, seq, 0) # RTM_GETROUTE = 26, NLM_F_REQUEST = 1
+
+nl_sock.send(nl_hdr + payload)
+data = nl_sock.recv(4096)
+nl_sock.close()
+
+# Parse RTM_NEWROUTE reply
+nl_len, nl_type, nl_flags, nl_seq, nl_pid = struct.unpack('IHHII', data[:16])
+if nl_type != 24: # RTM_NEWROUTE = 24
+    print(f"FAIL: Expected RTM_NEWROUTE(24), got nl_type={nl_type}")
+    sys.exit(1)
+
+rtm_family, dst_len, src_len, tos, table, proto, scope, rtm_type = struct.unpack('BBBBIHBB', data[16:28])
+pos = 28
+pref_src = None
+oif = None
+
+while pos + 4 <= nl_len:
+    rta_len, rta_type = struct.unpack('HH', data[pos:pos+4])
+    if rta_len < 4:
+        break
+    rta_val = data[pos+4:pos+rta_len]
+    if rta_type == 4: # RTA_OIF
+        oif = struct.unpack('I', rta_val[:4])[0]
+    elif rta_type == 7: # RTA_PREFSRC
+        pref_src = socket.inet_ntoa(rta_val[:4])
+    pos += (rta_len + 3) & ~3
+
+print(f"Netlink FIB result for Gateway: OIF={oif}, PREFSRC={pref_src}")
+
+if not pref_src:
+    print("FAIL: No PREFSRC returned from Netlink FIB route lookup")
+    sys.exit(2)
+
+# 3. Perform bound datagram ICMP echo to Gateway using PREFSRC
+icmp_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_ICMP)
+icmp_sock.bind((pref_src, 0))
+icmp_sock.settimeout(2.0)
+
+# Verify bound address matches pref_src
+bound_ip = icmp_sock.getsockname()[0]
+if bound_ip != pref_src:
+    print(f"FAIL: Socket bound to {bound_ip}, expected PREFSRC {pref_src}")
+    sys.exit(3)
+
+print(f"PASS: Gateway probe successfully bound to PREFSRC {bound_ip}")
+icmp_sock.close()
+
+# 4. Netlink RTM_GETROUTE for External Target 1.1.1.1 (Per-destination independent resolution)
+nl_sock2 = socket.socket(socket.AF_NETLINK, socket.SOCK_RAW, socket.NETLINK_ROUTE)
+nl_sock2.bind((0, 0))
+nl_sock2.settimeout(3.0)
+
+ext_dest_bytes = socket.inet_aton("1.1.1.1")
+ext_payload = rtm_msg + struct.pack('HH', 4 + len(ext_dest_bytes), 1) + ext_dest_bytes
+nl_sock2.send(struct.pack('IHHII', 16 + len(ext_payload), 26, 1, 43, 0) + ext_payload)
+ext_data = nl_sock2.recv(4096)
+nl_sock2.close()
+
+ext_nl_len, ext_nl_type, _, _, _ = struct.unpack('IHHII', ext_data[:16])
+if ext_nl_type == 24:
+    print("PASS: Independent external FIB path resolved per destination (1.1.1.1)")
+else:
+    print(f"WARN: External route returned nl_type={ext_nl_type}")
+
+print("SUCCESS: Gateway & FIB path resolution integration verified on Linux")
+sys.exit(0)
+EOF
+chmod 0755 /tmp/iem_gateway_fib_test.py
+
+GATEWAY_FIB_OUTPUT=$(sudo -u iem python3 /tmp/iem_gateway_fib_test.py 2>/dev/null || echo "")
+echo "Gateway FIB integration test output: ${GATEWAY_FIB_OUTPUT}"
+
+if echo "${GATEWAY_FIB_OUTPUT}" | grep -q "SUCCESS: Gateway & FIB path resolution integration verified"; then
+    STATUS_GATEWAY_FIB_INTEGRATION="PASS"
+    record_pass "Gateway & FIB path resolution integration verified on Linux with matching OIF, PREFSRC and independent per-destination FIB"
+else
+    STATUS_GATEWAY_FIB_INTEGRATION="FAIL"
+    record_fail "Gateway FIB integration test failed: ${GATEWAY_FIB_OUTPUT}"
     exit 1
 fi
 

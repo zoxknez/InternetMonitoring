@@ -87,7 +87,7 @@ public sealed class LinuxRouteResolver : IRouteResolver
             InterfaceId: interfaceId,
             SourceAddress: sourceAddress?.ToString(),
             Resolved: true,
-            Bound: sourceAddress is not null);
+            Bound: false);
     }
 
     private readonly struct CachedPath(ProbePath path, long recordedTimestamp)

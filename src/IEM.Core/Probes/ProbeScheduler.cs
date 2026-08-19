@@ -200,6 +200,8 @@ public sealed class ProbeScheduler : IAsyncDisposable
 
     // ---- Probes -------------------------------------------------------------
 
+    internal Task ProbeGatewayForTestAsync(CancellationToken token = default) => ProbeGatewayAsync(token);
+
     private async Task ProbeGatewayAsync(CancellationToken cancellationToken)
     {
         var link = _link();
@@ -216,12 +218,56 @@ public sealed class ProbeScheduler : IAsyncDisposable
         }
 
         var path = PathTo(link.GatewayAddress!);
+
+        // Gateway coherence checks:
+        // 1. Gateway route must be resolved to an interface
+        if (!path.Resolved || string.IsNullOrWhiteSpace(path.InterfaceId))
+        {
+            _store.Record(Stamp(
+                ProbeResult.Skip(ProbeKind.Icmp, ProbeScope.Gateway, link.GatewayAddress!, "Gateway route unresolved"),
+                _clock.MonotonicTicks,
+                _clock.MonotonicTicks));
+            return;
+        }
+
+        // 2. FIB Interface must match the monitored interface
+        if (link.InterfaceId is not null && !string.Equals(path.InterfaceId, link.InterfaceId, StringComparison.OrdinalIgnoreCase))
+        {
+            _store.Record(Stamp(
+                ProbeResult.Skip(ProbeKind.Icmp, ProbeScope.Gateway, link.GatewayAddress!, $"Gateway route interface mismatch: {path.InterfaceId} != {link.InterfaceId}"),
+                _clock.MonotonicTicks,
+                _clock.MonotonicTicks));
+            return;
+        }
+
+        // 3. Source address family must match gateway IP family
+        var source = SourceOf(path);
+        if (IPAddress.TryParse(link.GatewayAddress!, out var gwIp))
+        {
+            if (source is not null && source.AddressFamily != gwIp.AddressFamily)
+            {
+                _store.Record(Stamp(
+                    ProbeResult.Skip(ProbeKind.Icmp, ProbeScope.Gateway, link.GatewayAddress!, "Gateway source address family mismatch"),
+                    _clock.MonotonicTicks,
+                    _clock.MonotonicTicks));
+                return;
+            }
+        }
+        else
+        {
+            _store.Record(Stamp(
+                ProbeResult.Skip(ProbeKind.Icmp, ProbeScope.Gateway, link.GatewayAddress!, "Unparseable gateway address"),
+                _clock.MonotonicTicks,
+                _clock.MonotonicTicks));
+            return;
+        }
+
         var started = _clock.MonotonicTicks;
 
         var result = await FastProbes
             .IcmpAsync(
                 link.GatewayAddress!, ProbeScope.Gateway, _options.IcmpTimeout, cancellationToken,
-                SourceOf(path), _boundIcmp)
+                source, _boundIcmp)
             .ConfigureAwait(false);
 
         _store.Record(Stamp(result, started, _clock.MonotonicTicks, path, BoundIfSourced(path, result)));
