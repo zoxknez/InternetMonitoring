@@ -150,9 +150,13 @@ public sealed class LinuxWifiScanCompletionTracker : ILinuxWifiScanCompletionTra
             var rev = _revisionCounter;
             var effectiveDomain = domain ?? LinuxWifiScanDomain.Unknown;
 
-            if (status is LinuxWifiScanEventStatus.Aborted or LinuxWifiScanEventStatus.ScheduledStarted or LinuxWifiScanEventStatus.ScheduledResults or LinuxWifiScanEventStatus.ScheduledStopped && !wdev.HasValue)
+            if (!wdev.HasValue && status is LinuxWifiScanEventStatus.Started
+                                      or LinuxWifiScanEventStatus.Aborted
+                                      or LinuxWifiScanEventStatus.ScheduledStarted
+                                      or LinuxWifiScanEventStatus.ScheduledResults
+                                      or LinuxWifiScanEventStatus.ScheduledStopped)
             {
-                // Invalidate all records for this ifindex on generic abort or sched event without WDEV
+                // Invalidate all records for this ifindex on generic abort, unscoped start, or sched event without WDEV
                 var matchingKeys = _records.Keys.Where(k => k.IfIndex == ifIndex).ToList();
                 foreach (var k in matchingKeys)
                 {

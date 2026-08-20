@@ -225,10 +225,34 @@ public sealed class LinuxNl80211EventObserver : ILinuxNl80211EventObserver
 
                     if (status.HasValue)
                     {
-                        if (TryParseScanAttributes(payload, out int ifIndex, out ulong? wdev, out LinuxWifiScanDomain domain))
+                        if (TryParseScanAttributes(payload, genlCmd, out int ifIndex, out ulong? wdev, out LinuxWifiScanDomain parsedDomain))
                         {
                             var bootNs = LinuxWifiScanCache.TryGetCurrentBootTimeNs(_clock);
-                            _tracker.RecordScanEvent(ifIndex, wdev, status.Value, bootNs, domain);
+                            LinuxWifiScanDomain effectiveDomain;
+
+                            if (genlCmd == LinuxNl80211Protocol.NL80211_CMD_NEW_SCAN_RESULTS)
+                            {
+                                var priorRecord = _tracker.GetLastScanCompletion(ifIndex, wdev);
+                                if (priorRecord != null &&
+                                    priorRecord.Status == LinuxWifiScanEventStatus.Started &&
+                                    priorRecord.Domain != null &&
+                                    priorRecord.Domain.FrequencyScope != LinuxWifiScanFrequencyScope.Unknown &&
+                                    priorRecord.Domain.SsidScope != LinuxWifiScanSsidScope.Unknown)
+                                {
+                                    // Inherit proven domain from correlated Started scan on exact same adapter
+                                    effectiveDomain = priorRecord.Domain;
+                                }
+                                else
+                                {
+                                    effectiveDomain = parsedDomain;
+                                }
+                            }
+                            else
+                            {
+                                effectiveDomain = parsedDomain;
+                            }
+
+                            _tracker.RecordScanEvent(ifIndex, wdev, status.Value, bootNs, effectiveDomain);
                         }
                     }
                 }
@@ -239,15 +263,16 @@ public sealed class LinuxNl80211EventObserver : ILinuxNl80211EventObserver
     }
 
     /// <summary>
-    /// Parses scan event attributes strictly with structural validation.
+    /// Parses scan event attributes strictly with structural validation and command-aware domain semantics.
     /// Invariant:
     /// - Payload must be strictly valid Netlink attributes (no truncated/trailing garbage).
     /// - IFINDEX must appear exactly once and be exactly 4 bytes, with value > 0.
     /// - WDEV must appear at most once and be exactly 8 bytes, with value != 0.
-    /// - SCAN_FREQUENCIES and SCAN_SSIDS are parsed strictly. If present and valid, they build the domain; if malformed, domain is Unknown.
+    /// - SCAN_FREQUENCIES and SCAN_SSIDS are parsed strictly.
     /// </summary>
     public static bool TryParseScanAttributes(
         ReadOnlySpan<byte> payload,
+        byte genlCmd,
         out int ifIndex,
         out ulong? wdev,
         out LinuxWifiScanDomain domain)
@@ -320,17 +345,26 @@ public sealed class LinuxNl80211EventObserver : ILinuxNl80211EventObserver
             return false;
         }
 
-        // Parse Domain
-        domain = ParseScanDomain(scanFreqsBytes, scanSsidsBytes);
+        // Parse Domain with command awareness
+        domain = ParseScanDomain(genlCmd, scanFreqsBytes, scanSsidsBytes);
         return true;
+    }
+
+    public static bool TryParseScanAttributes(
+        ReadOnlySpan<byte> payload,
+        out int ifIndex,
+        out ulong? wdev,
+        out LinuxWifiScanDomain domain)
+    {
+        return TryParseScanAttributes(payload, LinuxNl80211Protocol.NL80211_CMD_TRIGGER_SCAN, out ifIndex, out wdev, out domain);
     }
 
     public static bool TryParseScanAttributes(ReadOnlySpan<byte> payload, out int ifIndex, out ulong? wdev)
     {
-        return TryParseScanAttributes(payload, out ifIndex, out wdev, out _);
+        return TryParseScanAttributes(payload, LinuxNl80211Protocol.NL80211_CMD_TRIGGER_SCAN, out ifIndex, out wdev, out _);
     }
 
-    public static LinuxWifiScanDomain ParseScanDomain(byte[]? scanFreqsBytes, byte[]? scanSsidsBytes)
+    public static LinuxWifiScanDomain ParseScanDomain(byte genlCmd, byte[]? scanFreqsBytes, byte[]? scanSsidsBytes)
     {
         var freqScope = LinuxWifiScanFrequencyScope.Unknown;
         var ssidScope = LinuxWifiScanSsidScope.Unknown;
@@ -358,7 +392,8 @@ public sealed class LinuxNl80211EventObserver : ILinuxNl80211EventObserver
 
                 if (allFreqsValid && freqs.Count > 0)
                 {
-                    freqScope = LinuxWifiScanFrequencyScope.AllAllowed;
+                    // Any explicit channel list provided in Netlink represents an ExplicitSubset
+                    freqScope = LinuxWifiScanFrequencyScope.ExplicitSubset;
                 }
                 else
                 {
@@ -372,7 +407,15 @@ public sealed class LinuxNl80211EventObserver : ILinuxNl80211EventObserver
         }
         else
         {
-            freqScope = LinuxWifiScanFrequencyScope.Unknown;
+            // For TRIGGER_SCAN, absence of SCAN_FREQUENCIES means kernel uses all allowed regulatory channels
+            if (genlCmd == LinuxNl80211Protocol.NL80211_CMD_TRIGGER_SCAN)
+            {
+                freqScope = LinuxWifiScanFrequencyScope.AllAllowed;
+            }
+            else
+            {
+                freqScope = LinuxWifiScanFrequencyScope.Unknown;
+            }
         }
 
         // 2. SSIDs
@@ -404,7 +447,9 @@ public sealed class LinuxNl80211EventObserver : ILinuxNl80211EventObserver
                 }
                 else
                 {
-                    ssidScope = LinuxWifiScanSsidScope.PassiveOnly;
+                    ssidScope = genlCmd == LinuxNl80211Protocol.NL80211_CMD_TRIGGER_SCAN
+                        ? LinuxWifiScanSsidScope.PassiveOnly
+                        : LinuxWifiScanSsidScope.Unknown;
                 }
             }
             else
@@ -414,10 +459,23 @@ public sealed class LinuxNl80211EventObserver : ILinuxNl80211EventObserver
         }
         else
         {
-            ssidScope = LinuxWifiScanSsidScope.PassiveOnly;
+            // For TRIGGER_SCAN, absence of SCAN_SSIDS means passive scan (no probe requests sent)
+            if (genlCmd == LinuxNl80211Protocol.NL80211_CMD_TRIGGER_SCAN)
+            {
+                ssidScope = LinuxWifiScanSsidScope.PassiveOnly;
+            }
+            else
+            {
+                ssidScope = LinuxWifiScanSsidScope.Unknown;
+            }
         }
 
         return new LinuxWifiScanDomain(freqScope, ssidScope, freqs, ssids);
+    }
+
+    public static LinuxWifiScanDomain ParseScanDomain(byte[]? scanFreqsBytes, byte[]? scanSsidsBytes)
+    {
+        return ParseScanDomain(LinuxNl80211Protocol.NL80211_CMD_TRIGGER_SCAN, scanFreqsBytes, scanSsidsBytes);
     }
 
     public void Dispose()

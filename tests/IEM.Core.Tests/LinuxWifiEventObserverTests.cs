@@ -260,21 +260,36 @@ public sealed class LinuxWifiEventObserverTests
         Assert.Equal(42U, scanGroupId);
     }
 
-    // 2. Event payload processing with NEW_SCAN_RESULTS and Wildcard domain
+    // 2. Event payload processing with TRIGGER_SCAN + NEW_SCAN_RESULTS and Wildcard domain
     [Fact]
-    public void EventObserver_Processes_NewScanResults_Exact_IfIndex_And_Wdev()
+    public void EventObserver_Processes_TriggerScan_And_NewScanResults_Inherits_Domain()
     {
         var tracker = new LinuxWifiScanCompletionTracker();
         var clock = new StubNativeClock { CurrentBootTimeSec = 500, CurrentBootTimeNsec = 0 };
         var observer = new LinuxNl80211EventObserver(tracker, clock: clock);
 
+        // 1. TRIGGER_SCAN arrives with no frequencies (AllAllowed) and wildcard active probe
+        var triggerBytes = BuildScanEventDatagram(
+            familyId: 28,
+            genlCmd: LinuxNl80211Protocol.NL80211_CMD_TRIGGER_SCAN,
+            ifIndex: 3,
+            wdev: 0x1000UL,
+            frequencies: null, // AllAllowed
+            ssids: new byte[][] { Array.Empty<byte>() }); // Wildcard active
+
+        observer.ProcessEventPayload(triggerBytes, nl80211FamilyId: 28);
+        var startedRecord = tracker.GetLastScanCompletion(3, 0x1000UL);
+        Assert.NotNull(startedRecord);
+        Assert.Equal(LinuxWifiScanEventStatus.Started, startedRecord.Status);
+        Assert.Equal(LinuxWifiScanFrequencyScope.AllAllowed, startedRecord.Domain?.FrequencyScope);
+        Assert.Equal(LinuxWifiScanSsidScope.WildcardActive, startedRecord.Domain?.SsidScope);
+
+        // 2. NEW_SCAN_RESULTS arrives for same adapter
         var eventBytes = BuildScanEventDatagram(
             familyId: 28,
             genlCmd: LinuxNl80211Protocol.NL80211_CMD_NEW_SCAN_RESULTS,
             ifIndex: 3,
-            wdev: 0x1000UL,
-            frequencies: new uint[] { 2412, 5180 },
-            ssids: new byte[][] { Array.Empty<byte>() }); // Wildcard active
+            wdev: 0x1000UL);
 
         observer.ProcessEventPayload(eventBytes, nl80211FamilyId: 28);
 
@@ -284,8 +299,9 @@ public sealed class LinuxWifiEventObserverTests
         Assert.Equal(3, record.IfIndex);
         Assert.Equal(0x1000UL, record.Wdev);
         Assert.Equal(500_000_000_000UL, record.ObservedAtBootTimeNs);
-        Assert.Equal(1L, record.Revision);
+        Assert.Equal(2L, record.Revision);
         Assert.NotNull(record.Domain);
+        Assert.Equal(LinuxWifiScanFrequencyScope.AllAllowed, record.Domain.FrequencyScope);
         Assert.Equal(LinuxWifiScanSsidScope.WildcardActive, record.Domain.SsidScope);
     }
 
@@ -548,7 +564,7 @@ public sealed class LinuxWifiEventObserverTests
         Assert.Null(LinuxWifiScanCache.EvaluateSsidVisibility(snap, "HomeMesh", 1000_000_000_000UL));
     }
 
-    // 9. Full Production End-to-End Composition Test with Wildcard Domain
+    // 9. Full Production End-to-End Composition Test with Wildcard Domain (TRIGGER_SCAN -> NEW_SCAN_RESULTS)
     [Fact]
     public async Task EventObserver_Full_EndToEnd_Production_Composition_Yields_WifiRadioDown()
     {
@@ -570,25 +586,34 @@ public sealed class LinuxWifiEventObserverTests
         var visibleBefore = await radio.IsSsidVisibleAsync("wlan0", "HomeMesh");
         Assert.Null(visibleBefore);
 
-        // Step 1: Real kernel multicast NEW_SCAN_RESULTS arrives with valid frequencies and wildcard SSID
+        // Step 1: Kernel multicast TRIGGER_SCAN arrives with no frequencies (AllAllowed) and wildcard active probe
+        var triggerBytes = BuildScanEventDatagram(
+            familyId: 28,
+            genlCmd: LinuxNl80211Protocol.NL80211_CMD_TRIGGER_SCAN,
+            ifIndex: 3,
+            wdev: 0x1000UL,
+            frequencies: null, // AllAllowed
+            ssids: new byte[][] { Array.Empty<byte>() }); // Wildcard active probe
+
+        clock.CurrentBootTimeSec = 998;
+        observer.ProcessEventPayload(triggerBytes, nl80211FamilyId: 28);
+
+        // Step 2: Kernel multicast NEW_SCAN_RESULTS arrives for same adapter
         var eventBytes = BuildScanEventDatagram(
             familyId: 28,
             genlCmd: LinuxNl80211Protocol.NL80211_CMD_NEW_SCAN_RESULTS,
             ifIndex: 3,
-            wdev: 0x1000UL,
-            frequencies: new uint[] { 2412, 5180 },
-            ssids: new byte[][] { Array.Empty<byte>() }); // Wildcard active probe
+            wdev: 0x1000UL);
 
-        // Manually configure clock at T=999s when event arrived
         clock.CurrentBootTimeSec = 999;
         observer.ProcessEventPayload(eventBytes, nl80211FamilyId: 28);
 
-        // Step 2: Now radio evaluates SSID visibility at T=1000s with CompletedScan provenance & stable revision
+        // Step 3: Now radio evaluates SSID visibility at T=1000s with CompletedScan provenance & stable revision
         clock.CurrentBootTimeSec = 1000;
         var visibleAfter = await radio.IsSsidVisibleAsync("wlan0", "HomeMesh");
         Assert.False(visibleAfter); // Evaluates to false!
 
-        // Step 3: Link snapshot with Link=Down and SsidVisibleInScan=false
+        // Step 4: Link snapshot with Link=Down and SsidVisibleInScan=false
         var link = new LinkSnapshot("wlan0", "wlan0", LinkStatus.Down, LinkMedium.Wireless)
         {
             Wireless = new WirelessSnapshot("HomeMesh", "00:11:22:33:44:55", 85, 36)
@@ -601,7 +626,7 @@ public sealed class LinuxWifiEventObserverTests
 
         var cycle = CycleBuilder.Wireless().WithLink(link).Build();
 
-        // Step 4: Classifier correctly attributes to WifiRadioDown
+        // Step 5: Classifier correctly attributes to WifiRadioDown
         var verdict = classifier.Classify(cycle);
         Assert.Equal(NetworkState.WifiRadioDown, verdict.State);
     }
@@ -621,14 +646,23 @@ public sealed class LinuxWifiEventObserverTests
         var rfkill = new StubRfkillReader { HardBlocked = false, SoftBlocked = false };
         using var radio = new LinuxNl80211Radio(socket, rfkill, boundInterfaceId: "wlan0", ownsSocket: null, scanCompletionTracker: tracker, clock: clock);
 
-        // Targeted active scan specifically for HomeMesh (plus OtherNet)
+        // TRIGGER_SCAN with AllAllowed frequencies and explicit SSIDs covering HomeMesh
+        var triggerBytes = BuildScanEventDatagram(
+            familyId: 28,
+            genlCmd: LinuxNl80211Protocol.NL80211_CMD_TRIGGER_SCAN,
+            ifIndex: 3,
+            wdev: 0x1000UL,
+            frequencies: null,
+            ssids: new byte[][] { System.Text.Encoding.UTF8.GetBytes("HomeMesh"), System.Text.Encoding.UTF8.GetBytes("OtherNet") });
+
+        clock.CurrentBootTimeSec = 998;
+        observer.ProcessEventPayload(triggerBytes, nl80211FamilyId: 28);
+
         var eventBytes = BuildScanEventDatagram(
             familyId: 28,
             genlCmd: LinuxNl80211Protocol.NL80211_CMD_NEW_SCAN_RESULTS,
             ifIndex: 3,
-            wdev: 0x1000UL,
-            frequencies: new uint[] { 2412, 5180 },
-            ssids: new byte[][] { System.Text.Encoding.UTF8.GetBytes("HomeMesh"), System.Text.Encoding.UTF8.GetBytes("OtherNet") });
+            wdev: 0x1000UL);
 
         clock.CurrentBootTimeSec = 999;
         observer.ProcessEventPayload(eventBytes, nl80211FamilyId: 28);
@@ -666,5 +700,175 @@ public sealed class LinuxWifiEventObserverTests
         // Calling RequestUrgentScan must not throw, must not block, must not trigger scan
         radio.RequestUrgentScan();
         Assert.Null(tracker.GetLastScanCompletion(3, 0x1000UL));
+    }
+
+    // --- Phase 3.1-7C-R3-R1 Acceptance Tests ---
+
+    // R3-R1.1: TRIGGER_SCAN with explicit frequencies=[2412] -> ExplicitSubset -> never false
+    [Fact]
+    public async Task R3_R1_TriggerScan_Explicit_Frequency_Is_ExplicitSubset_Never_False()
+    {
+        var clock = new StubNativeClock { CurrentBootTimeSec = 1000 };
+        var tracker = new LinuxWifiScanCompletionTracker();
+        var observer = new LinuxNl80211EventObserver(tracker, clock: clock);
+
+        var socket = new MockNl80211Socket();
+        socket.BssDump.Add(CreateBss("OtherNet", seenMsAgo: 5000));
+        socket.BssDumpStatus = LinuxNl80211DumpStatus.Complete;
+
+        var rfkill = new StubRfkillReader { HardBlocked = false, SoftBlocked = false };
+        using var radio = new LinuxNl80211Radio(socket, rfkill, boundInterfaceId: "wlan0", ownsSocket: null, scanCompletionTracker: tracker, clock: clock);
+
+        // TRIGGER_SCAN with single channel 2412 MHz
+        var triggerBytes = BuildScanEventDatagram(
+            familyId: 28,
+            genlCmd: LinuxNl80211Protocol.NL80211_CMD_TRIGGER_SCAN,
+            ifIndex: 3,
+            wdev: 0x1000UL,
+            frequencies: new uint[] { 2412 },
+            ssids: new byte[][] { Array.Empty<byte>() });
+
+        observer.ProcessEventPayload(triggerBytes, nl80211FamilyId: 28);
+        var startedRecord = tracker.GetLastScanCompletion(3, 0x1000UL);
+        Assert.NotNull(startedRecord);
+        Assert.Equal(LinuxWifiScanFrequencyScope.ExplicitSubset, startedRecord.Domain?.FrequencyScope);
+
+        // NEW_SCAN_RESULTS arrives
+        var eventBytes = BuildScanEventDatagram(familyId: 28, genlCmd: LinuxNl80211Protocol.NL80211_CMD_NEW_SCAN_RESULTS, ifIndex: 3, wdev: 0x1000UL);
+        observer.ProcessEventPayload(eventBytes, nl80211FamilyId: 28);
+
+        var completedRecord = tracker.GetLastScanCompletion(3, 0x1000UL);
+        Assert.NotNull(completedRecord);
+        Assert.Equal(LinuxWifiScanFrequencyScope.ExplicitSubset, completedRecord.Domain?.FrequencyScope);
+
+        // Negative proof for HomeMesh (on 5180 MHz) must be NULL, never false!
+        var visible = await radio.IsSsidVisibleAsync("wlan0", "HomeMesh");
+        Assert.Null(visible);
+    }
+
+    // R3-R1.2: TRIGGER_SCAN with 3 channels [2412, 2437, 2462] -> still ExplicitSubset (never AllAllowed)
+    [Fact]
+    public void R3_R1_TriggerScan_Multiple_Channels_Is_Still_ExplicitSubset()
+    {
+        var domain = LinuxNl80211EventObserver.ParseScanDomain(
+            genlCmd: LinuxNl80211Protocol.NL80211_CMD_TRIGGER_SCAN,
+            scanFreqsBytes: new byte[] { 8, 0, 1, 0, 0x6C, 0x09, 0, 0, 8, 0, 2, 0, 0x85, 0x09, 0, 0, 8, 0, 3, 0, 0x9E, 0x09, 0, 0 },
+            scanSsidsBytes: null);
+
+        Assert.Equal(LinuxWifiScanFrequencyScope.ExplicitSubset, domain.FrequencyScope);
+        Assert.NotEqual(LinuxWifiScanFrequencyScope.AllAllowed, domain.FrequencyScope);
+    }
+
+    // R3-R1.3: TRIGGER_SCAN without SCAN_FREQUENCIES -> AllAllowed
+    [Fact]
+    public void R3_R1_TriggerScan_No_ScanFrequencies_Yields_AllAllowed()
+    {
+        var domain = LinuxNl80211EventObserver.ParseScanDomain(
+            genlCmd: LinuxNl80211Protocol.NL80211_CMD_TRIGGER_SCAN,
+            scanFreqsBytes: null,
+            scanSsidsBytes: null);
+
+        Assert.Equal(LinuxWifiScanFrequencyScope.AllAllowed, domain.FrequencyScope);
+        Assert.Equal(LinuxWifiScanSsidScope.PassiveOnly, domain.SsidScope);
+    }
+
+    // R3-R1.4: NEW_SCAN_RESULTS without prior Started -> NOT AllAllowed, absence returns null
+    [Fact]
+    public async Task R3_R1_NewScanResults_Without_Prior_Started_Yields_Null_Absence()
+    {
+        var clock = new StubNativeClock { CurrentBootTimeSec = 1000 };
+        var tracker = new LinuxWifiScanCompletionTracker();
+        var observer = new LinuxNl80211EventObserver(tracker, clock: clock);
+
+        var socket = new MockNl80211Socket();
+        socket.BssDump.Add(CreateBss("OtherNet", seenMsAgo: 5000));
+        socket.BssDumpStatus = LinuxNl80211DumpStatus.Complete;
+
+        var rfkill = new StubRfkillReader { HardBlocked = false, SoftBlocked = false };
+        using var radio = new LinuxNl80211Radio(socket, rfkill, boundInterfaceId: "wlan0", ownsSocket: null, scanCompletionTracker: tracker, clock: clock);
+
+        // Direct NEW_SCAN_RESULTS without prior TRIGGER_SCAN
+        var eventBytes = BuildScanEventDatagram(
+            familyId: 28,
+            genlCmd: LinuxNl80211Protocol.NL80211_CMD_NEW_SCAN_RESULTS,
+            ifIndex: 3,
+            wdev: 0x1000UL,
+            frequencies: new uint[] { 2412, 5180 },
+            ssids: new byte[][] { Array.Empty<byte>() });
+
+        clock.CurrentBootTimeSec = 999;
+        observer.ProcessEventPayload(eventBytes, nl80211FamilyId: 28);
+
+        var record = tracker.GetLastScanCompletion(3, 0x1000UL);
+        Assert.NotNull(record);
+        Assert.Equal(LinuxWifiScanFrequencyScope.ExplicitSubset, record.Domain?.FrequencyScope);
+
+        clock.CurrentBootTimeSec = 1000;
+        var visible = await radio.IsSsidVisibleAsync("wlan0", "HomeMesh");
+        Assert.Null(visible);
+    }
+
+    // R3-R1.5: Unscoped Started (without WDEV) invalidates exact-WDEV Completed record
+    [Fact]
+    public void R3_R1_Unscoped_Started_Invalidates_Exact_Wdev_Completed_Record()
+    {
+        var tracker = new LinuxWifiScanCompletionTracker();
+        var clock = new StubNativeClock { CurrentBootTimeSec = 500 };
+        var observer = new LinuxNl80211EventObserver(tracker, clock: clock);
+
+        // 1. Initial exact-WDEV Completed record at revision 1
+        tracker.RecordScanEvent(3, 0x1000UL, LinuxWifiScanEventStatus.Completed, 500_000_000_000UL, LinuxWifiScanDomain.AllAllowedWildcard());
+        var rec1 = tracker.GetLastScanCompletion(3, 0x1000UL);
+        Assert.NotNull(rec1);
+        Assert.Equal(LinuxWifiScanEventStatus.Completed, rec1.Status);
+        Assert.Equal(1L, rec1.Revision);
+
+        // 2. Unscoped TRIGGER_SCAN arrives (missing WDEV)
+        var unscopedTrigger = BuildScanEventDatagram(
+            familyId: 28,
+            genlCmd: LinuxNl80211Protocol.NL80211_CMD_TRIGGER_SCAN,
+            ifIndex: 3,
+            wdev: null); // missing WDEV!
+
+        observer.ProcessEventPayload(unscopedTrigger, nl80211FamilyId: 28);
+
+        // 3. Exact (3, 0x1000UL) must now be invalidated to Started with revision 2!
+        var recAfter = tracker.GetLastScanCompletion(3, 0x1000UL);
+        Assert.NotNull(recAfter);
+        Assert.Equal(LinuxWifiScanEventStatus.Started, recAfter.Status);
+        Assert.Equal(2L, recAfter.Revision);
+    }
+
+    // R3-R1.6: Old exact-WDEV Completed + unscoped Started + GET_SCAN target absent -> null, never WifiRadioDown
+    [Fact]
+    public async Task R3_R1_Unscoped_Started_Prevents_False_Negative_And_WifiRadioDown()
+    {
+        var clock = new StubNativeClock { CurrentBootTimeSec = 1000 };
+        var tracker = new LinuxWifiScanCompletionTracker();
+        var observer = new LinuxNl80211EventObserver(tracker, clock: clock);
+
+        var socket = new MockNl80211Socket();
+        socket.BssDump.Add(CreateBss("OtherNet", seenMsAgo: 5000));
+        socket.BssDumpStatus = LinuxNl80211DumpStatus.Complete;
+
+        var rfkill = new StubRfkillReader { HardBlocked = false, SoftBlocked = false };
+        using var radio = new LinuxNl80211Radio(socket, rfkill, boundInterfaceId: "wlan0", ownsSocket: null, scanCompletionTracker: tracker, clock: clock);
+
+        // 1. Initial valid completed scan
+        tracker.RecordScanEvent(3, 0x1000UL, LinuxWifiScanEventStatus.Completed, 950_000_000_000UL, LinuxWifiScanDomain.AllAllowedWildcard());
+
+        // 2. Unscoped TRIGGER_SCAN arrives at T=999s
+        var unscopedTrigger = BuildScanEventDatagram(
+            familyId: 28,
+            genlCmd: LinuxNl80211Protocol.NL80211_CMD_TRIGGER_SCAN,
+            ifIndex: 3,
+            wdev: null);
+        clock.CurrentBootTimeSec = 999;
+        observer.ProcessEventPayload(unscopedTrigger, nl80211FamilyId: 28);
+
+        // 3. Querying SSID visibility at T=1000s must yield NULL (never false)
+        clock.CurrentBootTimeSec = 1000;
+        var visible = await radio.IsSsidVisibleAsync("wlan0", "HomeMesh");
+        Assert.Null(visible);
     }
 }
