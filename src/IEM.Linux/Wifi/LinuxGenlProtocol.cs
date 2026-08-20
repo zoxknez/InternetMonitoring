@@ -322,6 +322,46 @@ public static class LinuxGenlProtocol
     }
 
     /// <summary>
+    /// Enumerates Netlink attributes with 4-byte alignment and strict validation.
+    /// Returns true if all attributes in the payload are structurally valid,
+    /// or false if truncated, corrupted, or containing trailing garbage.
+    /// </summary>
+    public static bool TryEnumerateAttributesStrict(
+        ReadOnlySpan<byte> payload,
+        out List<(ushort Type, byte[] Value)> results)
+    {
+        results = new List<(ushort, byte[])>();
+        int offset = 0;
+
+        while (offset < payload.Length)
+        {
+            if (offset + NlaHeaderSize > payload.Length)
+            {
+                results.Clear();
+                return false; // Trailing bytes without complete header
+            }
+
+            ushort nlaLen = MemoryMarshal.Read<ushort>(payload.Slice(offset, 2));
+            ushort rawType = MemoryMarshal.Read<ushort>(payload.Slice(offset + 2, 2));
+            ushort nlaType = (ushort)(rawType & 0x3FFF);
+
+            if (nlaLen < NlaHeaderSize || offset + nlaLen > payload.Length)
+            {
+                results.Clear();
+                return false; // Truncated attribute
+            }
+
+            int valLen = nlaLen - NlaHeaderSize;
+            byte[] valBytes = payload.Slice(offset + NlaHeaderSize, valLen).ToArray();
+            results.Add((nlaType, valBytes));
+
+            offset += NlaAlign(nlaLen);
+        }
+
+        return true;
+    }
+
+    /// <summary>
     /// Enumerates Netlink attributes with 4-byte alignment and truncation guards.
     /// </summary>
     public static List<(ushort Type, byte[] Value)> EnumerateAttributes(ReadOnlySpan<byte> payload)

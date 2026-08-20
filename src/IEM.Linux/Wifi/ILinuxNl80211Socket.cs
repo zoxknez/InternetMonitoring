@@ -27,6 +27,12 @@ public interface ILinuxNl80211Socket : IDisposable, IAsyncDisposable
     Task<LinuxNl80211DumpResult<LinuxNl80211WiphyInfo>> DumpWiphysAsync(ushort nl80211FamilyId, uint? wiphyIndex = null, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Dumps cached BSS scan results for a specific wireless interface with full status provenance.
+    /// Invariant 259: Reads cached kernel BSS results without triggering an RF scan.
+    /// </summary>
+    Task<LinuxNl80211DumpResult<LinuxNl80211BssInfo>> DumpBssAsync(ushort nl80211FamilyId, int ifindex, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Queries a single wireless interface or dumps all interfaces.
     /// </summary>
     Task<List<LinuxNl80211InterfaceInfo>> GetInterfacesAsync(ushort nl80211FamilyId, int? ifindex = null, CancellationToken cancellationToken = default);

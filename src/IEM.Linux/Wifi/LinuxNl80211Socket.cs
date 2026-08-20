@@ -308,6 +308,91 @@ public sealed class LinuxNl80211Socket : ILinuxNl80211Socket
         return new List<LinuxNl80211WiphyInfo>(res.Items);
     }
 
+    public async Task<LinuxNl80211DumpResult<LinuxNl80211BssInfo>> DumpBssAsync(
+        ushort nl80211FamilyId,
+        int ifindex,
+        CancellationToken cancellationToken = default)
+    {
+        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Linux) || nl80211FamilyId == 0 || ifindex <= 0)
+        {
+            return new LinuxNl80211DumpResult<LinuxNl80211BssInfo>(Array.Empty<LinuxNl80211BssInfo>(), LinuxNl80211DumpStatus.Unavailable);
+        }
+
+        await _semaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            EnsureSocket();
+            if (_socket is null)
+            {
+                return new LinuxNl80211DumpResult<LinuxNl80211BssInfo>(Array.Empty<LinuxNl80211BssInfo>(), LinuxNl80211DumpStatus.Unavailable);
+            }
+
+            var seq = (uint)Interlocked.Increment(ref _globalSequence);
+            var req = LinuxNl80211Protocol.BuildGetScanRequest(nl80211FamilyId, ifindex, seq);
+
+            _socket.Send(req);
+
+            using var combinedStream = new MemoryStream();
+            var recvBuffer = new byte[8192];
+            bool timedOut = false;
+
+            while (!cancellationToken.IsCancellationRequested)
+            {
+                int bytesRead;
+                try
+                {
+                    bytesRead = _socket.Receive(recvBuffer, timeoutMs: 2000);
+                }
+                catch (TimeoutException)
+                {
+                    timedOut = true;
+                    break;
+                }
+
+                if (bytesRead <= 0)
+                {
+                    break;
+                }
+
+                combinedStream.Write(recvBuffer, 0, bytesRead);
+
+                var span = recvBuffer.AsSpan(0, bytesRead);
+                var (isTerminal, hasFatalError) = InspectChunk(span, seq, isDump: true);
+                if (isTerminal)
+                {
+                    break;
+                }
+            }
+
+            if (cancellationToken.IsCancellationRequested)
+            {
+                return new LinuxNl80211DumpResult<LinuxNl80211BssInfo>(Array.Empty<LinuxNl80211BssInfo>(), LinuxNl80211DumpStatus.Cancelled);
+            }
+
+            var totalBytes = combinedStream.ToArray();
+            if (totalBytes.Length == 0)
+            {
+                return new LinuxNl80211DumpResult<LinuxNl80211BssInfo>(Array.Empty<LinuxNl80211BssInfo>(), timedOut ? LinuxNl80211DumpStatus.TimedOut : LinuxNl80211DumpStatus.Incomplete, -11);
+            }
+
+            var result = LinuxNl80211Protocol.ParseBssDump(totalBytes, seq, nl80211FamilyId, ifindex);
+            if (timedOut && !result.IsComplete)
+            {
+                return new LinuxNl80211DumpResult<LinuxNl80211BssInfo>(Array.Empty<LinuxNl80211BssInfo>(), LinuxNl80211DumpStatus.TimedOut, -11);
+            }
+
+            return result;
+        }
+        catch (Exception)
+        {
+            return new LinuxNl80211DumpResult<LinuxNl80211BssInfo>(Array.Empty<LinuxNl80211BssInfo>(), LinuxNl80211DumpStatus.Unavailable);
+        }
+        finally
+        {
+            _semaphore.Release();
+        }
+    }
+
     private static (bool IsTerminal, bool HasFatalError) InspectChunk(ReadOnlySpan<byte> buffer, uint expectedSeq, bool isDump)
     {
         int offset = 0;
