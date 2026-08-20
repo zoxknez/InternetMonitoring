@@ -69,15 +69,43 @@ public sealed class LinuxNl80211Socket : ILinuxNl80211Socket
 
             _socket.Send(req);
 
+            using var combinedStream = new MemoryStream();
             var recvBuffer = new byte[8192];
-            var bytesRead = _socket.Receive(recvBuffer, timeoutMs: 3000);
 
-            if (bytesRead <= 0)
+            while (!cancellationToken.IsCancellationRequested)
+            {
+                int bytesRead;
+                try
+                {
+                    bytesRead = _socket.Receive(recvBuffer, timeoutMs: 3000);
+                }
+                catch (TimeoutException)
+                {
+                    break;
+                }
+
+                if (bytesRead <= 0)
+                {
+                    break;
+                }
+
+                combinedStream.Write(recvBuffer, 0, bytesRead);
+
+                var span = recvBuffer.AsSpan(0, bytesRead);
+                var (isTerminal, hasFatalError) = InspectChunk(span, seq, isDump: false);
+                if (isTerminal)
+                {
+                    break;
+                }
+            }
+
+            var totalBytes = combinedStream.ToArray();
+            if (totalBytes.Length == 0)
             {
                 return null;
             }
 
-            var ret = LinuxGenlProtocol.ParseGetFamilyResponse(recvBuffer.AsSpan(0, bytesRead), seq, out var familyInfo);
+            var ret = LinuxGenlProtocol.ParseGetFamilyResponse(totalBytes, seq, out var familyInfo);
             return ret == 0 ? familyInfo : null;
         }
         catch (Exception)
@@ -140,13 +168,8 @@ public sealed class LinuxNl80211Socket : ILinuxNl80211Socket
                 combinedStream.Write(recvBuffer, 0, bytesRead);
 
                 var span = recvBuffer.AsSpan(0, bytesRead);
-                var (isTerminal, hasFatalError) = InspectChunk(span, seq);
+                var (isTerminal, hasFatalError) = InspectChunk(span, seq, isDump);
                 if (isTerminal)
-                {
-                    break;
-                }
-
-                if (ifindex.HasValue)
                 {
                     break;
                 }
@@ -240,13 +263,8 @@ public sealed class LinuxNl80211Socket : ILinuxNl80211Socket
                 combinedStream.Write(recvBuffer, 0, bytesRead);
 
                 var span = recvBuffer.AsSpan(0, bytesRead);
-                var (isTerminal, hasFatalError) = InspectChunk(span, seq);
+                var (isTerminal, hasFatalError) = InspectChunk(span, seq, isDump);
                 if (isTerminal)
-                {
-                    break;
-                }
-
-                if (wiphyIndex.HasValue)
                 {
                     break;
                 }
@@ -290,7 +308,7 @@ public sealed class LinuxNl80211Socket : ILinuxNl80211Socket
         return new List<LinuxNl80211WiphyInfo>(res.Items);
     }
 
-    private static (bool IsTerminal, bool HasFatalError) InspectChunk(ReadOnlySpan<byte> buffer, uint expectedSeq)
+    private static (bool IsTerminal, bool HasFatalError) InspectChunk(ReadOnlySpan<byte> buffer, uint expectedSeq, bool isDump)
     {
         int offset = 0;
         while (offset + LinuxGenlProtocol.NlmsgHeaderSize <= buffer.Length)
@@ -324,7 +342,15 @@ public sealed class LinuxNl80211Socket : ILinuxNl80211Socket
                     {
                         return (true, true);
                     }
-                    // error == 0: pure ACK, do NOT terminate dump!
+                    // error == 0: pure ACK, do NOT terminate single query or dump!
+                }
+            }
+            else if (!isDump)
+            {
+                // Single/do query: matching DATA response received
+                if (nlmsgLen >= LinuxGenlProtocol.NlmsgHeaderSize + LinuxGenlProtocol.GenlHeaderSize)
+                {
+                    return (true, false);
                 }
             }
 

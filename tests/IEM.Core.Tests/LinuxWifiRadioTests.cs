@@ -525,20 +525,115 @@ public class LinuxWifiRadioTests
     }
 
     [Fact]
-    public void Nl80211Protocol_Unsolicited_Seq_Zero_Ignored_From_Authoritative_Dump()
+    public void Nl80211Protocol_Done_HeaderOnly_16Bytes_Yields_Malformed_For_Dump()
     {
-        uint seq = 311;
-        // Unsolicited notification message with seq = 0 (e.g. async event)
-        var unrequested = BuildMockInterfacePayload(seq: 0, 9, "wlan9", 2, LinuxNl80211Protocol.NL80211_IFTYPE_STATION);
-        var p1 = BuildMockInterfacePayload(seq, 3, "wlan0", 0, LinuxNl80211Protocol.NL80211_IFTYPE_STATION);
-        var done = BuildMockDoneMessage(seq, error: 0);
-        var stream = CombineBuffers(unrequested, p1, done);
+        uint seq = 312;
+        // Construct standard 16-byte header without 4-byte return code
+        var ms = new MemoryStream();
+        using var bw = new BinaryWriter(ms);
+        bw.Write(16); // 16 bytes header-only
+        bw.Write(LinuxGenlProtocol.NLMSG_DONE);
+        bw.Write((ushort)0);
+        bw.Write(seq);
+        bw.Write((uint)0);
 
-        var res = LinuxNl80211Protocol.ParseInterfaceDump(stream, seq, isDump: true);
+        var res = LinuxNl80211Protocol.ParseInterfaceDump(ms.ToArray(), seq, isDump: true);
+        Assert.False(res.IsComplete);
+        Assert.Equal(LinuxNl80211DumpStatus.Malformed, res.Status);
+    }
+
+    [Fact]
+    public void Nl80211Protocol_Stale_Seq_With_DumpIntr_Is_Ignored_From_Active_Dump()
+    {
+        uint staleSeq = 313;
+        uint activeSeq = 314;
+
+        // Stale message with DUMP_INTR and stale sequence
+        var staleIntr = BuildMockInterfacePayload(staleSeq, 3, "wlan0", 0, LinuxNl80211Protocol.NL80211_IFTYPE_STATION, isInterrupted: true);
+        var p1 = BuildMockInterfacePayload(activeSeq, 3, "wlan0", 0, LinuxNl80211Protocol.NL80211_IFTYPE_STATION, isInterrupted: false);
+        var done = BuildMockDoneMessage(activeSeq, error: 0);
+        var stream = CombineBuffers(staleIntr, p1, done);
+
+        var res = LinuxNl80211Protocol.ParseInterfaceDump(stream, activeSeq, isDump: true);
         Assert.True(res.IsComplete);
+        Assert.Equal(LinuxNl80211DumpStatus.Complete, res.Status);
         Assert.Single(res.Items);
         Assert.Equal("wlan0", res.Items[0].IfName);
-        Assert.DoesNotContain(res.Items, i => i.IfName == "wlan9");
+    }
+
+    [Fact]
+    public void Nl80211Protocol_Matching_Seq_With_DumpIntr_Yields_Interrupted()
+    {
+        uint activeSeq = 315;
+        var p1 = BuildMockInterfacePayload(activeSeq, 3, "wlan0", 0, LinuxNl80211Protocol.NL80211_IFTYPE_STATION, isInterrupted: true);
+
+        var res = LinuxNl80211Protocol.ParseInterfaceDump(p1, activeSeq, isDump: true);
+        Assert.False(res.IsComplete);
+        Assert.Equal(LinuxNl80211DumpStatus.Interrupted, res.Status);
+    }
+
+    [Fact]
+    public void Nl80211Protocol_Single_Query_Ack_Only_Yields_Incomplete()
+    {
+        uint seq = 316;
+        var ack = BuildMockNlmsgError(seq, errorCode: 0);
+
+        var res = LinuxNl80211Protocol.ParseInterfaceDump(ack, seq, isDump: false);
+        Assert.False(res.IsComplete);
+        Assert.Equal(LinuxNl80211DumpStatus.Incomplete, res.Status);
+        Assert.Empty(res.Items);
+    }
+
+    [Fact]
+    public void Nl80211Protocol_Single_Query_Ack_Then_Data_Yields_Complete()
+    {
+        uint seq = 317;
+        var ack = BuildMockNlmsgError(seq, errorCode: 0);
+        var p1 = BuildMockInterfacePayload(seq, 3, "wlan0", 0, LinuxNl80211Protocol.NL80211_IFTYPE_STATION);
+        var stream = CombineBuffers(ack, p1);
+
+        var res = LinuxNl80211Protocol.ParseInterfaceDump(stream, seq, isDump: false);
+        Assert.True(res.IsComplete);
+        Assert.Equal(LinuxNl80211DumpStatus.Complete, res.Status);
+        Assert.Single(res.Items);
+    }
+
+    [Fact]
+    public void Nl80211Protocol_Single_Query_Data_Only_Yields_Complete()
+    {
+        uint seq = 318;
+        var p1 = BuildMockInterfacePayload(seq, 3, "wlan0", 0, LinuxNl80211Protocol.NL80211_IFTYPE_STATION);
+
+        var res = LinuxNl80211Protocol.ParseInterfaceDump(p1, seq, isDump: false);
+        Assert.True(res.IsComplete);
+        Assert.Equal(LinuxNl80211DumpStatus.Complete, res.Status);
+        Assert.Single(res.Items);
+    }
+
+    [Fact]
+    public void GenlProtocol_GetFamily_Ack_Then_Data_Yields_Success()
+    {
+        uint seq = 319;
+        var ack = BuildMockNlmsgError(seq, errorCode: 0);
+        var famData = BuildMockGetFamilyResponse(seq, familyId: 28, familyName: "nl80211");
+        var stream = CombineBuffers(ack, famData);
+
+        int ret = LinuxGenlProtocol.ParseGetFamilyResponse(stream, seq, out var famInfo);
+        Assert.Equal(0, ret);
+        Assert.NotNull(famInfo);
+        Assert.Equal((ushort)28, famInfo.FamilyId);
+        Assert.Equal("nl80211", famInfo.FamilyName);
+    }
+
+    [Fact]
+    public void GenlProtocol_GetFamily_Ack_Only_Yields_Negative_Or_Null()
+    {
+        uint seq = 320;
+        var ack = BuildMockNlmsgError(seq, errorCode: 0);
+
+        int ret = LinuxGenlProtocol.ParseGetFamilyResponse(ack, seq, out var famInfo);
+        Assert.NotEqual(0, ret);
+        Assert.Null(famInfo);
     }
 
     private static byte[] CombineBuffers(params byte[][] parts)
