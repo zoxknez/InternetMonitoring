@@ -33,7 +33,7 @@ public static class Program
                 try
                 {
                     var routeResp = LinuxNetlinkRouteClient.Instance.QueryRoute(IPAddress.Parse("8.8.8.8"));
-                    routeSuccess = routeResp.Success;
+                    routeSuccess = routeResp.IsSuccess;
                     routeGateway = routeResp.Gateway?.ToString();
                     routeIfIndex = routeResp.InterfaceIndex?.ToString();
                     routeError = routeResp.ErrorMessage;
