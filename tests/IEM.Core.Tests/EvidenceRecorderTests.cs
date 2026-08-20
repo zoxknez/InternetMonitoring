@@ -54,6 +54,7 @@ public sealed class EvidenceRecorderTests : IDisposable
 
         var engine = new MonitorEngine(source, options, clock);
         var paths = into ?? SessionPaths.ForNewSession(_root, DateTimeOffset.Now);
+        Directory.CreateDirectory(paths.Directory);
 
         using var recorder = EvidenceRecorder.Start(paths, engine, Start(sessionId));
         await engine.RunAsync(step * sampleCount, CancellationToken.None);
@@ -172,6 +173,7 @@ public sealed class EvidenceRecorderTests : IDisposable
         }, clock);
 
         var paths = SessionPaths.ForNewSession(_root, DateTimeOffset.Now);
+        Directory.CreateDirectory(paths.Directory);
 
         using (var recorder = EvidenceRecorder.Start(paths, engine, Start("S1")))
         {

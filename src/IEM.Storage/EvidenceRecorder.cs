@@ -193,9 +193,11 @@ public sealed class EvidenceRecorder : IDisposable
     {
         ArgumentNullException.ThrowIfNull(paths);
         ArgumentNullException.ThrowIfNull(engine);
-        ArgumentNullException.ThrowIfNull(start);
-
-        Directory.CreateDirectory(paths.Directory);
+        if (!Directory.Exists(paths.Directory))
+        {
+            throw new InvalidOperationException(
+                "Session storage boundary must be provisioned before EvidenceRecorder.Start().");
+        }
 
         var chain = HashChainWriter.Open(paths.RawLog);
         var store = SqliteSessionStore.Open(paths.Database);

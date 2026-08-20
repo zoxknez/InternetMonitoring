@@ -30,6 +30,8 @@ builder.Services.AddSingleton<LinuxLogindPowerSource>();
 builder.Services.AddSingleton<IPowerEventSource>(sp => sp.GetRequiredService<LinuxLogindPowerSource>());
 builder.Services.AddHostedService(sp => sp.GetRequiredService<LinuxLogindPowerSource>());
 builder.Services.AddSingleton<IPlatformStorageLayout>(IEM.Linux.Storage.LinuxStorageLayout.Instance);
+builder.Services.AddSingleton<ISymlinkSafetyGuard, IEM.Linux.Storage.LinuxSymlinkGuard>();
+builder.Services.AddSingleton<IStorageProtectionProvider, IEM.Linux.Storage.LinuxSessionModeProvisioner>();
 
 // Runtime engine workers reuse from IEM.Service.Runtime
 builder.Services.Configure<MonitorSettings>(builder.Configuration.GetSection(MonitorSettings.SectionName));

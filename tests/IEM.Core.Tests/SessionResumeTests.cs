@@ -83,6 +83,7 @@ public sealed class SessionResumeTests : IDisposable
         var source = new ScriptedProbeSource(clock, script, Step);
         var engine = new MonitorEngine(source, FastOptions(), clock);
         var paths = SessionPaths.ForNewSession(_root, DateTimeOffset.Now);
+        Directory.CreateDirectory(paths.Directory);
 
         using var recorder = EvidenceRecorder.Start(
             paths, engine, Start(planned, clock.UtcNow), recorderOptions ?? EagerCheckpoints);

@@ -1,3 +1,4 @@
+using System.IO;
 using IEM.Core;
 using IEM.Core.Model;
 using IEM.Presentation.Hosting;
@@ -118,6 +119,7 @@ public sealed class InProcessMonitorHost : IMonitorHost
                 link.LinkSpeedBitsPerSecond,
                 link.GatewayAddress);
 
+            Directory.CreateDirectory(paths.Directory);
             recorder = EvidenceRecorder.Start(paths, engine, start);
 
             await using var tracer = new IncidentPathTracer();

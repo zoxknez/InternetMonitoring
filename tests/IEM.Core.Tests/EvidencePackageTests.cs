@@ -1,4 +1,4 @@
-﻿using System.Security.Cryptography;
+using System.Security.Cryptography;
 using System.Text;
 using IEM.Core;
 using IEM.Core.Model;
@@ -55,6 +55,7 @@ public sealed class EvidencePackageTests : IDisposable
             "S1", "2.1.0", DateTimeOffset.UtcNow, TimeSpan.FromMinutes(1),
             "TEST-PC", "Ethernet 4", LinkMedium.Ethernet, 1_000_000_000, "192.168.1.1");
 
+        Directory.CreateDirectory(paths.Directory);
         using (var recorder = EvidenceRecorder.Start(paths, engine, start))
         {
             await engine.RunAsync(step * sampleCount, CancellationToken.None);

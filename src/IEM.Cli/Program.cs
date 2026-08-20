@@ -1,4 +1,4 @@
-﻿using System.Globalization;
+using System.Globalization;
 using IEM.Cli;
 using IEM.Core;
 using IEM.Core.Presentation;
@@ -134,6 +134,7 @@ if (!settings.NoRecording)
         LinkSpeedBitsPerSecond: link.LinkSpeedBitsPerSecond,
         GatewayAddress: link.GatewayAddress);
 
+    Directory.CreateDirectory(paths.Directory);
     recorder = EvidenceRecorder.Start(paths, engine, start);
 
     // Traces run off the sampling path and land in the chain when they finish.

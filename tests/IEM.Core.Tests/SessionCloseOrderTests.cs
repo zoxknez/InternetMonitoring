@@ -56,6 +56,7 @@ public sealed class SessionCloseOrderTests : IDisposable
         var source = new ScriptedProbeSource(clock, [CycleBuilder.Wired().Build()], Step);
         var engine = new MonitorEngine(source, FastOptions(), clock);
         var paths = SessionPaths.ForNewSession(_root, DateTimeOffset.Now);
+        Directory.CreateDirectory(paths.Directory);
 
         var recorder = EvidenceRecorder.Start(
             paths,
@@ -131,6 +132,7 @@ public sealed class SessionCloseOrderTests : IDisposable
         var source = new ScriptedProbeSource(clock, [CycleBuilder.Wired().Build()], Step);
         var engine = new MonitorEngine(source, FastOptions(), clock);
         var paths = SessionPaths.ForNewSession(_root, DateTimeOffset.Now);
+        Directory.CreateDirectory(paths.Directory);
 
         var recorder = EvidenceRecorder.Start(
             paths,

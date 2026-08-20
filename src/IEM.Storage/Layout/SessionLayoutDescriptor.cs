@@ -80,4 +80,6 @@ public sealed record SessionLayoutDescriptor
         };
         return JsonSerializer.Deserialize<SessionLayoutDescriptor>(utf8Bytes, options);
     }
+
+    public static SessionLayoutDescriptor? FromCanonicalBytes(byte[] utf8Bytes) => FromBytes(utf8Bytes);
 }

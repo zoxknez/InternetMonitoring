@@ -34,6 +34,7 @@ var builder = Host.CreateApplicationBuilder(args);
 builder.Services.AddSingleton<IPlatformProbeFactory>(WindowsProbeFactory.Instance);
 builder.Services.AddSingleton<IPowerEventSource, PowerEventBroker>();
 builder.Services.AddSingleton<IPlatformStorageLayout>(WindowsStorageLayout.Instance);
+builder.Services.AddSingleton<IStorageProtectionProvider, WindowsSessionAclProvisioner>();
 builder.Services.AddSingleton<IPlatformInstallationProbe>(WindowsInstallationProbe.Default);
 
 // Runtime registration

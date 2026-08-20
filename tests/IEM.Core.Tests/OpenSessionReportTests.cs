@@ -65,6 +65,7 @@ public sealed class OpenSessionReportTests : IDisposable
 
         var engine = new MonitorEngine(source, options, clock);
         var paths = SessionPaths.ForNewSession(_root, DateTimeOffset.Now);
+        Directory.CreateDirectory(paths.Directory);
 
         var start = new SessionStartPayload(
             "S1", "2.2.0", DateTimeOffset.UtcNow, TimeSpan.FromMinutes(1),

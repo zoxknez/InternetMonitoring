@@ -25,7 +25,8 @@ public sealed class MonitorWorker(
     IPlatformProbeFactory probeFactory,
     IPowerEventSource powerEvents,
     IPlatformStorageLayout storageLayout,
-    IHostApplicationLifetime lifetime) : BackgroundService
+    IHostApplicationLifetime lifetime,
+    IStorageProtectionProvider? storageProtection = null) : BackgroundService
 {
     private readonly MonitorSettings _settings = settings.Value;
 
@@ -104,11 +105,10 @@ public sealed class MonitorWorker(
     private async Task RunSessionAsync(CancellationToken stoppingToken)
     {
         var outputRoot = _settings.ResolveOutputRoot(storageLayout.DefaultOutputRoot);
-        Directory.CreateDirectory(outputRoot);
 
         await using var linkInspection = await probeFactory.CreateLinkInspectionAsync(_settings.Interface).ConfigureAwait(false);
 
-        var plan = DecideSession(outputRoot, linkInspection.Inspector);
+        var plan = await DecideSessionAsync(outputRoot, linkInspection.Inspector, stoppingToken).ConfigureAwait(false);
         if (plan is null)
         {
             logger.LogInformation(
@@ -125,6 +125,32 @@ public sealed class MonitorWorker(
             }
 
             return;
+        }
+
+        // Invariant 81: Storage boundary must be Established before creating probes or recorder
+        if (storageProtection != null)
+        {
+            var layoutDesc = SessionLayoutDescriptor.CreateStandard(plan.SessionId);
+            if (plan.Resume is null)
+            {
+                var provObs = await storageProtection.ProvisionSessionBoundariesAsync(plan.Paths.Directory, layoutDesc, stoppingToken).ConfigureAwait(false);
+                if (provObs.ProtectionState != StorageProtectionState.Established)
+                {
+                    logger.LogCritical("Sigurnosna granica sesije nije uspostavljena (Provision): {Error}", provObs.DiagnosticMessage);
+                    throw new InvalidOperationException($"Storage boundary provision failed: {provObs.DiagnosticMessage}");
+                }
+            }
+
+            var verObs = await storageProtection.VerifyStorageProtectionAsync(plan.Paths.Directory, layoutDesc, stoppingToken).ConfigureAwait(false);
+            if (verObs.ProtectionState != StorageProtectionState.Established)
+            {
+                logger.LogCritical("Sigurnosna granica sesije nije verifikovana (Verify): {Error}", verObs.DiagnosticMessage);
+                throw new InvalidOperationException($"Storage boundary verification failed: {verObs.DiagnosticMessage}");
+            }
+        }
+        else
+        {
+            Directory.CreateDirectory(plan.Paths.Directory);
         }
 
         MeasurementMarker.Clear(outputRoot);
@@ -245,7 +271,7 @@ public sealed class MonitorWorker(
             SerbianText.Duration(observation.Skew.Duration()));
     }
 
-    private SessionPlan? DecideSession(string outputRoot, ILinkInspector linkInspector)
+    private async Task<SessionPlan?> DecideSessionAsync(string outputRoot, ILinkInspector linkInspector, CancellationToken ct)
     {
         var now = DateTimeOffset.UtcNow;
 
@@ -256,6 +282,18 @@ public sealed class MonitorWorker(
             switch (analysis.Decision)
             {
                 case ResumeDecision.Resumable:
+                    if (storageProtection != null)
+                    {
+                        var layoutDesc = SessionLayoutDescriptor.CreateStandard(analysis.Start!.SessionId);
+                        var verObs = await storageProtection.VerifyStorageProtectionAsync(analysis.Paths!.Directory, layoutDesc, ct).ConfigureAwait(false);
+                        if (verObs.ProtectionState != StorageProtectionState.Established)
+                        {
+                            logger.LogError("Nastavak sesije '{SessionId}' je odbijen jer granica zaštite nije Established: {Error}",
+                                analysis.Start.SessionId, verObs.DiagnosticMessage);
+                            break;
+                        }
+                    }
+
                     return new SessionPlan(
                         analysis.Paths!,
                         analysis.Start!.SessionId,
@@ -266,6 +304,17 @@ public sealed class MonitorWorker(
                         Start: null);
 
                 case ResumeDecision.Expired:
+                    if (storageProtection != null)
+                    {
+                        var layoutDesc = SessionLayoutDescriptor.CreateStandard(analysis.Start!.SessionId);
+                        var verObs = await storageProtection.VerifyStorageProtectionAsync(analysis.Paths!.Directory, layoutDesc, ct).ConfigureAwait(false);
+                        if (verObs.ProtectionState != StorageProtectionState.Established)
+                        {
+                            logger.LogWarning("Zatvaranje istekle sesije '{SessionId}' je odbijeno jer granica zaštite nije Established: {Error}",
+                                analysis.Start.SessionId, verObs.DiagnosticMessage);
+                            break;
+                        }
+                    }
                     CloseExpiredSession(analysis);
                     SessionRequest.Clear(outputRoot);
                     break;

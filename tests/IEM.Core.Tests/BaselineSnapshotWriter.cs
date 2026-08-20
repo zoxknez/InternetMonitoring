@@ -92,6 +92,7 @@ public sealed class BaselineSnapshotWriter
 
         var engine = new MonitorEngine(source, options, clock);
         var paths = SessionPaths.ForNewSession(root, new DateTimeOffset(2026, 8, 18, 6, 0, 0, TimeSpan.Zero));
+        Directory.CreateDirectory(paths.Directory);
 
         var start = new SessionStartPayload(
             "S20260818060000",
