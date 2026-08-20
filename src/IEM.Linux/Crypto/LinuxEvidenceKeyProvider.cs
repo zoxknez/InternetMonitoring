@@ -49,33 +49,11 @@ public sealed class LinuxEvidenceKeyProvider : IEvidenceKeyProvider
                 ? "POSIX:0700/0600:exact-ownership:openat2:system-daemon"
                 : "POSIX:0700/0600:exact-ownership:openat2:user-portable");
 
-        // 1. Open or verify StateRoot
-        int rootFd;
-        if (_scope == LinuxSigningIdentityScope.SystemInstallation)
+        // 1. Open and verify StateRoot (Verify-only for both System and Portable, R1-F)
+        int rootFd = _posix.Open(normStateRoot, LinuxPosixStorageConstants.O_RDONLY | LinuxPosixStorageConstants.O_DIRECTORY | LinuxPosixStorageConstants.O_NOFOLLOW | LinuxPosixStorageConstants.O_CLOEXEC, 0);
+        if (rootFd < 0)
         {
-            // System StateRoot MUST already exist (systemd managed)
-            rootFd = _posix.Open(normStateRoot, LinuxPosixStorageConstants.O_RDONLY | LinuxPosixStorageConstants.O_DIRECTORY | LinuxPosixStorageConstants.O_NOFOLLOW | LinuxPosixStorageConstants.O_CLOEXEC, 0);
-            if (rootFd < 0)
-            {
-                throw new SigningIdentityUnavailableException($"System StateRoot '{normStateRoot}' does not exist or cannot be opened.");
-            }
-        }
-        else
-        {
-            // Portable StateRoot: open or create with 0700
-            rootFd = _posix.Open(normStateRoot, LinuxPosixStorageConstants.O_RDONLY | LinuxPosixStorageConstants.O_DIRECTORY | LinuxPosixStorageConstants.O_NOFOLLOW | LinuxPosixStorageConstants.O_CLOEXEC, 0);
-            if (rootFd < 0)
-            {
-                if (_posix.MkdirAt(LinuxPosixStorageConstants.AT_FDCWD, normStateRoot, LinuxPosixStorageConstants.Mode0700) != 0)
-                {
-                    throw new SigningIdentityUnavailableException($"Failed to create portable StateRoot '{normStateRoot}'.");
-                }
-                rootFd = _posix.Open(normStateRoot, LinuxPosixStorageConstants.O_RDONLY | LinuxPosixStorageConstants.O_DIRECTORY | LinuxPosixStorageConstants.O_NOFOLLOW | LinuxPosixStorageConstants.O_CLOEXEC, 0);
-                if (rootFd < 0)
-                {
-                    throw new SigningIdentityUnavailableException($"Failed to open created portable StateRoot '{normStateRoot}'.");
-                }
-            }
+            throw new SigningIdentityUnavailableException($"StateRoot '{normStateRoot}' does not exist or cannot be opened.");
         }
 
         try
@@ -214,6 +192,7 @@ public sealed class LinuxEvidenceKeyProvider : IEvidenceKeyProvider
             }
 
             var ecdsa = ECDsa.Create();
+            bool success = false;
             try
             {
                 ecdsa.ImportPkcs8PrivateKey(buffer, out int bytesRead);
@@ -237,12 +216,19 @@ public sealed class LinuxEvidenceKeyProvider : IEvidenceKeyProvider
                     throw new SigningIdentityUnavailableException("ECDSA P-256 self-test sign/verify failed.");
                 }
 
+                success = true;
                 return new LinuxEvidenceSigningIdentity(ecdsa, protection, _scope);
             }
             catch (Exception ex) when (ex is not SigningIdentityUnavailableException)
             {
-                ecdsa.Dispose();
                 throw new SigningIdentityUnavailableException($"Failed to import or validate PKCS#8 ECDSA key: {ex.Message}", ex);
+            }
+            finally
+            {
+                if (!success)
+                {
+                    ecdsa.Dispose(); // R1-E: Dispose on EVERY validation failure
+                }
             }
         }
         finally
@@ -270,7 +256,7 @@ public sealed class LinuxEvidenceKeyProvider : IEvidenceKeyProvider
 
             var tempHow = new OpenHow
             {
-                Flags = (ulong)(LinuxPosixStorageConstants.O_CREAT | LinuxPosixStorageConstants.O_EXCL | LinuxPosixStorageConstants.O_WRONLY | LinuxPosixStorageConstants.O_CLOEXEC),
+                Flags = (ulong)(LinuxPosixStorageConstants.O_CREAT | LinuxPosixStorageConstants.O_EXCL | LinuxPosixStorageConstants.O_RDWR | LinuxPosixStorageConstants.O_CLOEXEC),
                 Mode = (ulong)LinuxPosixStorageConstants.Mode0600,
                 Resolve = LinuxPosixStorageConstants.RESOLVE_BENEATH | LinuxPosixStorageConstants.RESOLVE_NO_SYMLINKS | LinuxPosixStorageConstants.RESOLVE_NO_XDEV | LinuxPosixStorageConstants.RESOLVE_NO_MAGICLINKS
             };
@@ -288,6 +274,34 @@ public sealed class LinuxEvidenceKeyProvider : IEvidenceKeyProvider
                     throw new InvalidOperationException("Failed to write full PKCS#8 key bytes to temporary file.");
                 }
 
+                // R1-B: Validate new temp key before publication
+                if (_posix.Fchmod(tempFd, LinuxPosixStorageConstants.Mode0600) != 0)
+                {
+                    throw new InvalidOperationException("Failed to set 0600 permissions on temporary key file.");
+                }
+
+                if (_posix.Fstat(tempFd, out var tempStat) != 0 || !tempStat.IsRegularFile)
+                {
+                    throw new InvalidOperationException("Temporary key file is not a valid regular file descriptor.");
+                }
+
+                if ((tempStat.PermissionBits & 0xFFF) != LinuxPosixStorageConstants.Mode0600)
+                {
+                    throw new InvalidOperationException(
+                        $"Temporary key file permissions 0{Convert.ToString(tempStat.PermissionBits, 8)} are invalid (must be exact 0600).");
+                }
+
+                if (!CheckOwnership(tempStat, ownership, out var tempOwnerErr))
+                {
+                    throw new InvalidOperationException($"Temporary key file {tempOwnerErr}");
+                }
+
+                if (tempStat.Size != pkcs8.Length)
+                {
+                    throw new InvalidOperationException(
+                        $"Temporary key file size {tempStat.Size} does not match expected length {pkcs8.Length}.");
+                }
+
                 if (_posix.Fsync(tempFd) != 0)
                 {
                     throw new InvalidOperationException("Failed to fsync temporary key file.");
@@ -298,23 +312,33 @@ public sealed class LinuxEvidenceKeyProvider : IEvidenceKeyProvider
                 _posix.Close(tempFd);
             }
 
-            // Atomic publish with RENAME_NOREPLACE
+            // Atomic publish with RENAME_NOREPLACE (R1-C: preserve errno truth)
             int ren = _posix.RenameAt2(keysFd, tempName, keysFd, LinuxStoragePaths.SigningKeyFileName, LinuxPosixStorageConstants.RENAME_NOREPLACE);
             if (ren != 0)
             {
-                // Collision or race: clean up temporary file and open winner key
+                int errno = _posix.GetLastErrno();
                 _posix.UnlinkAt(keysFd, tempName, 0);
 
-                if (_posix.FstatAt(keysFd, LinuxStoragePaths.SigningKeyFileName, out _, LinuxPosixStorageConstants.AT_SYMLINK_NOFOLLOW) == 0)
+                // If and ONLY if EEXIST, treat as valid publication race winner
+                if (errno == LinuxPosixStorageConstants.EEXIST)
                 {
-                    ecdsa.Dispose();
-                    return OpenAndVerifyExistingKey(keysFd, ownership, protection);
+                    if (_posix.FstatAt(keysFd, LinuxStoragePaths.SigningKeyFileName, out _, LinuxPosixStorageConstants.AT_SYMLINK_NOFOLLOW) == 0)
+                    {
+                        ecdsa.Dispose();
+                        return OpenAndVerifyExistingKey(keysFd, ownership, protection);
+                    }
                 }
 
-                throw new InvalidOperationException("renameat2 failed to publish signing key.");
+                // Every other errno (EIO, ENOSPC, EROFS, EINVAL, ENOSYS) fails closed
+                throw new InvalidOperationException($"renameat2 failed to publish signing key (errno {errno}).");
             }
 
-            _posix.Fsync(keysFd);
+            // R1-A: Check parent-directory fsync result for durability
+            if (_posix.Fsync(keysFd) != 0)
+            {
+                throw new SigningIdentityUnavailableException(
+                    "Signing key was published but directory durability could not be established.");
+            }
 
             // Re-open and verify final published key to guarantee complete provenance
             ecdsa.Dispose();

@@ -988,6 +988,9 @@ public sealed class LinuxSessionModeProvisionerTests : IDisposable
             return 0;
         }
 
+        public int LastErrno { get; set; }
+        public int GetLastErrno() => LastErrno;
+
         public uint GetEuid() => 1000;
         public uint GetEgid() => 1000;
     }

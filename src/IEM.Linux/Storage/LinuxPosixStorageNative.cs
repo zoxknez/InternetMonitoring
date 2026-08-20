@@ -25,6 +25,14 @@ public static class LinuxPosixStorageConstants
 
     public const uint RENAME_NOREPLACE = 0x01;
 
+    // Standard Linux POSIX errnos
+    public const int EIO = 5;
+    public const int EEXIST = 17;
+    public const int EINVAL = 22;
+    public const int ENOSPC = 28;
+    public const int EROFS = 30;
+    public const int ENOSYS = 38;
+
     public const uint S_IFMT = 0xF000;
     public const uint S_IFDIR = 0x4000;
     public const uint S_IFREG = 0x8000;
@@ -91,6 +99,7 @@ public interface ILinuxPosixStorageApi
     int Read(int fd, Span<byte> buffer);
     int Fsync(int fd);
     int Close(int fd);
+    int GetLastErrno();
     uint GetEuid();
     uint GetEgid();
 }
@@ -216,6 +225,9 @@ public sealed class LinuxNativePosixStorageApi : ILinuxPosixStorageApi
 
     public int Close(int fd) =>
         OperatingSystem.IsLinux() ? NativeClose(fd) : -1;
+
+    public int GetLastErrno() =>
+        OperatingSystem.IsLinux() ? Marshal.GetLastPInvokeError() : 0;
 
     public uint GetEuid() =>
         OperatingSystem.IsLinux() ? NativeGetEuid() : 0;

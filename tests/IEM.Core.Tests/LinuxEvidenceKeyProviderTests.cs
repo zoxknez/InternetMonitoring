@@ -187,6 +187,24 @@ public sealed class LinuxEvidenceKeyProviderTests
     }
 
     [Fact]
+    public async Task Existing_Key_With_Wrong_Gid_Throws_SigningIdentityUnavailableException()
+    {
+        using var ecdsa = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        var pkcs8 = ecdsa.ExportPkcs8PrivateKey();
+
+        var mock = new MockPosixStorageApi();
+        mock.AddEntry("/var/lib/internet-evidence-monitor", isDir: true, isSymlink: false, mode: 0x1C0, uid: 1000, gid: 1000);
+        mock.AddEntry("/var/lib/internet-evidence-monitor/keys", isDir: true, isSymlink: false, mode: 0x1C0, uid: 1000, gid: 1000);
+        mock.AddEntry("/var/lib/internet-evidence-monitor/keys/evidence-signing-v1.p8", isDir: false, isSymlink: false, mode: 0x180, uid: 1000, gid: 9999, content: pkcs8); // Wrong GID!
+
+        var policy = LinuxStorageOwnershipPolicy.CreateSystem(uid: 1000, gid: 1000);
+        var provider = new LinuxEvidenceKeyProvider(LinuxSigningIdentityScope.SystemInstallation, "/var/lib/internet-evidence-monitor", mock, policy);
+
+        var ex = await Assert.ThrowsAsync<SigningIdentityUnavailableException>(() => provider.GetOrCreateIdentityAsync());
+        Assert.Contains("GID mismatch", ex.Message);
+    }
+
+    [Fact]
     public async Task Existing_Key_As_Symlink_Throws_SigningIdentityUnavailableException()
     {
         var mock = new MockPosixStorageApi();
@@ -270,21 +288,74 @@ public sealed class LinuxEvidenceKeyProviderTests
     }
 
     // ==========================================
-    // 4. ATOMICITY & RACE CONDITIONS
+    // 4. ATOMICITY, DURABILITY & RACE CONDITIONS
     // ==========================================
 
     [Fact]
-    public async Task Race_Collision_During_First_Run_Uses_Existing_Winner_Key()
+    public async Task R1_A_Directory_Fsync_Failure_After_Rename_Throws_SigningIdentityUnavailableException()
     {
-        // Setup existing key in mock storage to simulate that another process won the rename race
+        var mock = new MockPosixStorageApi
+        {
+            FailKeysDirFsync = true // Directory fsync fails after publish
+        };
+        mock.AddEntry("/var/lib/internet-evidence-monitor", isDir: true, isSymlink: false, mode: 0x1C0, uid: 1000, gid: 1000);
+
+        var policy = LinuxStorageOwnershipPolicy.CreateSystem(uid: 1000, gid: 1000);
+        var provider = new LinuxEvidenceKeyProvider(LinuxSigningIdentityScope.SystemInstallation, "/var/lib/internet-evidence-monitor", mock, policy);
+
+        var ex = await Assert.ThrowsAsync<SigningIdentityUnavailableException>(() => provider.GetOrCreateIdentityAsync());
+        Assert.Contains("durability", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task R1_B_Temp_Fchmod_Failure_Aborts_Key_Provisioning_Without_Publishing()
+    {
+        var mock = new MockPosixStorageApi
+        {
+            FailFchmodOnTemp = true
+        };
+        mock.AddEntry("/var/lib/internet-evidence-monitor", isDir: true, isSymlink: false, mode: 0x1C0, uid: 1000, gid: 1000);
+
+        var policy = LinuxStorageOwnershipPolicy.CreateSystem(uid: 1000, gid: 1000);
+        var provider = new LinuxEvidenceKeyProvider(LinuxSigningIdentityScope.SystemInstallation, "/var/lib/internet-evidence-monitor", mock, policy);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => provider.GetOrCreateIdentityAsync());
+        Assert.False(mock.TryGetEntry("/var/lib/internet-evidence-monitor/keys/evidence-signing-v1.p8", out _));
+    }
+
+    [Fact]
+    public async Task R1_B_Temp_Wrong_Uid_Aborts_Key_Provisioning()
+    {
+        var mock = new MockPosixStorageApi
+        {
+            ForceTempUid = 9999 // Different from expected 1000
+        };
+        mock.AddEntry("/var/lib/internet-evidence-monitor", isDir: true, isSymlink: false, mode: 0x1C0, uid: 1000, gid: 1000);
+
+        var policy = LinuxStorageOwnershipPolicy.CreateSystem(uid: 1000, gid: 1000);
+        var provider = new LinuxEvidenceKeyProvider(LinuxSigningIdentityScope.SystemInstallation, "/var/lib/internet-evidence-monitor", mock, policy);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => provider.GetOrCreateIdentityAsync());
+        Assert.False(mock.TryGetEntry("/var/lib/internet-evidence-monitor/keys/evidence-signing-v1.p8", out _));
+    }
+
+    [Fact]
+    public async Task R1_C_D_Actual_Rename_Race_EEXIST_Uses_Existing_Winner_Key()
+    {
         using var winnerEcdsa = ECDsa.Create(ECCurve.NamedCurves.nistP256);
         var winnerPkcs8 = winnerEcdsa.ExportPkcs8PrivateKey();
         var winnerKeyId = "sha256:" + Convert.ToHexStringLower(SHA256.HashData(winnerEcdsa.ExportSubjectPublicKeyInfo()));
 
         var mock = new MockPosixStorageApi();
         mock.AddEntry("/var/lib/internet-evidence-monitor", isDir: true, isSymlink: false, mode: 0x1C0, uid: 1000, gid: 1000);
-        mock.AddEntry("/var/lib/internet-evidence-monitor/keys", isDir: true, isSymlink: false, mode: 0x1C0, uid: 1000, gid: 1000);
-        mock.AddEntry("/var/lib/internet-evidence-monitor/keys/evidence-signing-v1.p8", isDir: false, isSymlink: false, mode: 0x180, uid: 1000, gid: 1000, content: winnerPkcs8);
+
+        // Hook injects winner key right before renameat2 executes, simulating a true multi-process race
+        mock.BeforeRenameAt2Hook = () =>
+        {
+            mock.AddEntry("/var/lib/internet-evidence-monitor/keys/evidence-signing-v1.p8", isDir: false, isSymlink: false, mode: 0x180, uid: 1000, gid: 1000, content: winnerPkcs8);
+            mock.LastErrno = LinuxPosixStorageConstants.EEXIST;
+            return false; // rename fails with EEXIST because winner was published first
+        };
 
         var policy = LinuxStorageOwnershipPolicy.CreateSystem(uid: 1000, gid: 1000);
         var provider = new LinuxEvidenceKeyProvider(LinuxSigningIdentityScope.SystemInstallation, "/var/lib/internet-evidence-monitor", mock, policy);
@@ -295,11 +366,73 @@ public sealed class LinuxEvidenceKeyProviderTests
     }
 
     [Fact]
-    public async Task Fsync_Failure_Aborts_Key_Provisioning()
+    public async Task R1_C_Rename_EIO_Must_Not_Reinterpret_As_Race_Even_If_Final_Appears()
+    {
+        using var winnerEcdsa = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        var winnerPkcs8 = winnerEcdsa.ExportPkcs8PrivateKey();
+
+        var mock = new MockPosixStorageApi();
+        mock.AddEntry("/var/lib/internet-evidence-monitor", isDir: true, isSymlink: false, mode: 0x1C0, uid: 1000, gid: 1000);
+
+        mock.BeforeRenameAt2Hook = () =>
+        {
+            mock.AddEntry("/var/lib/internet-evidence-monitor/keys/evidence-signing-v1.p8", isDir: false, isSymlink: false, mode: 0x180, uid: 1000, gid: 1000, content: winnerPkcs8);
+            mock.LastErrno = LinuxPosixStorageConstants.EIO; // I/O error, not EEXIST!
+            return false;
+        };
+
+        var policy = LinuxStorageOwnershipPolicy.CreateSystem(uid: 1000, gid: 1000);
+        var provider = new LinuxEvidenceKeyProvider(LinuxSigningIdentityScope.SystemInstallation, "/var/lib/internet-evidence-monitor", mock, policy);
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => provider.GetOrCreateIdentityAsync());
+        Assert.Contains("errno 5", ex.Message); // EIO = 5
+    }
+
+    [Fact]
+    public async Task R1_C_Rename_EINVAL_Fails_Closed()
+    {
+        var mock = new MockPosixStorageApi();
+        mock.AddEntry("/var/lib/internet-evidence-monitor", isDir: true, isSymlink: false, mode: 0x1C0, uid: 1000, gid: 1000);
+
+        mock.BeforeRenameAt2Hook = () =>
+        {
+            mock.LastErrno = LinuxPosixStorageConstants.EINVAL;
+            return false;
+        };
+
+        var policy = LinuxStorageOwnershipPolicy.CreateSystem(uid: 1000, gid: 1000);
+        var provider = new LinuxEvidenceKeyProvider(LinuxSigningIdentityScope.SystemInstallation, "/var/lib/internet-evidence-monitor", mock, policy);
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => provider.GetOrCreateIdentityAsync());
+        Assert.Contains("errno 22", ex.Message); // EINVAL = 22
+    }
+
+    [Fact]
+    public async Task R1_G_Partial_Write_And_Partial_Read_Complete_Successfully()
     {
         var mock = new MockPosixStorageApi
         {
-            FailFsync = true // Simulates I/O fsync failure
+            WriteChunkSize = 16, // Forces WriteAll loop
+            ReadChunkSize = 16   // Forces ReadExactly loop
+        };
+        mock.AddEntry("/var/lib/internet-evidence-monitor", isDir: true, isSymlink: false, mode: 0x1C0, uid: 1000, gid: 1000);
+
+        var policy = LinuxStorageOwnershipPolicy.CreateSystem(uid: 1000, gid: 1000);
+        var provider = new LinuxEvidenceKeyProvider(LinuxSigningIdentityScope.SystemInstallation, "/var/lib/internet-evidence-monitor", mock, policy);
+
+        using var id1 = await provider.GetOrCreateIdentityAsync();
+        Assert.NotNull(id1);
+
+        using var id2 = await provider.GetOrCreateIdentityAsync();
+        Assert.Equal(id1.KeyId, id2.KeyId);
+    }
+
+    [Fact]
+    public async Task R1_G_Write_Error_Fails_Closed()
+    {
+        var mock = new MockPosixStorageApi
+        {
+            FailWrite = true
         };
         mock.AddEntry("/var/lib/internet-evidence-monitor", isDir: true, isSymlink: false, mode: 0x1C0, uid: 1000, gid: 1000);
 
@@ -307,6 +440,41 @@ public sealed class LinuxEvidenceKeyProviderTests
         var provider = new LinuxEvidenceKeyProvider(LinuxSigningIdentityScope.SystemInstallation, "/var/lib/internet-evidence-monitor", mock, policy);
 
         await Assert.ThrowsAsync<InvalidOperationException>(() => provider.GetOrCreateIdentityAsync());
+    }
+
+    [Fact]
+    public async Task R1_G_Read_Error_Throws_SigningIdentityUnavailableException()
+    {
+        using var ecdsa = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        var pkcs8 = ecdsa.ExportPkcs8PrivateKey();
+
+        var mock = new MockPosixStorageApi
+        {
+            FailRead = true
+        };
+        mock.AddEntry("/var/lib/internet-evidence-monitor", isDir: true, isSymlink: false, mode: 0x1C0, uid: 1000, gid: 1000);
+        mock.AddEntry("/var/lib/internet-evidence-monitor/keys", isDir: true, isSymlink: false, mode: 0x1C0, uid: 1000, gid: 1000);
+        mock.AddEntry("/var/lib/internet-evidence-monitor/keys/evidence-signing-v1.p8", isDir: false, isSymlink: false, mode: 0x180, uid: 1000, gid: 1000, content: pkcs8);
+
+        var policy = LinuxStorageOwnershipPolicy.CreateSystem(uid: 1000, gid: 1000);
+        var provider = new LinuxEvidenceKeyProvider(LinuxSigningIdentityScope.SystemInstallation, "/var/lib/internet-evidence-monitor", mock, policy);
+
+        await Assert.ThrowsAsync<SigningIdentityUnavailableException>(() => provider.GetOrCreateIdentityAsync());
+    }
+
+    [Fact]
+    public async Task R1_F_Missing_Portable_StateRoot_Throws_SigningIdentityUnavailableException()
+    {
+        var mock = new MockPosixStorageApi(); // Empty filesystem, portable StateRoot does not exist!
+
+        var env = new Dictionary<string, string> { ["HOME"] = "/home/user" };
+        var provider = new LinuxEvidenceKeyProvider(
+            scope: LinuxSigningIdentityScope.PortableUser,
+            posix: mock,
+            getEnvironmentVariable: k => env.GetValueOrDefault(k));
+
+        var ex = await Assert.ThrowsAsync<SigningIdentityUnavailableException>(() => provider.GetOrCreateIdentityAsync());
+        Assert.Contains("does not exist", ex.Message);
     }
 
     // ==========================================
@@ -365,7 +533,17 @@ public sealed class LinuxEvidenceKeyProviderTests
 
         public bool FailOpenAt2 { get; set; }
         public bool FailFsync { get; set; }
-        public bool FailFchmod { get; set; }
+        public bool FailKeysDirFsync { get; set; }
+        public bool FailFchmodOnTemp { get; set; }
+        public bool FailWrite { get; set; }
+        public bool FailRead { get; set; }
+        public int WriteChunkSize { get; set; } = int.MaxValue;
+        public int ReadChunkSize { get; set; } = int.MaxValue;
+        public uint? ForceTempUid { get; set; }
+
+        public Func<bool>? BeforeRenameAt2Hook { get; set; }
+        public int LastErrno { get; set; }
+
         public int WriteCallCount { get; private set; }
         public int FchmodCallCount { get; private set; }
         public int FchownCallCount { get; private set; }
@@ -448,12 +626,14 @@ public sealed class LinuxEvidenceKeyProviderTests
 
             if (exists && isOcreat && isOexcl)
             {
-                return -1; // EEXIST
+                LastErrno = LinuxPosixStorageConstants.EEXIST;
+                return -1;
             }
 
             if (!exists && isOcreat)
             {
-                AddEntry(fullPath, isDir: false, isSymlink: false, mode: (int)how.Mode, uid: 1000, gid: 1000);
+                uint uid = ForceTempUid ?? 1000;
+                AddEntry(fullPath, isDir: false, isSymlink: false, mode: (int)how.Mode, uid: uid, gid: 1000);
             }
 
             if (_entries.ContainsKey(fullPath))
@@ -510,9 +690,13 @@ public sealed class LinuxEvidenceKeyProviderTests
 
         public int Fchmod(int fd, int mode)
         {
-            if (FailFchmod) return -1;
+            if (_openFds.TryGetValue(fd, out var path) && path.Contains(".tmp.") && FailFchmodOnTemp)
+            {
+                return -1;
+            }
+
             FchmodCallCount++;
-            if (_openFds.TryGetValue(fd, out var path) && _entries.TryGetValue(path, out var entry))
+            if (_openFds.TryGetValue(fd, out var p) && _entries.TryGetValue(p, out var entry))
             {
                 uint cleanMode = (entry.Stat.Mode & ~0xFFFu) | (uint)(mode & 0xFFF);
                 entry.Stat.Mode = cleanMode;
@@ -535,6 +719,12 @@ public sealed class LinuxEvidenceKeyProviderTests
 
         public int RenameAt2(int olddirfd, string oldpath, int newdirfd, string newpath, uint flags)
         {
+            if (BeforeRenameAt2Hook != null)
+            {
+                bool proceed = BeforeRenameAt2Hook();
+                if (!proceed) return -1;
+            }
+
             if (!_openFds.TryGetValue(olddirfd, out var oldBase) || !_openFds.TryGetValue(newdirfd, out var newBase))
                 return -1;
 
@@ -547,6 +737,7 @@ public sealed class LinuxEvidenceKeyProviderTests
             {
                 if ((flags & LinuxPosixStorageConstants.RENAME_NOREPLACE) != 0)
                 {
+                    LastErrno = LinuxPosixStorageConstants.EEXIST;
                     return -1; // EEXIST
                 }
             }
@@ -565,26 +756,29 @@ public sealed class LinuxEvidenceKeyProviderTests
 
         public int Write(int fd, ReadOnlySpan<byte> buffer)
         {
+            if (FailWrite) return -1;
             WriteCallCount++;
             if (_openFds.TryGetValue(fd, out var path) && _entries.TryGetValue(path, out var entry))
             {
-                var newContent = new byte[entry.Content.Length + buffer.Length];
+                int toWrite = Math.Min(buffer.Length, WriteChunkSize);
+                var newContent = new byte[entry.Content.Length + toWrite];
                 Buffer.BlockCopy(entry.Content, 0, newContent, 0, entry.Content.Length);
-                buffer.CopyTo(newContent.AsSpan(entry.Content.Length));
+                buffer.Slice(0, toWrite).CopyTo(newContent.AsSpan(entry.Content.Length));
                 entry.Content = newContent;
                 entry.Stat.Size = newContent.Length;
-                return buffer.Length;
+                return toWrite;
             }
             return -1;
         }
 
         public int Read(int fd, Span<byte> buffer)
         {
+            if (FailRead) return -1;
             if (_openFds.TryGetValue(fd, out var path) && _entries.TryGetValue(path, out var entry))
             {
                 int available = entry.Content.Length - entry.ReadOffset;
                 if (available <= 0) return 0;
-                int toCopy = Math.Min(buffer.Length, available);
+                int toCopy = Math.Min(Math.Min(buffer.Length, available), ReadChunkSize);
                 entry.Content.AsSpan(entry.ReadOffset, toCopy).CopyTo(buffer);
                 entry.ReadOffset += toCopy;
                 return toCopy;
@@ -592,7 +786,15 @@ public sealed class LinuxEvidenceKeyProviderTests
             return -1;
         }
 
-        public int Fsync(int fd) => FailFsync ? -1 : 0;
+        public int Fsync(int fd)
+        {
+            if (FailFsync) return -1;
+            if (_openFds.TryGetValue(fd, out var path) && path.EndsWith("/keys") && FailKeysDirFsync)
+            {
+                return -1;
+            }
+            return 0;
+        }
 
         public int Close(int fd)
         {
@@ -600,6 +802,7 @@ public sealed class LinuxEvidenceKeyProviderTests
             return 0;
         }
 
+        public int GetLastErrno() => LastErrno;
         public uint GetEuid() => 1000;
         public uint GetEgid() => 1000;
     }
