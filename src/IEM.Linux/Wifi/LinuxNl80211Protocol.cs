@@ -68,6 +68,18 @@ public sealed record LinuxWirelessAssociationObservation(
     uint? Generation,
     LinuxNl80211DumpStatus DumpStatus);
 
+public sealed record LinuxComposedAssociationObservation(
+    int IfIndex,
+    string IfName,
+    uint WiphyIndex,
+    LinuxWirelessAssociationState State,
+    IReadOnlyList<LinuxAssociatedBssLink> Links,
+    ulong? Wdev,
+    uint? Generation,
+    LinuxNl80211StationInfo? StationInfo,
+    bool ContinuityVerified,
+    LinuxNl80211DumpStatus DumpStatus);
+
 public sealed record LinuxNl80211BssInfo(
     int IfIndex,
     byte[] Bssid,

@@ -313,6 +313,227 @@ public sealed class LinuxNl80211Radio : IWirelessRadio, IDisposable, IAsyncDispo
     }
 
     /// <summary>
+    /// Captures full composed wireless association observation (Phase 3.1-7B-3).
+    /// Orchestrates BSS association truth (7B-1) with station peer enrichment (7B-2).
+    /// Enforces t0 -> station -> t2 temporal continuity with bounded retry.
+    /// Invariants 255-258, 262.
+    /// </summary>
+    public async Task<LinuxComposedAssociationObservation?> ReadComposedAssociationObservationAsync(
+        string interfaceId,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(interfaceId))
+        {
+            return null;
+        }
+
+        const int maxAttempts = 2; // Exactly max 2 attempts (Attempt 1 + 1 retry on drift)
+
+        LinuxWirelessAssociationObservation? freshestBss = null;
+
+        for (int attempt = 1; attempt <= maxAttempts; attempt++)
+        {
+            var t0 = await ReadAssociationObservationAsync(interfaceId, cancellationToken).ConfigureAwait(false);
+            if (t0 == null)
+            {
+                return null;
+            }
+
+            freshestBss = t0;
+
+            // Invariant: Non-associated or Unknown states NEVER invoke GET_STATION
+            if (t0.State != LinuxWirelessAssociationState.Associated || !t0.Wdev.HasValue)
+            {
+                return new LinuxComposedAssociationObservation(
+                    IfIndex: t0.IfIndex,
+                    IfName: t0.IfName,
+                    WiphyIndex: t0.WiphyIndex,
+                    State: t0.State,
+                    Links: t0.Links,
+                    Wdev: t0.Wdev,
+                    Generation: t0.Generation,
+                    StationInfo: null,
+                    ContinuityVerified: t0.State == LinuxWirelessAssociationState.NotAssociated,
+                    DumpStatus: t0.DumpStatus);
+            }
+
+            // Extract peer MAC for station query (Non-MLO = single BSSID, MLO = proven common MLD address)
+            if (!TryExtractPeerMac(t0, out var peerMac) || peerMac == null)
+            {
+                // Inconsistent or missing MLD identity: do not guess, return Associated with StationInfo = null
+                return new LinuxComposedAssociationObservation(
+                    IfIndex: t0.IfIndex,
+                    IfName: t0.IfName,
+                    WiphyIndex: t0.WiphyIndex,
+                    State: LinuxWirelessAssociationState.Associated,
+                    Links: t0.Links,
+                    Wdev: t0.Wdev,
+                    Generation: t0.Generation,
+                    StationInfo: null,
+                    ContinuityVerified: true,
+                    DumpStatus: t0.DumpStatus);
+            }
+
+            var token = new LinuxNl80211StationCorrelationToken(
+                IfIndex: t0.IfIndex,
+                Wdev: t0.Wdev.Value,
+                WiphyIndex: t0.WiphyIndex,
+                PeerMac: peerMac,
+                PeerMacString: LinuxNl80211Protocol.FormatMacAddress(peerMac),
+                BssGeneration: t0.Generation ?? 0);
+
+            // t1: Query station metadata
+            var staInfo = await ReadStationInfoAsync(token, cancellationToken).ConfigureAwait(false);
+
+            // t2: Re-read BSS observation to verify continuity
+            var t2 = await ReadAssociationObservationAsync(interfaceId, cancellationToken).ConfigureAwait(false);
+            if (t2 == null)
+            {
+                return null;
+            }
+
+            freshestBss = t2;
+
+            if (AreAssociationIdentitiesEqual(t0, t2))
+            {
+                // Continuity verified: stable across composition window
+                return new LinuxComposedAssociationObservation(
+                    IfIndex: t2.IfIndex,
+                    IfName: t2.IfName,
+                    WiphyIndex: t2.WiphyIndex,
+                    State: t2.State,
+                    Links: t2.Links,
+                    Wdev: t2.Wdev,
+                    Generation: t2.Generation,
+                    StationInfo: staInfo,
+                    ContinuityVerified: true,
+                    DumpStatus: t2.DumpStatus);
+            }
+
+            // Drift detected between t0 and t2: station info from t1 is stale for the new state, discard it.
+            // On attempt 1, loop continues to attempt 2.
+        }
+
+        // After max attempts with continuous drift, return freshest authoritative BSS observation with StationInfo = null
+        return new LinuxComposedAssociationObservation(
+            IfIndex: freshestBss!.IfIndex,
+            IfName: freshestBss.IfName,
+            WiphyIndex: freshestBss.WiphyIndex,
+            State: freshestBss.State,
+            Links: freshestBss.Links,
+            Wdev: freshestBss.Wdev,
+            Generation: freshestBss.Generation,
+            StationInfo: null,
+            ContinuityVerified: false,
+            DumpStatus: freshestBss.DumpStatus);
+    }
+
+    private static bool TryExtractPeerMac(LinuxWirelessAssociationObservation obs, out byte[]? peerMac)
+    {
+        peerMac = null;
+        if (obs.Links == null || obs.Links.Count == 0)
+        {
+            return false;
+        }
+
+        if (obs.Links.Count == 1)
+        {
+            var single = obs.Links[0];
+            if (single.MldAddressBytes != null && single.MldAddressBytes.Length == 6)
+            {
+                peerMac = single.MldAddressBytes;
+                return true;
+            }
+            if (single.BssidBytes != null && single.BssidBytes.Length == 6)
+            {
+                peerMac = single.BssidBytes;
+                return true;
+            }
+            return false;
+        }
+
+        // MLO (multi-link): all associated links must share the exact same valid 6-byte MLD address
+        byte[]? commonMld = null;
+        foreach (var link in obs.Links)
+        {
+            if (link.MldAddressBytes == null || link.MldAddressBytes.Length != 6)
+            {
+                // Incomplete / inconsistent link identity
+                return false;
+            }
+
+            if (commonMld == null)
+            {
+                commonMld = link.MldAddressBytes;
+            }
+            else if (!commonMld.AsSpan().SequenceEqual(link.MldAddressBytes))
+            {
+                // Links disagree on MLD address
+                return false;
+            }
+        }
+
+        if (commonMld != null)
+        {
+            peerMac = commonMld;
+            return true;
+        }
+
+        return false;
+    }
+
+    private static bool AreAssociationIdentitiesEqual(LinuxWirelessAssociationObservation a, LinuxWirelessAssociationObservation b)
+    {
+        if (a.IfIndex != b.IfIndex ||
+            a.Wdev != b.Wdev ||
+            a.WiphyIndex != b.WiphyIndex ||
+            a.Generation != b.Generation ||
+            a.State != b.State)
+        {
+            return false;
+        }
+
+        if (a.State != LinuxWirelessAssociationState.Associated)
+        {
+            return true;
+        }
+
+        if (a.Links.Count != b.Links.Count)
+        {
+            return false;
+        }
+
+        // Compare links as an unordered set of (MloLinkId, Bssid, MldAddress)
+        var matched = new bool[b.Links.Count];
+
+        foreach (var linkA in a.Links)
+        {
+            bool found = false;
+            for (int i = 0; i < b.Links.Count; i++)
+            {
+                if (matched[i]) continue;
+                var linkB = b.Links[i];
+
+                if (linkA.MloLinkId == linkB.MloLinkId &&
+                    string.Equals(linkA.Bssid, linkB.Bssid, StringComparison.OrdinalIgnoreCase) &&
+                    string.Equals(linkA.MldAddress, linkB.MldAddress, StringComparison.OrdinalIgnoreCase))
+                {
+                    matched[i] = true;
+                    found = true;
+                    break;
+                }
+            }
+
+            if (!found)
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /// <summary>
     /// Queries station metadata for a verified peer MAC associated with an interface using a correlation token.
     /// Invariant 257: Station metadata is enrichment truth and never changes the BSS association truth.
     /// Returns null if station query fails (e.g. ENOENT, timeout, permissions, WDEV mismatch), leaving association intact.
