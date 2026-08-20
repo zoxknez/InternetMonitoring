@@ -99,7 +99,8 @@ public sealed record LinuxNl80211InterfaceInfo(
     byte[]? MacAddress,
     int IfType,
     byte[]? Ssid,
-    uint? Frequency);
+    uint? Frequency,
+    ulong? Wdev = null);
 
 /// <summary>
 /// Structured physical wireless device facts read from NL80211_CMD_GET_WIPHY.
@@ -143,11 +144,11 @@ public static class LinuxNl80211Protocol
     public const ushort NL80211_ATTR_GENERATION = 46;
     public const ushort NL80211_ATTR_BSS = 47;
     public const ushort NL80211_ATTR_SSID = 52;
-    public const ushort NL80211_ATTR_WDEV = 150;
+    public const ushort NL80211_ATTR_WDEV = 153;
     public const ushort NL80211_ATTR_SPLIT_WIPHY_DUMP = 174;
 
-    // Nested NL80211_ATTR_BSS attributes
-    public const ushort NL80211_BSS_UNSPEC = 0;
+    // Nested NL80211_ATTR_BSS attributes (Linux kernel enum nl80211_bss)
+    public const ushort NL80211_BSS_INVALID = 0;
     public const ushort NL80211_BSS_BSSID = 1;
     public const ushort NL80211_BSS_FREQUENCY = 2;
     public const ushort NL80211_BSS_TSF = 3;
@@ -157,14 +158,21 @@ public static class LinuxNl80211Protocol
     public const ushort NL80211_BSS_SIGNAL_MBM = 7;
     public const ushort NL80211_BSS_SIGNAL_UNSPEC = 8;
     public const ushort NL80211_BSS_STATUS = 9;
-    public const ushort NL80211_BSS_BEACON_IES = 10;
-    public const ushort NL80211_BSS_SEEN_MS_AGO = 11;
-    public const ushort NL80211_BSS_BEACON_TSF = 12;
-    public const ushort NL80211_BSS_PRESP_DATA = 13;
-    public const ushort NL80211_BSS_LAST_SEEN_BOOTTIME = 14;
+    public const ushort NL80211_BSS_SEEN_MS_AGO = 10;
+    public const ushort NL80211_BSS_BEACON_IES = 11;
+    public const ushort NL80211_BSS_CHAN_WIDTH = 12;
+    public const ushort NL80211_BSS_BEACON_TSF = 13;
+    public const ushort NL80211_BSS_PRESP_DATA = 14;
+    public const ushort NL80211_BSS_LAST_SEEN_BOOTTIME = 15;
+    public const ushort NL80211_BSS_PAD = 16;
+    public const ushort NL80211_BSS_PARENT_TSF = 17;
+    public const ushort NL80211_BSS_PARENT_BSSID = 18;
+    public const ushort NL80211_BSS_CHAIN_SIGNAL = 19;
     public const ushort NL80211_BSS_FREQUENCY_OFFSET = 20;
     public const ushort NL80211_BSS_MLO_LINK_ID = 21;
     public const ushort NL80211_BSS_MLD_ADDR = 22;
+    public const ushort NL80211_BSS_USE_FOR = 23;
+    public const ushort NL80211_BSS_CANNOT_USE_REASONS = 24;
 
     // BSS status enum (NL80211_BSS_STATUS)
     public const uint NL80211_BSS_STATUS_AUTHENTICATED = 0;
@@ -413,6 +421,7 @@ public static class LinuxNl80211Protocol
         int iftype = 0;
         byte[]? ssid = null;
         uint? freq = null;
+        ulong? wdev = null;
 
         foreach (var (type, value) in LinuxGenlProtocol.EnumerateAttributes(payload))
         {
@@ -449,12 +458,16 @@ public static class LinuxNl80211Protocol
                 case NL80211_ATTR_WIPHY_FREQ:
                     if (value.Length >= 4) freq = MemoryMarshal.Read<uint>(value);
                     break;
+
+                case NL80211_ATTR_WDEV:
+                    if (value.Length == 8) wdev = MemoryMarshal.Read<ulong>(value);
+                    break;
             }
         }
 
         if (ifindex > 0 && !string.IsNullOrEmpty(ifname))
         {
-            ifinfo = new LinuxNl80211InterfaceInfo(ifindex, ifname, wiphy, wiphyName, mac, iftype, ssid, freq);
+            ifinfo = new LinuxNl80211InterfaceInfo(ifindex, ifname, wiphy, wiphyName, mac, iftype, ssid, freq, wdev);
             return true;
         }
 
@@ -709,13 +722,14 @@ public static class LinuxNl80211Protocol
 
     /// <summary>
     /// Parses an NL80211_CMD_GET_SCAN multi-part dump response with full status provenance,
-    /// strict sequence matching, top-level ifindex verification, and MLO link preservation.
+    /// strict sequence matching, top-level ifindex and wdev verification, generation consistency, and MLO link preservation.
     /// </summary>
     public static LinuxNl80211DumpResult<LinuxNl80211BssInfo> ParseBssDump(
         ReadOnlySpan<byte> buffer,
         uint expectedSequence,
         ushort expectedFamilyId,
-        int expectedIfIndex)
+        int expectedIfIndex,
+        ulong? expectedWdev = null)
     {
         var bssList = new List<LinuxNl80211BssInfo>();
         if (buffer.Length < LinuxGenlProtocol.NlmsgHeaderSize)
@@ -725,6 +739,7 @@ public static class LinuxNl80211Protocol
 
         bool seenDone = false;
         int offset = 0;
+        uint? dumpGeneration = null;
 
         while (offset + LinuxGenlProtocol.NlmsgHeaderSize <= buffer.Length)
         {
@@ -794,14 +809,29 @@ public static class LinuxNl80211Protocol
 
                 var payload = buffer.Slice(offset + LinuxGenlProtocol.NlmsgHeaderSize + LinuxGenlProtocol.GenlHeaderSize,
                                            nlmsgLen - (LinuxGenlProtocol.NlmsgHeaderSize + LinuxGenlProtocol.GenlHeaderSize));
-                if (!TryParseBssPayload(payload, expectedIfIndex, out var bssInfo))
+                if (!TryParseBssPayload(payload, expectedIfIndex, expectedWdev, out var bssInfo))
                 {
-                    // Structural Netlink or attribution failure
+                    // Structural Netlink, exact length, or attribution failure
                     return new LinuxNl80211DumpResult<LinuxNl80211BssInfo>(Array.Empty<LinuxNl80211BssInfo>(), LinuxNl80211DumpStatus.Malformed, -22);
                 }
 
                 if (bssInfo != null)
                 {
+                    if (!bssInfo.Generation.HasValue)
+                    {
+                        return new LinuxNl80211DumpResult<LinuxNl80211BssInfo>(Array.Empty<LinuxNl80211BssInfo>(), LinuxNl80211DumpStatus.Malformed, -22);
+                    }
+
+                    if (dumpGeneration == null)
+                    {
+                        dumpGeneration = bssInfo.Generation.Value;
+                    }
+                    else if (dumpGeneration.Value != bssInfo.Generation.Value)
+                    {
+                        // Invariant: Generation shifted during dump; snapshot must be retried
+                        return new LinuxNl80211DumpResult<LinuxNl80211BssInfo>(Array.Empty<LinuxNl80211BssInfo>(), LinuxNl80211DumpStatus.Interrupted, -11, Interrupted: true);
+                    }
+
                     bssList.Add(bssInfo);
                 }
             }
@@ -817,7 +847,7 @@ public static class LinuxNl80211Protocol
         return new LinuxNl80211DumpResult<LinuxNl80211BssInfo>(bssList, LinuxNl80211DumpStatus.Complete, 0, SawDone: true);
     }
 
-    private static bool TryParseBssPayload(ReadOnlySpan<byte> payload, int expectedIfIndex, out LinuxNl80211BssInfo? bssInfo)
+    private static bool TryParseBssPayload(ReadOnlySpan<byte> payload, int expectedIfIndex, ulong? expectedWdev, out LinuxNl80211BssInfo? bssInfo)
     {
         bssInfo = null;
 
@@ -836,13 +866,16 @@ public static class LinuxNl80211Protocol
             switch (type)
             {
                 case NL80211_ATTR_IFINDEX:
-                    if (value.Length >= 4) msgIfIndex = MemoryMarshal.Read<int>(value);
+                    if (value.Length == 4) msgIfIndex = MemoryMarshal.Read<int>(value);
+                    else return false;
                     break;
                 case NL80211_ATTR_WDEV:
-                    if (value.Length >= 8) wdev = MemoryMarshal.Read<ulong>(value);
+                    if (value.Length == 8) wdev = MemoryMarshal.Read<ulong>(value);
+                    else return false;
                     break;
                 case NL80211_ATTR_GENERATION:
-                    if (value.Length >= 4) generation = MemoryMarshal.Read<uint>(value);
+                    if (value.Length == 4) generation = MemoryMarshal.Read<uint>(value);
+                    else return false;
                     break;
                 case NL80211_ATTR_BSS:
                     bssAttrBytes = value;
@@ -850,9 +883,20 @@ public static class LinuxNl80211Protocol
             }
         }
 
-        if (msgIfIndex.HasValue && msgIfIndex.Value != expectedIfIndex)
+        // Exact attribution requirements
+        if (!msgIfIndex.HasValue || msgIfIndex.Value != expectedIfIndex)
         {
-            return false; // Cross-interface attribution violation
+            return false; // Mandatory IFINDEX missing or mismatched
+        }
+
+        if (!wdev.HasValue || (expectedWdev.HasValue && wdev.Value != expectedWdev.Value))
+        {
+            return false; // Mandatory WDEV missing or mismatched
+        }
+
+        if (!generation.HasValue)
+        {
+            return false; // Mandatory GENERATION missing
         }
 
         if (bssAttrBytes == null || bssAttrBytes.Length == 0)
@@ -882,31 +926,39 @@ public static class LinuxNl80211Protocol
             {
                 case NL80211_BSS_BSSID:
                     if (bval.Length == 6) bssid = bval;
-                    else return false; // Invalid BSSID length
+                    else return false; // Exact 6 bytes
                     break;
                 case NL80211_BSS_FREQUENCY:
-                    if (bval.Length >= 4) freq = MemoryMarshal.Read<uint>(bval);
+                    if (bval.Length == 4) freq = MemoryMarshal.Read<uint>(bval);
+                    else return false; // Exact 4 bytes
                     break;
                 case NL80211_BSS_STATUS:
-                    if (bval.Length >= 4) status = MemoryMarshal.Read<uint>(bval);
+                    if (bval.Length == 4) status = MemoryMarshal.Read<uint>(bval);
+                    else return false; // Exact 4 bytes
                     break;
                 case NL80211_BSS_SIGNAL_MBM:
-                    if (bval.Length >= 4) signalMbm = MemoryMarshal.Read<int>(bval); // signed s32
+                    if (bval.Length == 4) signalMbm = MemoryMarshal.Read<int>(bval); // signed s32
+                    else return false; // Exact 4 bytes
                     break;
                 case NL80211_BSS_SIGNAL_UNSPEC:
-                    if (bval.Length >= 1) signalUnspec = bval[0];
+                    if (bval.Length == 1) signalUnspec = bval[0];
+                    else return false; // Exact 1 byte
                     break;
                 case NL80211_BSS_SEEN_MS_AGO:
-                    if (bval.Length >= 4) seenMsAgo = MemoryMarshal.Read<uint>(bval);
+                    if (bval.Length == 4) seenMsAgo = MemoryMarshal.Read<uint>(bval);
+                    else return false; // Exact 4 bytes
                     break;
                 case NL80211_BSS_MLO_LINK_ID:
-                    if (bval.Length >= 1) mloLinkId = bval[0];
+                    if (bval.Length == 1) mloLinkId = bval[0];
+                    else return false; // Exact 1 byte
                     break;
                 case NL80211_BSS_MLD_ADDR:
                     if (bval.Length == 6) mldAddr = bval;
+                    else return false; // Exact 6 bytes
                     break;
                 case NL80211_BSS_LAST_SEEN_BOOTTIME:
-                    if (bval.Length >= 8) lastSeenBoottime = MemoryMarshal.Read<ulong>(bval);
+                    if (bval.Length == 8) lastSeenBoottime = MemoryMarshal.Read<ulong>(bval);
+                    else return false; // Exact 8 bytes
                     break;
                 case NL80211_BSS_INFORMATION_ELEMENTS:
                     ies = bval;
@@ -914,9 +966,9 @@ public static class LinuxNl80211Protocol
             }
         }
 
-        if (bssid == null)
+        if (bssid == null || !freq.HasValue)
         {
-            return false; // BSSID is mandatory for valid BSS record
+            return false; // BSSID and FREQUENCY are mandatory
         }
 
         string bssidStr = FormatMacAddress(bssid);
@@ -927,7 +979,7 @@ public static class LinuxNl80211Protocol
             : (null, null, true);
 
         bssInfo = new LinuxNl80211BssInfo(
-            IfIndex: msgIfIndex ?? expectedIfIndex,
+            IfIndex: msgIfIndex.Value,
             Bssid: bssid,
             BssidString: bssidStr,
             SsidBytes: ssidBytes,

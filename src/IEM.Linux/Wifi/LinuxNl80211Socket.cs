@@ -311,6 +311,7 @@ public sealed class LinuxNl80211Socket : ILinuxNl80211Socket
     public async Task<LinuxNl80211DumpResult<LinuxNl80211BssInfo>> DumpBssAsync(
         ushort nl80211FamilyId,
         int ifindex,
+        ulong? expectedWdev = null,
         CancellationToken cancellationToken = default)
     {
         if (!RuntimeInformation.IsOSPlatform(OSPlatform.Linux) || nl80211FamilyId == 0 || ifindex <= 0)
@@ -375,7 +376,7 @@ public sealed class LinuxNl80211Socket : ILinuxNl80211Socket
                 return new LinuxNl80211DumpResult<LinuxNl80211BssInfo>(Array.Empty<LinuxNl80211BssInfo>(), timedOut ? LinuxNl80211DumpStatus.TimedOut : LinuxNl80211DumpStatus.Incomplete, -11);
             }
 
-            var result = LinuxNl80211Protocol.ParseBssDump(totalBytes, seq, nl80211FamilyId, ifindex);
+            var result = LinuxNl80211Protocol.ParseBssDump(totalBytes, seq, nl80211FamilyId, ifindex, expectedWdev);
             if (timedOut && !result.IsComplete)
             {
                 return new LinuxNl80211DumpResult<LinuxNl80211BssInfo>(Array.Empty<LinuxNl80211BssInfo>(), LinuxNl80211DumpStatus.TimedOut, -11);

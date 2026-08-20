@@ -175,7 +175,7 @@ public sealed class LinuxNl80211Radio : IWirelessRadio, IDisposable, IAsyncDispo
             return null;
         }
 
-        var bssDump = await _socket.DumpBssAsync(family.FamilyId, targetIf.IfIndex, cancellationToken).ConfigureAwait(false);
+        var bssDump = await _socket.DumpBssAsync(family.FamilyId, targetIf.IfIndex, targetIf.Wdev, cancellationToken).ConfigureAwait(false);
         if (!bssDump.IsComplete)
         {
             // Invariant 256: Incomplete BSS snapshot never becomes Disconnected
@@ -185,13 +185,13 @@ public sealed class LinuxNl80211Radio : IWirelessRadio, IDisposable, IAsyncDispo
                 WiphyIndex: targetIf.WiphyIndex.Value,
                 State: LinuxWirelessAssociationState.Unknown,
                 Links: Array.Empty<LinuxAssociatedBssLink>(),
-                Wdev: null,
+                Wdev: targetIf.Wdev,
                 Generation: null,
                 DumpStatus: bssDump.Status);
         }
 
         var associatedLinks = new List<LinuxAssociatedBssLink>();
-        ulong? wdev = null;
+        ulong? wdev = targetIf.Wdev;
         uint? generation = null;
 
         foreach (var bss in bssDump.Items)
@@ -214,6 +214,39 @@ public sealed class LinuxNl80211Radio : IWirelessRadio, IDisposable, IAsyncDispo
                     SignalUnspec: bss.SignalQuality,
                     SeenMsAgo: bss.SeenMsAgo,
                     LastSeenBootTimeNs: bss.LastSeenBootTimeNs));
+            }
+        }
+
+        if (associatedLinks.Count == 0)
+        {
+            // Invariant: Empty dump NotAssociated verdict requires interface identity continuity check (t0 == t1)
+            var ifDumpT1 = await _socket.DumpInterfacesAsync(family.FamilyId, targetIf.IfIndex, cancellationToken).ConfigureAwait(false);
+            if (!ifDumpT1.IsComplete || ifDumpT1.Items.Count == 0)
+            {
+                return new LinuxWirelessAssociationObservation(
+                    IfIndex: targetIf.IfIndex,
+                    IfName: targetIf.IfName,
+                    WiphyIndex: targetIf.WiphyIndex.Value,
+                    State: LinuxWirelessAssociationState.Unknown,
+                    Links: Array.Empty<LinuxAssociatedBssLink>(),
+                    Wdev: targetIf.Wdev,
+                    Generation: generation,
+                    DumpStatus: bssDump.Status);
+            }
+
+            var t1 = ifDumpT1.Items.FirstOrDefault(i => i.IfIndex == targetIf.IfIndex);
+            if (t1 == null || t1.Wdev != targetIf.Wdev || t1.WiphyIndex != targetIf.WiphyIndex || t1.IfType != targetIf.IfType)
+            {
+                // Identity changed / interface replaced (TOCTOU guard)
+                return new LinuxWirelessAssociationObservation(
+                    IfIndex: targetIf.IfIndex,
+                    IfName: targetIf.IfName,
+                    WiphyIndex: targetIf.WiphyIndex.Value,
+                    State: LinuxWirelessAssociationState.Unknown,
+                    Links: Array.Empty<LinuxAssociatedBssLink>(),
+                    Wdev: targetIf.Wdev,
+                    Generation: generation,
+                    DumpStatus: bssDump.Status);
             }
         }
 

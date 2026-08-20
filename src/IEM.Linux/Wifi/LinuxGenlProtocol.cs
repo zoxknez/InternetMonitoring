@@ -345,17 +345,24 @@ public static class LinuxGenlProtocol
             ushort rawType = MemoryMarshal.Read<ushort>(payload.Slice(offset + 2, 2));
             ushort nlaType = (ushort)(rawType & 0x3FFF);
 
-            if (nlaLen < NlaHeaderSize || offset + nlaLen > payload.Length)
+            int alignedLen = NlaAlign(nlaLen);
+            if (nlaLen < NlaHeaderSize || offset + alignedLen > payload.Length)
             {
                 results.Clear();
-                return false; // Truncated attribute
+                return false; // Truncated attribute or aligned boundary exceeds payload
             }
 
             int valLen = nlaLen - NlaHeaderSize;
             byte[] valBytes = payload.Slice(offset + NlaHeaderSize, valLen).ToArray();
             results.Add((nlaType, valBytes));
 
-            offset += NlaAlign(nlaLen);
+            offset += alignedLen;
+        }
+
+        if (offset != payload.Length)
+        {
+            results.Clear();
+            return false;
         }
 
         return true;

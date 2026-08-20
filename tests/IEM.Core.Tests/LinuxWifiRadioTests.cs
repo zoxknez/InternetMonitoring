@@ -1129,6 +1129,396 @@ public class LinuxWifiRadioTests
         Assert.Null(assoc);
     }
 
+    [Fact]
+    public void Nl80211Protocol_GoldenWire_LiteralAttr10_Decodes_As_SeenMsAgo()
+    {
+        uint seq = 501;
+        const ushort wireFamilyId = 28;
+        const int wireIfIndex = 3;
+        const ulong wireWdev = 0x1000UL;
+        const uint wireGeneration = 100u;
+        const ushort WireAttrIfIndex = 3;
+        const ushort WireAttrWdev = 153;
+        const ushort WireAttrGeneration = 46;
+        const ushort WireAttrBss = 47;
+
+        const ushort WireBssBssid = 1;
+        const ushort WireBssFreq = 2;
+        const ushort WireBssStatus = 9;
+        const ushort WireBssSeenMsAgo = 10;
+
+        var bssMs = new MemoryStream();
+        using (var bbw = new BinaryWriter(bssMs))
+        {
+            // BSSID
+            byte[] bssid = new byte[] { 0x11, 0x22, 0x33, 0x44, 0x55, 0x66 };
+            bbw.Write((ushort)(LinuxGenlProtocol.NlaHeaderSize + 6));
+            bbw.Write(WireBssBssid);
+            bbw.Write(bssid);
+            WritePadding(bbw, LinuxGenlProtocol.NlaHeaderSize + 6);
+
+            // FREQ
+            bbw.Write((ushort)(LinuxGenlProtocol.NlaHeaderSize + 4));
+            bbw.Write(WireBssFreq);
+            bbw.Write(5180u);
+
+            // STATUS
+            bbw.Write((ushort)(LinuxGenlProtocol.NlaHeaderSize + 4));
+            bbw.Write(WireBssStatus);
+            bbw.Write(1u); // ASSOCIATED
+
+            // Wire attr 10 = SEEN_MS_AGO (4 bytes uint)
+            bbw.Write((ushort)(LinuxGenlProtocol.NlaHeaderSize + 4));
+            bbw.Write(WireBssSeenMsAgo);
+            bbw.Write(2500u);
+        }
+        byte[] bssBytes = bssMs.ToArray();
+
+        var msgMs = new MemoryStream();
+        using (var bw = new BinaryWriter(msgMs))
+        {
+            int totalLen = LinuxGenlProtocol.NlmsgHeaderSize + LinuxGenlProtocol.GenlHeaderSize +
+                           LinuxGenlProtocol.NlaAlign(LinuxGenlProtocol.NlaHeaderSize + 4) +
+                           LinuxGenlProtocol.NlaAlign(LinuxGenlProtocol.NlaHeaderSize + 8) +
+                           LinuxGenlProtocol.NlaAlign(LinuxGenlProtocol.NlaHeaderSize + 4) +
+                           LinuxGenlProtocol.NlaAlign(LinuxGenlProtocol.NlaHeaderSize + bssBytes.Length);
+
+            bw.Write(totalLen);
+            bw.Write(wireFamilyId);
+            bw.Write((ushort)0);
+            bw.Write(seq);
+            bw.Write((uint)0);
+
+            bw.Write((byte)34); // NEW_SCAN_RESULTS
+            bw.Write((byte)1);
+            bw.Write((ushort)0);
+
+            // IFINDEX
+            bw.Write((ushort)(LinuxGenlProtocol.NlaHeaderSize + 4));
+            bw.Write(WireAttrIfIndex);
+            bw.Write(wireIfIndex);
+
+            // WDEV (153)
+            bw.Write((ushort)(LinuxGenlProtocol.NlaHeaderSize + 8));
+            bw.Write(WireAttrWdev);
+            bw.Write(wireWdev);
+
+            // GENERATION (46)
+            bw.Write((ushort)(LinuxGenlProtocol.NlaHeaderSize + 4));
+            bw.Write(WireAttrGeneration);
+            bw.Write(wireGeneration);
+
+            // BSS (47)
+            bw.Write((ushort)(LinuxGenlProtocol.NlaHeaderSize + bssBytes.Length));
+            bw.Write((ushort)(WireAttrBss | 0x8000));
+            bw.Write(bssBytes);
+            WritePadding(bw, LinuxGenlProtocol.NlaHeaderSize + bssBytes.Length);
+        }
+
+        var done = BuildMockDoneMessage(seq, error: 0);
+        var stream = CombineBuffers(msgMs.ToArray(), done);
+
+        var res = LinuxNl80211Protocol.ParseBssDump(stream, seq, wireFamilyId, wireIfIndex, wireWdev);
+        Assert.True(res.IsComplete);
+        Assert.Single(res.Items);
+        Assert.Equal(2500u, res.Items[0].SeenMsAgo);
+    }
+
+    [Fact]
+    public void Nl80211Protocol_GoldenWire_LiteralAttr11_Decodes_As_BeaconIes_Never_SeenMsAgo()
+    {
+        uint seq = 502;
+        const ushort wireFamilyId = 28;
+        const int wireIfIndex = 3;
+        const ulong wireWdev = 0x1000UL;
+        const uint wireGeneration = 100u;
+        const ushort WireAttrIfIndex = 3;
+        const ushort WireAttrWdev = 153;
+        const ushort WireAttrGeneration = 46;
+        const ushort WireAttrBss = 47;
+
+        const ushort WireBssBssid = 1;
+        const ushort WireBssFreq = 2;
+        const ushort WireBssStatus = 9;
+        const ushort WireBssBeaconIes = 11;
+
+        var bssMs = new MemoryStream();
+        using (var bbw = new BinaryWriter(bssMs))
+        {
+            byte[] bssid = new byte[] { 0x11, 0x22, 0x33, 0x44, 0x55, 0x66 };
+            bbw.Write((ushort)(LinuxGenlProtocol.NlaHeaderSize + 6));
+            bbw.Write(WireBssBssid);
+            bbw.Write(bssid);
+            WritePadding(bbw, LinuxGenlProtocol.NlaHeaderSize + 6);
+
+            bbw.Write((ushort)(LinuxGenlProtocol.NlaHeaderSize + 4));
+            bbw.Write(WireBssFreq);
+            bbw.Write(5180u);
+
+            bbw.Write((ushort)(LinuxGenlProtocol.NlaHeaderSize + 4));
+            bbw.Write(WireBssStatus);
+            bbw.Write(1u);
+
+            // Wire attr 11 = BEACON_IES (arbitrary raw bytes)
+            byte[] rawBeaconIes = new byte[] { 0xDE, 0xAD, 0xBE, 0xEF, 0x01, 0x02 };
+            bbw.Write((ushort)(LinuxGenlProtocol.NlaHeaderSize + rawBeaconIes.Length));
+            bbw.Write(WireBssBeaconIes);
+            bbw.Write(rawBeaconIes);
+            WritePadding(bbw, LinuxGenlProtocol.NlaHeaderSize + rawBeaconIes.Length);
+        }
+        byte[] bssBytes = bssMs.ToArray();
+
+        var msgMs = new MemoryStream();
+        using (var bw = new BinaryWriter(msgMs))
+        {
+            int totalLen = LinuxGenlProtocol.NlmsgHeaderSize + LinuxGenlProtocol.GenlHeaderSize +
+                           LinuxGenlProtocol.NlaAlign(LinuxGenlProtocol.NlaHeaderSize + 4) +
+                           LinuxGenlProtocol.NlaAlign(LinuxGenlProtocol.NlaHeaderSize + 8) +
+                           LinuxGenlProtocol.NlaAlign(LinuxGenlProtocol.NlaHeaderSize + 4) +
+                           LinuxGenlProtocol.NlaAlign(LinuxGenlProtocol.NlaHeaderSize + bssBytes.Length);
+
+            bw.Write(totalLen);
+            bw.Write(wireFamilyId);
+            bw.Write((ushort)0);
+            bw.Write(seq);
+            bw.Write((uint)0);
+
+            bw.Write((byte)34);
+            bw.Write((byte)1);
+            bw.Write((ushort)0);
+
+            bw.Write((ushort)(LinuxGenlProtocol.NlaHeaderSize + 4));
+            bw.Write(WireAttrIfIndex);
+            bw.Write(wireIfIndex);
+
+            bw.Write((ushort)(LinuxGenlProtocol.NlaHeaderSize + 8));
+            bw.Write(WireAttrWdev);
+            bw.Write(wireWdev);
+
+            bw.Write((ushort)(LinuxGenlProtocol.NlaHeaderSize + 4));
+            bw.Write(WireAttrGeneration);
+            bw.Write(wireGeneration);
+
+            bw.Write((ushort)(LinuxGenlProtocol.NlaHeaderSize + bssBytes.Length));
+            bw.Write((ushort)(WireAttrBss | 0x8000));
+            bw.Write(bssBytes);
+            WritePadding(bw, LinuxGenlProtocol.NlaHeaderSize + bssBytes.Length);
+        }
+
+        var done = BuildMockDoneMessage(seq, error: 0);
+        var stream = CombineBuffers(msgMs.ToArray(), done);
+
+        var res = LinuxNl80211Protocol.ParseBssDump(stream, seq, wireFamilyId, wireIfIndex, wireWdev);
+        Assert.True(res.IsComplete);
+        Assert.Single(res.Items);
+        // Wire attr 11 must NEVER become SeenMsAgo!
+        Assert.Null(res.Items[0].SeenMsAgo);
+    }
+
+    [Fact]
+    public void Nl80211Protocol_GoldenWire_LiteralAttr15_Decodes_As_LastSeenBootTime()
+    {
+        uint seq = 503;
+        const ushort wireFamilyId = 28;
+        const int wireIfIndex = 3;
+        const ulong wireWdev = 0x1000UL;
+        const uint wireGeneration = 100u;
+        const ushort WireAttrIfIndex = 3;
+        const ushort WireAttrWdev = 153;
+        const ushort WireAttrGeneration = 46;
+        const ushort WireAttrBss = 47;
+
+        const ushort WireBssBssid = 1;
+        const ushort WireBssFreq = 2;
+        const ushort WireBssLastSeenBootTime = 15;
+
+        var bssMs = new MemoryStream();
+        using (var bbw = new BinaryWriter(bssMs))
+        {
+            byte[] bssid = new byte[] { 0x11, 0x22, 0x33, 0x44, 0x55, 0x66 };
+            bbw.Write((ushort)(LinuxGenlProtocol.NlaHeaderSize + 6));
+            bbw.Write(WireBssBssid);
+            bbw.Write(bssid);
+            WritePadding(bbw, LinuxGenlProtocol.NlaHeaderSize + 6);
+
+            bbw.Write((ushort)(LinuxGenlProtocol.NlaHeaderSize + 4));
+            bbw.Write(WireBssFreq);
+            bbw.Write(5180u);
+
+            // Wire attr 15 = LAST_SEEN_BOOTTIME (8 bytes ulong)
+            bbw.Write((ushort)(LinuxGenlProtocol.NlaHeaderSize + 8));
+            bbw.Write(WireBssLastSeenBootTime);
+            bbw.Write(987654321000UL);
+        }
+        byte[] bssBytes = bssMs.ToArray();
+
+        var msgMs = new MemoryStream();
+        using (var bw = new BinaryWriter(msgMs))
+        {
+            int totalLen = LinuxGenlProtocol.NlmsgHeaderSize + LinuxGenlProtocol.GenlHeaderSize +
+                           LinuxGenlProtocol.NlaAlign(LinuxGenlProtocol.NlaHeaderSize + 4) +
+                           LinuxGenlProtocol.NlaAlign(LinuxGenlProtocol.NlaHeaderSize + 8) +
+                           LinuxGenlProtocol.NlaAlign(LinuxGenlProtocol.NlaHeaderSize + 4) +
+                           LinuxGenlProtocol.NlaAlign(LinuxGenlProtocol.NlaHeaderSize + bssBytes.Length);
+
+            bw.Write(totalLen);
+            bw.Write(wireFamilyId);
+            bw.Write((ushort)0);
+            bw.Write(seq);
+            bw.Write((uint)0);
+
+            bw.Write((byte)34);
+            bw.Write((byte)1);
+            bw.Write((ushort)0);
+
+            bw.Write((ushort)(LinuxGenlProtocol.NlaHeaderSize + 4));
+            bw.Write(WireAttrIfIndex);
+            bw.Write(wireIfIndex);
+
+            bw.Write((ushort)(LinuxGenlProtocol.NlaHeaderSize + 8));
+            bw.Write(WireAttrWdev);
+            bw.Write(wireWdev);
+
+            bw.Write((ushort)(LinuxGenlProtocol.NlaHeaderSize + 4));
+            bw.Write(WireAttrGeneration);
+            bw.Write(wireGeneration);
+
+            bw.Write((ushort)(LinuxGenlProtocol.NlaHeaderSize + bssBytes.Length));
+            bw.Write((ushort)(WireAttrBss | 0x8000));
+            bw.Write(bssBytes);
+            WritePadding(bw, LinuxGenlProtocol.NlaHeaderSize + bssBytes.Length);
+        }
+
+        var done = BuildMockDoneMessage(seq, error: 0);
+        var stream = CombineBuffers(msgMs.ToArray(), done);
+
+        var res = LinuxNl80211Protocol.ParseBssDump(stream, seq, wireFamilyId, wireIfIndex, wireWdev);
+        Assert.True(res.IsComplete);
+        Assert.Single(res.Items);
+        Assert.Equal(987654321000UL, res.Items[0].LastSeenBootTimeNs);
+    }
+
+    [Fact]
+    public void Nl80211Protocol_ParseBssDump_Missing_IfIndex_Rejected()
+    {
+        uint seq = 504;
+        byte[] bssid = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x55 };
+        var bss = BuildMockBssRecord(seq, 28, 3, bssid, 2412, LinuxNl80211Protocol.NL80211_BSS_STATUS_ASSOCIATED, omitIfindex: true);
+        var done = BuildMockDoneMessage(seq, error: 0);
+        var stream = CombineBuffers(bss, done);
+
+        var res = LinuxNl80211Protocol.ParseBssDump(stream, seq, 28, 3);
+        Assert.False(res.IsComplete);
+        Assert.Equal(LinuxNl80211DumpStatus.Malformed, res.Status);
+    }
+
+    [Fact]
+    public void Nl80211Protocol_ParseBssDump_Missing_Wdev_Rejected()
+    {
+        uint seq = 505;
+        byte[] bssid = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x55 };
+        var bss = BuildMockBssRecord(seq, 28, 3, bssid, 2412, LinuxNl80211Protocol.NL80211_BSS_STATUS_ASSOCIATED, omitWdev: true);
+        var done = BuildMockDoneMessage(seq, error: 0);
+        var stream = CombineBuffers(bss, done);
+
+        var res = LinuxNl80211Protocol.ParseBssDump(stream, seq, 28, 3);
+        Assert.False(res.IsComplete);
+        Assert.Equal(LinuxNl80211DumpStatus.Malformed, res.Status);
+    }
+
+    [Fact]
+    public void Nl80211Protocol_ParseBssDump_Wdev_Mismatch_Rejected()
+    {
+        uint seq = 506;
+        byte[] bssid = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x55 };
+        var bss = BuildMockBssRecord(seq, 28, 3, bssid, 2412, LinuxNl80211Protocol.NL80211_BSS_STATUS_ASSOCIATED, wdev: 0x2000UL);
+        var done = BuildMockDoneMessage(seq, error: 0);
+        var stream = CombineBuffers(bss, done);
+
+        var res = LinuxNl80211Protocol.ParseBssDump(stream, seq, 28, 3, expectedWdev: 0x1000UL);
+        Assert.False(res.IsComplete);
+        Assert.Equal(LinuxNl80211DumpStatus.Malformed, res.Status);
+    }
+
+    [Fact]
+    public void Nl80211Protocol_ParseBssDump_Missing_Generation_Rejected()
+    {
+        uint seq = 507;
+        byte[] bssid = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x55 };
+        var bss = BuildMockBssRecord(seq, 28, 3, bssid, 2412, LinuxNl80211Protocol.NL80211_BSS_STATUS_ASSOCIATED, omitGeneration: true);
+        var done = BuildMockDoneMessage(seq, error: 0);
+        var stream = CombineBuffers(bss, done);
+
+        var res = LinuxNl80211Protocol.ParseBssDump(stream, seq, 28, 3);
+        Assert.False(res.IsComplete);
+        Assert.Equal(LinuxNl80211DumpStatus.Malformed, res.Status);
+    }
+
+    [Fact]
+    public void Nl80211Protocol_ParseBssDump_Generation_Shift_Across_Dump_Yields_Interrupted()
+    {
+        uint seq = 508;
+        byte[] bssid1 = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x01 };
+        byte[] bssid2 = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x02 };
+
+        var bss1 = BuildMockBssRecord(seq, 28, 3, bssid1, 2412, LinuxNl80211Protocol.NL80211_BSS_STATUS_ASSOCIATED, generation: 100u);
+        var bss2 = BuildMockBssRecord(seq, 28, 3, bssid2, 5180, LinuxNl80211Protocol.NL80211_BSS_STATUS_ASSOCIATED, generation: 101u); // shifted generation!
+        var done = BuildMockDoneMessage(seq, error: 0);
+        var stream = CombineBuffers(bss1, bss2, done);
+
+        var res = LinuxNl80211Protocol.ParseBssDump(stream, seq, 28, 3);
+        Assert.False(res.IsComplete);
+        Assert.Equal(LinuxNl80211DumpStatus.Interrupted, res.Status);
+    }
+
+    [Fact]
+    public void GenlProtocol_TryEnumerateAttributesStrict_Rejects_Aligned_Boundary_Overflow()
+    {
+        // Attribute with nla_len = 6 in a payload of length 6.
+        // NlaAlign(6) = 8 > 6, so aligned boundary overflows payload.
+        byte[] payload = new byte[6];
+        MemoryMarshal.Write(payload.AsSpan(0, 2), (ushort)6);
+        MemoryMarshal.Write(payload.AsSpan(2, 2), (ushort)1);
+        payload[4] = 0xAA;
+        payload[5] = 0xBB;
+
+        bool success = LinuxGenlProtocol.TryEnumerateAttributesStrict(payload, out var attrs);
+        Assert.False(success);
+        Assert.Empty(attrs);
+    }
+
+    [Fact]
+    public async Task Nl80211Radio_ReadAssociationObservation_Empty_Dump_Same_Interface_Identity_Yields_NotAssociated()
+    {
+        var mockSocket = new MockLinuxNl80211Socket();
+        mockSocket.AddFamily("nl80211", 28);
+        mockSocket.AddInterface(new LinuxNl80211InterfaceInfo(3, "wlan0", 0, "phy0", null, LinuxNl80211Protocol.NL80211_IFTYPE_STATION, null, null, Wdev: 0x1000UL));
+
+        using var radio = new LinuxNl80211Radio(mockSocket);
+
+        var obs = await radio.ReadAssociationObservationAsync("wlan0");
+        Assert.NotNull(obs);
+        Assert.Equal(LinuxWirelessAssociationState.NotAssociated, obs.State);
+        Assert.Empty(obs.Links);
+    }
+
+    [Fact]
+    public async Task Nl80211Radio_ReadAssociationObservation_Empty_Dump_Changed_Interface_Identity_Yields_Unknown()
+    {
+        var mockSocket = new MockLinuxNl80211Socket();
+        mockSocket.AddFamily("nl80211", 28);
+        mockSocket.AddInterface(new LinuxNl80211InterfaceInfo(3, "wlan0", 0, "phy0", null, LinuxNl80211Protocol.NL80211_IFTYPE_STATION, null, null, Wdev: 0x1000UL));
+
+        // When continuity t1 query happens, interface has changed Wdev / replacement
+        mockSocket.ContinuityInterfaceOverride = new LinuxNl80211InterfaceInfo(3, "wlan0", 0, "phy0", null, LinuxNl80211Protocol.NL80211_IFTYPE_STATION, null, null, Wdev: 0x2000UL);
+
+        using var radio = new LinuxNl80211Radio(mockSocket);
+
+        var obs = await radio.ReadAssociationObservationAsync("wlan0");
+        Assert.NotNull(obs);
+        Assert.Equal(LinuxWirelessAssociationState.Unknown, obs.State);
+    }
+
     private static byte[] BuildMockBssRecord(
         uint seq,
         ushort familyId,
@@ -1141,11 +1531,14 @@ public class LinuxWifiRadioTests
         byte[]? ssid = null,
         byte? mloLinkId = null,
         byte[]? mldAddr = null,
-        ulong? wdev = null,
-        uint? generation = null,
+        ulong? wdev = 0x1000UL,
+        uint? generation = 100u,
         bool corruptNlattr = false,
         bool corruptSsidIe = false,
-        byte[]? customBssBytes = null)
+        byte[]? customBssBytes = null,
+        bool omitIfindex = false,
+        bool omitWdev = false,
+        bool omitGeneration = false)
     {
         var ms = new MemoryStream();
         using var bw = new BinaryWriter(ms);
@@ -1251,9 +1644,9 @@ public class LinuxWifiRadioTests
             bssBytes = bssMs.ToArray();
         }
 
-        int ifindexAttrLen = LinuxGenlProtocol.NlaAlign(LinuxGenlProtocol.NlaHeaderSize + 4);
-        int wdevAttrLen = wdev.HasValue ? LinuxGenlProtocol.NlaAlign(LinuxGenlProtocol.NlaHeaderSize + 8) : 0;
-        int genAttrLen = generation.HasValue ? LinuxGenlProtocol.NlaAlign(LinuxGenlProtocol.NlaHeaderSize + 4) : 0;
+        int ifindexAttrLen = (!omitIfindex) ? LinuxGenlProtocol.NlaAlign(LinuxGenlProtocol.NlaHeaderSize + 4) : 0;
+        int wdevAttrLen = (!omitWdev && wdev.HasValue) ? LinuxGenlProtocol.NlaAlign(LinuxGenlProtocol.NlaHeaderSize + 8) : 0;
+        int genAttrLen = (!omitGeneration && generation.HasValue) ? LinuxGenlProtocol.NlaAlign(LinuxGenlProtocol.NlaHeaderSize + 4) : 0;
         int bssAttrLen = LinuxGenlProtocol.NlaAlign(LinuxGenlProtocol.NlaHeaderSize + bssBytes.Length);
 
         int totalLen = LinuxGenlProtocol.NlmsgHeaderSize + LinuxGenlProtocol.GenlHeaderSize +
@@ -1272,12 +1665,15 @@ public class LinuxWifiRadioTests
         bw.Write((ushort)0);
 
         // NL80211_ATTR_IFINDEX
-        bw.Write((ushort)(LinuxGenlProtocol.NlaHeaderSize + 4));
-        bw.Write(LinuxNl80211Protocol.NL80211_ATTR_IFINDEX);
-        bw.Write(ifindex);
+        if (!omitIfindex)
+        {
+            bw.Write((ushort)(LinuxGenlProtocol.NlaHeaderSize + 4));
+            bw.Write(LinuxNl80211Protocol.NL80211_ATTR_IFINDEX);
+            bw.Write(ifindex);
+        }
 
         // NL80211_ATTR_WDEV
-        if (wdev.HasValue)
+        if (!omitWdev && wdev.HasValue)
         {
             bw.Write((ushort)(LinuxGenlProtocol.NlaHeaderSize + 8));
             bw.Write(LinuxNl80211Protocol.NL80211_ATTR_WDEV);
@@ -1285,7 +1681,7 @@ public class LinuxWifiRadioTests
         }
 
         // NL80211_ATTR_GENERATION
-        if (generation.HasValue)
+        if (!omitGeneration && generation.HasValue)
         {
             bw.Write((ushort)(LinuxGenlProtocol.NlaHeaderSize + 4));
             bw.Write(LinuxNl80211Protocol.NL80211_ATTR_GENERATION);
@@ -1337,7 +1733,8 @@ public class LinuxWifiRadioTests
         int iftype,
         bool isInterrupted = false,
         bool includeDone = false,
-        bool isInterruptedDone = false)
+        bool isInterruptedDone = false,
+        ulong? wdev = 0x1000UL)
     {
         var ms = new MemoryStream();
         using var bw = new BinaryWriter(ms);
@@ -1347,9 +1744,10 @@ public class LinuxWifiRadioTests
         int ifindexAttrLen = LinuxGenlProtocol.NlaAlign(LinuxGenlProtocol.NlaHeaderSize + 4);
         int wiphyAttrLen = wiphy.HasValue ? LinuxGenlProtocol.NlaAlign(LinuxGenlProtocol.NlaHeaderSize + 4) : 0;
         int iftypeAttrLen = LinuxGenlProtocol.NlaAlign(LinuxGenlProtocol.NlaHeaderSize + 4);
+        int wdevAttrLen = wdev.HasValue ? LinuxGenlProtocol.NlaAlign(LinuxGenlProtocol.NlaHeaderSize + 8) : 0;
 
         int totalLen = LinuxGenlProtocol.NlmsgHeaderSize + LinuxGenlProtocol.GenlHeaderSize +
-                       ifindexAttrLen + nameAttrLen + wiphyAttrLen + iftypeAttrLen;
+                       ifindexAttrLen + nameAttrLen + wiphyAttrLen + iftypeAttrLen + wdevAttrLen;
 
         ushort flags = isInterrupted ? LinuxGenlProtocol.NLM_F_DUMP_INTR : (ushort)0;
 
@@ -1389,6 +1787,14 @@ public class LinuxWifiRadioTests
         bw.Write((ushort)(LinuxGenlProtocol.NlaHeaderSize + 4));
         bw.Write(LinuxNl80211Protocol.NL80211_ATTR_IFTYPE);
         bw.Write(iftype);
+
+        // 7. NL80211_ATTR_WDEV (if present)
+        if (wdev.HasValue)
+        {
+            bw.Write((ushort)(LinuxGenlProtocol.NlaHeaderSize + 8));
+            bw.Write(LinuxNl80211Protocol.NL80211_ATTR_WDEV);
+            bw.Write(wdev.Value);
+        }
 
         // Optional NLMSG_DONE
         if (includeDone)
@@ -1437,10 +1843,13 @@ public class LinuxWifiRadioTests
         private readonly List<LinuxNl80211InterfaceInfo> _interfaces = new();
         private readonly List<LinuxNl80211WiphyInfo> _wiphys = new();
         private readonly Dictionary<int, List<LinuxNl80211BssInfo>> _bssRecords = new();
+        private int _dumpInterfacesCallCount = 0;
 
         public LinuxNl80211DumpStatus InterfaceDumpStatus { get; set; } = LinuxNl80211DumpStatus.Complete;
         public LinuxNl80211DumpStatus WiphyDumpStatus { get; set; } = LinuxNl80211DumpStatus.Complete;
         public LinuxNl80211DumpStatus BssDumpStatus { get; set; } = LinuxNl80211DumpStatus.Complete;
+
+        public LinuxNl80211InterfaceInfo? ContinuityInterfaceOverride { get; set; }
 
         public void AddFamily(string name, ushort id) => _families[name] = new GenlFamilyInfo(id, name, 1, 0, 0, new Dictionary<string, uint>());
         public void AddInterface(LinuxNl80211InterfaceInfo ifinfo) => _interfaces.Add(ifinfo);
@@ -1464,6 +1873,13 @@ public class LinuxWifiRadioTests
 
         public Task<LinuxNl80211DumpResult<LinuxNl80211InterfaceInfo>> DumpInterfacesAsync(ushort nl80211FamilyId, int? ifindex = null, CancellationToken cancellationToken = default)
         {
+            _dumpInterfacesCallCount++;
+            if (_dumpInterfacesCallCount > 1 && ContinuityInterfaceOverride != null)
+            {
+                var overridenList = new List<LinuxNl80211InterfaceInfo> { ContinuityInterfaceOverride };
+                return Task.FromResult(new LinuxNl80211DumpResult<LinuxNl80211InterfaceInfo>(overridenList, InterfaceDumpStatus, 0, SawDone: true));
+            }
+
             var list = ifindex.HasValue ? _interfaces.FindAll(i => i.IfIndex == ifindex.Value) : new List<LinuxNl80211InterfaceInfo>(_interfaces);
             var res = new LinuxNl80211DumpResult<LinuxNl80211InterfaceInfo>(list, InterfaceDumpStatus, InterfaceDumpStatus == LinuxNl80211DumpStatus.Complete ? 0 : -11, SawDone: InterfaceDumpStatus == LinuxNl80211DumpStatus.Complete);
             return Task.FromResult(res);
@@ -1504,7 +1920,7 @@ public class LinuxWifiRadioTests
             return Task.FromResult(new List<LinuxNl80211WiphyInfo>(_wiphys));
         }
 
-        public Task<LinuxNl80211DumpResult<LinuxNl80211BssInfo>> DumpBssAsync(ushort nl80211FamilyId, int ifindex, CancellationToken cancellationToken = default)
+        public Task<LinuxNl80211DumpResult<LinuxNl80211BssInfo>> DumpBssAsync(ushort nl80211FamilyId, int ifindex, ulong? expectedWdev = null, CancellationToken cancellationToken = default)
         {
             _bssRecords.TryGetValue(ifindex, out var list);
             var items = list ?? new List<LinuxNl80211BssInfo>();
