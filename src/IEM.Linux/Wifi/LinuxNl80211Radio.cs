@@ -357,10 +357,26 @@ public sealed class LinuxNl80211Radio : IWirelessRadio, IDisposable, IAsyncDispo
                     DumpStatus: t0.DumpStatus);
             }
 
+            // Evidence hardening: Associated requires proven BSS generation, never synthesize fallback generation 0
+            if (!t0.Generation.HasValue)
+            {
+                return new LinuxComposedAssociationObservation(
+                    IfIndex: t0.IfIndex,
+                    IfName: t0.IfName,
+                    WiphyIndex: t0.WiphyIndex,
+                    State: LinuxWirelessAssociationState.Associated,
+                    Links: t0.Links,
+                    Wdev: t0.Wdev,
+                    Generation: null,
+                    StationInfo: null,
+                    ContinuityVerified: false,
+                    DumpStatus: t0.DumpStatus);
+            }
+
             // Extract peer MAC for station query (Non-MLO = single BSSID, MLO = proven common MLD address)
             if (!TryExtractPeerMac(t0, out var peerMac) || peerMac == null)
             {
-                // Inconsistent or missing MLD identity: do not guess, return Associated with StationInfo = null
+                // Inconsistent or missing MLD identity: do not guess, return Associated with StationInfo = null and ContinuityVerified = false (no t2 comparison performed)
                 return new LinuxComposedAssociationObservation(
                     IfIndex: t0.IfIndex,
                     IfName: t0.IfName,
@@ -370,7 +386,7 @@ public sealed class LinuxNl80211Radio : IWirelessRadio, IDisposable, IAsyncDispo
                     Wdev: t0.Wdev,
                     Generation: t0.Generation,
                     StationInfo: null,
-                    ContinuityVerified: true,
+                    ContinuityVerified: false,
                     DumpStatus: t0.DumpStatus);
             }
 
@@ -380,7 +396,7 @@ public sealed class LinuxNl80211Radio : IWirelessRadio, IDisposable, IAsyncDispo
                 WiphyIndex: t0.WiphyIndex,
                 PeerMac: peerMac,
                 PeerMacString: LinuxNl80211Protocol.FormatMacAddress(peerMac),
-                BssGeneration: t0.Generation ?? 0);
+                BssGeneration: t0.Generation.Value);
 
             // t1: Query station metadata
             var staInfo = await ReadStationInfoAsync(token, cancellationToken).ConfigureAwait(false);
@@ -503,7 +519,7 @@ public sealed class LinuxNl80211Radio : IWirelessRadio, IDisposable, IAsyncDispo
             return false;
         }
 
-        // Compare links as an unordered set of (MloLinkId, Bssid, MldAddress)
+        // Compare links as an unordered set of (MloLinkId, BssidBytes, MldAddressBytes)
         var matched = new bool[b.Links.Count];
 
         foreach (var linkA in a.Links)
@@ -515,8 +531,8 @@ public sealed class LinuxNl80211Radio : IWirelessRadio, IDisposable, IAsyncDispo
                 var linkB = b.Links[i];
 
                 if (linkA.MloLinkId == linkB.MloLinkId &&
-                    string.Equals(linkA.Bssid, linkB.Bssid, StringComparison.OrdinalIgnoreCase) &&
-                    string.Equals(linkA.MldAddress, linkB.MldAddress, StringComparison.OrdinalIgnoreCase))
+                    ByteArraysEqual(linkA.BssidBytes, linkB.BssidBytes) &&
+                    ByteArraysEqual(linkA.MldAddressBytes, linkB.MldAddressBytes))
                 {
                     matched[i] = true;
                     found = true;
@@ -531,6 +547,13 @@ public sealed class LinuxNl80211Radio : IWirelessRadio, IDisposable, IAsyncDispo
         }
 
         return true;
+    }
+
+    private static bool ByteArraysEqual(byte[]? a, byte[]? b)
+    {
+        if (a == null && b == null) return true;
+        if (a == null || b == null) return false;
+        return a.AsSpan().SequenceEqual(b);
     }
 
     /// <summary>

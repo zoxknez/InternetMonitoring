@@ -2692,32 +2692,112 @@ public class LinuxWifiRadioTests
     }
 
     [Fact]
-    public async Task Nl80211Radio_ReadComposedAssociation_Interface_Wdev_Replaced_Yields_Unknown()
+    public async Task Nl80211Radio_ReadComposedAssociation_Interface_Wdev_Change_Triggers_Drift_Stabilizes_On_Second_Attempt()
+    {
+        var socket = new MockLinuxNl80211Socket();
+        socket.AddFamily("nl80211", 28);
+
+        var if1 = new List<LinuxNl80211InterfaceInfo> { new LinuxNl80211InterfaceInfo(3, "wlan0", 0, "phy0", null, LinuxNl80211Protocol.NL80211_IFTYPE_STATION, null, null, Wdev: 0x1000UL) };
+        var if2 = new List<LinuxNl80211InterfaceInfo> { new LinuxNl80211InterfaceInfo(3, "wlan0", 0, "phy0", null, LinuxNl80211Protocol.NL80211_IFTYPE_STATION, null, null, Wdev: 0x2000UL) };
+
+        byte[] bssid = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x55 };
+        var bss1 = new LinuxNl80211BssInfo(3, bssid, "00:11:22:33:44:55", null, "MyWiFi", 5180, LinuxNl80211Protocol.NL80211_BSS_STATUS_ASSOCIATED, -6500, null, null, null, null, null, null, null, 0x1000UL, 100u);
+        var bss2 = new LinuxNl80211BssInfo(3, bssid, "00:11:22:33:44:55", null, "MyWiFi", 5180, LinuxNl80211Protocol.NL80211_BSS_STATUS_ASSOCIATED, -6500, null, null, null, null, null, null, null, 0x2000UL, 101u);
+
+        var sta1 = new LinuxNl80211StationInfo(3, bssid, "00:11:22:33:44:55", 100u, -65, null, null, null, null, null, null, null, null, null, null, null, null, null, null);
+        var sta2 = new LinuxNl80211StationInfo(3, bssid, "00:11:22:33:44:55", 101u, -60, null, null, null, null, null, null, null, null, null, null, null, null, null, null);
+
+        // Attempt 1:
+        //   t0: interface wdev 0x1000, bss1 (wdev 0x1000, gen 100) -> sta1
+        //   t2: interface wdev 0x2000, bss2 (wdev 0x2000, gen 101) => drift!
+        socket.QueueInterfaceDump(if1);
+        socket.QueueBssDump(new List<LinuxNl80211BssInfo> { bss1 });
+        socket.QueueStationResponse(sta1);
+        socket.QueueInterfaceDump(if2);
+        socket.QueueBssDump(new List<LinuxNl80211BssInfo> { bss2 });
+
+        // Attempt 2:
+        //   t0: interface wdev 0x2000, bss2 (wdev 0x2000, gen 101) -> sta2
+        //   t2: interface wdev 0x2000, bss2 (wdev 0x2000, gen 101) => stable!
+        socket.QueueInterfaceDump(if2);
+        socket.QueueBssDump(new List<LinuxNl80211BssInfo> { bss2 });
+        socket.QueueStationResponse(sta2);
+        socket.QueueInterfaceDump(if2);
+        socket.QueueBssDump(new List<LinuxNl80211BssInfo> { bss2 });
+
+        using var radio = new LinuxNl80211Radio(socket);
+        var res = await radio.ReadComposedAssociationObservationAsync("wlan0");
+
+        Assert.NotNull(res);
+        Assert.Equal(LinuxWirelessAssociationState.Associated, res.State);
+        Assert.True(res.ContinuityVerified);
+        Assert.Equal(0x2000UL, res.Wdev);
+        Assert.NotNull(res.StationInfo);
+        Assert.Equal((sbyte)-60, res.StationInfo.SignalDbm);
+        Assert.Equal(2, socket.GetStationCallCount);
+    }
+
+    [Fact]
+    public async Task Nl80211Radio_ReadComposedAssociation_Interface_Wdev_Continuous_Drift_Returns_Freshest_Bss()
+    {
+        var socket = new MockLinuxNl80211Socket();
+        socket.AddFamily("nl80211", 28);
+
+        var if1 = new List<LinuxNl80211InterfaceInfo> { new LinuxNl80211InterfaceInfo(3, "wlan0", 0, "phy0", null, LinuxNl80211Protocol.NL80211_IFTYPE_STATION, null, null, Wdev: 0x1000UL) };
+        var if2 = new List<LinuxNl80211InterfaceInfo> { new LinuxNl80211InterfaceInfo(3, "wlan0", 0, "phy0", null, LinuxNl80211Protocol.NL80211_IFTYPE_STATION, null, null, Wdev: 0x2000UL) };
+        var if3 = new List<LinuxNl80211InterfaceInfo> { new LinuxNl80211InterfaceInfo(3, "wlan0", 0, "phy0", null, LinuxNl80211Protocol.NL80211_IFTYPE_STATION, null, null, Wdev: 0x3000UL) };
+
+        byte[] bssid = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x55 };
+        var bss1 = new LinuxNl80211BssInfo(3, bssid, "00:11:22:33:44:55", null, "MyWiFi", 5180, LinuxNl80211Protocol.NL80211_BSS_STATUS_ASSOCIATED, -6500, null, null, null, null, null, null, null, 0x1000UL, 100u);
+        var bss2 = new LinuxNl80211BssInfo(3, bssid, "00:11:22:33:44:55", null, "MyWiFi", 5180, LinuxNl80211Protocol.NL80211_BSS_STATUS_ASSOCIATED, -6500, null, null, null, null, null, null, null, 0x2000UL, 101u);
+        var bss3 = new LinuxNl80211BssInfo(3, bssid, "00:11:22:33:44:55", null, "MyWiFi", 5180, LinuxNl80211Protocol.NL80211_BSS_STATUS_ASSOCIATED, -6500, null, null, null, null, null, null, null, 0x3000UL, 102u);
+
+        // Attempt 1: wdev 0x1000 -> wdev 0x2000
+        socket.QueueInterfaceDump(if1);
+        socket.QueueBssDump(new List<LinuxNl80211BssInfo> { bss1 });
+        socket.QueueStationResponse(null, LinuxNl80211DumpStatus.KernelError, -2);
+        socket.QueueInterfaceDump(if2);
+        socket.QueueBssDump(new List<LinuxNl80211BssInfo> { bss2 });
+
+        // Attempt 2: wdev 0x2000 -> wdev 0x3000
+        socket.QueueInterfaceDump(if2);
+        socket.QueueBssDump(new List<LinuxNl80211BssInfo> { bss2 });
+        socket.QueueStationResponse(null, LinuxNl80211DumpStatus.KernelError, -2);
+        socket.QueueInterfaceDump(if3);
+        socket.QueueBssDump(new List<LinuxNl80211BssInfo> { bss3 });
+
+        using var radio = new LinuxNl80211Radio(socket);
+        var res = await radio.ReadComposedAssociationObservationAsync("wlan0");
+
+        Assert.NotNull(res);
+        Assert.Equal(LinuxWirelessAssociationState.Associated, res.State);
+        Assert.False(res.ContinuityVerified);
+        Assert.Equal(0x3000UL, res.Wdev); // Freshest authoritative state returned
+        Assert.Null(res.StationInfo);
+        Assert.Equal(2, socket.GetStationCallCount);
+    }
+
+    [Fact]
+    public async Task Nl80211Radio_ReadComposedAssociation_Associated_Missing_Generation_No_Attribution()
     {
         var socket = new MockLinuxNl80211Socket();
         socket.AddFamily("nl80211", 28);
         socket.AddInterface(new LinuxNl80211InterfaceInfo(3, "wlan0", 0, "phy0", null, LinuxNl80211Protocol.NL80211_IFTYPE_STATION, null, null, Wdev: 0x1000UL));
 
         byte[] bssid = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x55 };
-        var bss1 = new LinuxNl80211BssInfo(3, bssid, "00:11:22:33:44:55", null, "MyWiFi", 5180, LinuxNl80211Protocol.NL80211_BSS_STATUS_ASSOCIATED, -6500, null, null, null, null, null, null, null, 0x1000UL, 100u);
-        var bss2 = new LinuxNl80211BssInfo(3, bssid, "00:11:22:33:44:55", null, "MyWiFi", 5180, LinuxNl80211Protocol.NL80211_BSS_STATUS_ASSOCIATED, -6500, null, null, null, null, null, null, null, 0x2000UL, 100u);
-
-        // t0: wdev 0x1000 -> station -> t2: wdev 0x2000 -> drift!
-        socket.QueueBssDump(new List<LinuxNl80211BssInfo> { bss1 });
-        socket.QueueStationResponse(null, LinuxNl80211DumpStatus.KernelError, -2);
-        socket.QueueBssDump(new List<LinuxNl80211BssInfo> { bss2 });
-
-        // Attempt 2 also drifts
-        socket.QueueBssDump(new List<LinuxNl80211BssInfo> { bss2 });
-        socket.QueueStationResponse(null, LinuxNl80211DumpStatus.KernelError, -2);
-        socket.QueueBssDump(new List<LinuxNl80211BssInfo> { bss1 });
+        // Missing BSS generation (null)
+        var bss = new LinuxNl80211BssInfo(3, bssid, "00:11:22:33:44:55", null, "MyWiFi", 5180, LinuxNl80211Protocol.NL80211_BSS_STATUS_ASSOCIATED, -6500, null, null, null, null, null, null, null, 0x1000UL, null);
+        socket.AddBss(3, bss);
 
         using var radio = new LinuxNl80211Radio(socket);
         var res = await radio.ReadComposedAssociationObservationAsync("wlan0");
 
         Assert.NotNull(res);
+        Assert.Equal(LinuxWirelessAssociationState.Associated, res.State);
         Assert.False(res.ContinuityVerified);
+        Assert.Null(res.Generation);
         Assert.Null(res.StationInfo);
+        Assert.Equal(0, socket.GetStationCallCount); // Never synthesizes generation 0 or invokes station query without proven generation
     }
 
     [Fact]
@@ -2827,6 +2907,8 @@ public class LinuxWifiRadioTests
         Assert.False(res.ContinuityVerified);
         Assert.Null(res.StationInfo);
         Assert.Equal(2, socket.GetStationCallCount); // Exactly 2 attempts
+        Assert.Equal("00:11:22:33:44:04", res.Links.Single().Bssid); // Terminal state is freshest snapshot
+        Assert.Equal(103u, res.Generation);
     }
 
     [Fact]
@@ -2946,8 +3028,42 @@ public class LinuxWifiRadioTests
 
         Assert.NotNull(res);
         Assert.Equal(LinuxWirelessAssociationState.Associated, res.State);
+        Assert.False(res.ContinuityVerified); // No t2 snapshot was compared, never fabricate ContinuityVerified = true
         Assert.Null(res.StationInfo);
         Assert.Equal(0, socket.GetStationCallCount);
+    }
+
+    [Fact]
+    public async Task Nl80211Radio_ReadComposedAssociation_Differing_Raw_Bytes_Triggers_Drift()
+    {
+        var socket = new MockLinuxNl80211Socket();
+        socket.AddFamily("nl80211", 28);
+        socket.AddInterface(new LinuxNl80211InterfaceInfo(3, "wlan0", 0, "phy0", null, LinuxNl80211Protocol.NL80211_IFTYPE_STATION, null, null, Wdev: 0x1000UL));
+
+        byte[] rawBssidA = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x01 };
+        byte[] rawBssidB = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x02 };
+
+        var bssA = new LinuxNl80211BssInfo(3, rawBssidA, "same_display_mac", null, "MyWiFi", 5180, LinuxNl80211Protocol.NL80211_BSS_STATUS_ASSOCIATED, -6500, null, null, null, null, null, null, null, 0x1000UL, 100u);
+        var bssB = new LinuxNl80211BssInfo(3, rawBssidB, "same_display_mac", null, "MyWiFi", 5180, LinuxNl80211Protocol.NL80211_BSS_STATUS_ASSOCIATED, -6500, null, null, null, null, null, null, null, 0x1000UL, 100u);
+
+        var sta = new LinuxNl80211StationInfo(3, rawBssidA, "same_display_mac", 100u, -65, null, null, null, null, null, null, null, null, null, null, null, null, null, null);
+
+        // Attempt 1: t0 (raw A) -> sta -> t2 (raw B) => drift based on raw byte mismatch!
+        // Attempt 2: t0 (raw B) -> sta -> t2 (raw B) => stable!
+        socket.QueueBssDump(new List<LinuxNl80211BssInfo> { bssA });
+        socket.QueueStationResponse(sta);
+        socket.QueueBssDump(new List<LinuxNl80211BssInfo> { bssB });
+
+        socket.QueueBssDump(new List<LinuxNl80211BssInfo> { bssB });
+        socket.QueueStationResponse(sta);
+        socket.QueueBssDump(new List<LinuxNl80211BssInfo> { bssB });
+
+        using var radio = new LinuxNl80211Radio(socket);
+        var res = await radio.ReadComposedAssociationObservationAsync("wlan0");
+
+        Assert.NotNull(res);
+        Assert.True(res.ContinuityVerified);
+        Assert.Equal(2, socket.GetStationCallCount);
     }
 
     [Fact]
