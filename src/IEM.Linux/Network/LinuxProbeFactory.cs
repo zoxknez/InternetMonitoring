@@ -1,12 +1,15 @@
+using System.Threading.Tasks;
 using IEM.Core.Hosting;
 using IEM.Core.Probes;
 using IEM.Linux.Network.Icmp;
+using IEM.Linux.Wifi;
 
 namespace IEM.Linux.Network;
 
 /// <summary>
-/// Platform factory supplying Linux network probes, FIB route resolvers, and unprivileged datagram ICMP echo senders.
-/// Invariants 211, 271-275.
+/// Platform factory supplying Linux network probes, FIB route resolvers, unprivileged datagram ICMP echo senders,
+/// and nl80211 wireless link inspection.
+/// Invariants 211, 249-258, 262, 271-275.
 /// </summary>
 public sealed class LinuxProbeFactory : IPlatformProbeFactory
 {
@@ -14,8 +17,8 @@ public sealed class LinuxProbeFactory : IPlatformProbeFactory
 
     public ValueTask<IPlatformLinkInspectionScope> CreateLinkInspectionAsync(string? interfaceName = null)
     {
-        var inspector = new SystemLinkInspector(interfaceName);
-        return ValueTask.FromResult<IPlatformLinkInspectionScope>(new BasicLinkInspectionScope(inspector));
+        var scope = LinuxLinkInspection.Create(interfaceName);
+        return ValueTask.FromResult(scope);
     }
 
     public IRouteResolver CreateRouteResolver() =>
@@ -31,10 +34,4 @@ public sealed class LinuxProbeFactory : IPlatformProbeFactory
     public IBoundIcmp CreateBoundIcmp() => LinuxBoundIcmp.Instance;
 
     public INetworkChangeObserver CreateObserver() => new Netlink.LinuxRtnetlinkObserver();
-
-    private sealed class BasicLinkInspectionScope(ILinkInspector inspector) : IPlatformLinkInspectionScope
-    {
-        public ILinkInspector Inspector { get; } = inspector;
-        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
-    }
 }

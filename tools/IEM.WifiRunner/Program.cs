@@ -1,0 +1,496 @@
+using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.IO;
+using System.Linq;
+using System.Net.Http;
+using System.Runtime.InteropServices;
+using System.Text;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using System.Threading;
+using System.Threading.Tasks;
+using IEM.Core.Model;
+using IEM.Core.Probes;
+using IEM.Linux.Network;
+using IEM.Linux.Wifi;
+
+namespace IEM.WifiRunner;
+
+public static class Program
+{
+    public static async Task<int> Main(string[] args)
+    {
+        Console.WriteLine("==============================================================================");
+        Console.WriteLine("3.1-7B · LINUX BARE-METAL WI-FI ACCEPTANCE RUNNER");
+        Console.WriteLine("==============================================================================");
+
+        string? targetInterface = null;
+        string? jsonPath = null;
+        string? markdownPath = null;
+        int trafficDurationSeconds = 2;
+
+        for (int i = 0; i < args.Length; i++)
+        {
+            if (args[i] == "--interface" && i + 1 < args.Length)
+            {
+                targetInterface = args[++i];
+            }
+            else if (args[i] == "--json" && i + 1 < args.Length)
+            {
+                jsonPath = args[++i];
+            }
+            else if (args[i] == "--markdown" && i + 1 < args.Length)
+            {
+                markdownPath = args[++i];
+            }
+            else if (args[i] == "--traffic-seconds" && i + 1 < args.Length && int.TryParse(args[++i], out var sec))
+            {
+                trafficDurationSeconds = sec;
+            }
+        }
+
+        var report = new WifiAcceptanceReport
+        {
+            TimestampUtc = DateTimeOffset.UtcNow.ToString("o"),
+            Architecture = RuntimeInformation.ProcessArchitecture.ToString(),
+            Framework = RuntimeInformation.FrameworkDescription,
+            OsDescription = RuntimeInformation.OSDescription
+        };
+
+        // 1. Process and Capability Verification
+        CheckProcessCapabilities(report);
+
+        // 2. Production Composition Root Link Inspection
+        await using (var scope = await LinuxProbeFactory.Instance.CreateLinkInspectionAsync(targetInterface))
+        {
+            var initialSnapshot = scope.Inspector.Inspect();
+            report.InitialSnapshot = new SnapshotDto
+            {
+                InterfaceName = initialSnapshot.InterfaceName,
+                InterfaceId = initialSnapshot.InterfaceId,
+                Status = initialSnapshot.Status.ToString(),
+                Medium = initialSnapshot.Medium.ToString(),
+                IsUp = initialSnapshot.IsUp,
+                WirelessSsid = initialSnapshot.Wireless?.Ssid,
+                WirelessBssid = initialSnapshot.Wireless?.Bssid,
+                SignalQuality = initialSnapshot.Wireless?.SignalQualityPercent,
+                Channel = initialSnapshot.Wireless?.Channel,
+                RssiDbm = initialSnapshot.Wireless?.MeasuredRssiDbm,
+                RadioOn = initialSnapshot.Wireless?.RadioOn
+            };
+
+            if (scope is LinuxLinkInspectionScope linuxScope)
+            {
+                var radio = linuxScope.WifiInspector.Radio;
+                var effectiveInterface = targetInterface ?? initialSnapshot.InterfaceName ?? "wlan0";
+
+                Console.WriteLine($"\n[1/5] Querying LinuxNl80211Radio for interface: {effectiveInterface}");
+
+                var t0Composed = await radio.ReadComposedAssociationObservationAsync(effectiveInterface);
+                if (t0Composed != null)
+                {
+                    report.ObservationT0 = MapObservationDto(t0Composed);
+
+                    // 3. Traffic Monotonicity Check
+                    if (t0Composed.State == LinuxWirelessAssociationState.Associated && t0Composed.StationInfo != null && trafficDurationSeconds > 0)
+                    {
+                        Console.WriteLine($"\n[2/5] Associated to SSID='{t0Composed.Links.FirstOrDefault()?.DisplaySsid}'. Generating traffic ({trafficDurationSeconds}s) to verify counter monotonicity...");
+                        await GenerateTestTrafficAsync(trafficDurationSeconds);
+
+                        var t1Composed = await radio.ReadComposedAssociationObservationAsync(effectiveInterface);
+                        if (t1Composed != null)
+                        {
+                            report.ObservationT1 = MapObservationDto(t1Composed);
+                            EvaluateTrafficFidelity(report, t0Composed, t1Composed);
+                        }
+                    }
+
+                    // 4. Access Point Scan Cache Resolution
+                    if (t0Composed.Links.Count > 0 && !string.IsNullOrEmpty(t0Composed.Links[0].DisplaySsid) && !string.IsNullOrEmpty(t0Composed.Links[0].Bssid))
+                    {
+                        var link0 = t0Composed.Links[0];
+                        Console.WriteLine($"\n[3/5] Resolving Access Point evidence for BSSID '{link0.Bssid}' (SSID='{link0.DisplaySsid}')...");
+                        var ap = await radio.ReadAccessPointAsync(effectiveInterface, link0.DisplaySsid!, link0.Bssid!);
+                        if (ap != null)
+                        {
+                            report.AccessPoint = new AccessPointDto
+                            {
+                                Bssid = ap.Bssid,
+                                Channel = ap.Channel,
+                                Rssi = ap.Rssi
+                            };
+                            report.Verdicts["CachedBssTruth"] = "PASS";
+                            report.Verdicts["AccessPointEvidence"] = "PASS";
+                        }
+                        else
+                        {
+                            report.Verdicts["CachedBssTruth"] = "FAIL";
+                            report.Verdicts["AccessPointEvidence"] = "FAIL";
+                        }
+                    }
+                }
+                else
+                {
+                    Console.WriteLine("\n[!] No wireless association observation returned from kernel.");
+                }
+            }
+        }
+
+        // 5. Evaluate Overall Gate Verdicts
+        EvaluateOverallVerdicts(report);
+
+        // Print Summary to Console
+        PrintConsoleSummary(report);
+
+        // Output JSON & Markdown Artifacts
+        if (!string.IsNullOrWhiteSpace(jsonPath))
+        {
+            var jsonDir = Path.GetDirectoryName(jsonPath);
+            if (!string.IsNullOrEmpty(jsonDir)) Directory.CreateDirectory(jsonDir);
+            var json = JsonSerializer.Serialize(report, new JsonSerializerOptions { WriteIndented = true });
+            await File.WriteAllTextAsync(jsonPath, json);
+            Console.WriteLine($"\nWrote JSON report: {jsonPath}");
+        }
+
+        if (!string.IsNullOrWhiteSpace(markdownPath))
+        {
+            var mdDir = Path.GetDirectoryName(markdownPath);
+            if (!string.IsNullOrEmpty(mdDir)) Directory.CreateDirectory(mdDir);
+            var md = GenerateMarkdownReport(report);
+            await File.WriteAllTextAsync(markdownPath, md);
+            Console.WriteLine($"Wrote Markdown report: {markdownPath}");
+        }
+
+        bool allPassed = report.Verdicts.Values.All(v => v is "PASS" or "NOT_APPLICABLE" or "NOT_TESTED");
+        bool hasFailure = report.Verdicts.Values.Any(v => v == "FAIL");
+
+        return hasFailure ? 1 : 0;
+    }
+
+    private static void CheckProcessCapabilities(WifiAcceptanceReport report)
+    {
+        try
+        {
+            if (File.Exists("/proc/self/status"))
+            {
+                var lines = File.ReadAllLines("/proc/self/status");
+                foreach (var line in lines)
+                {
+                    if (line.StartsWith("CapEff:", StringComparison.OrdinalIgnoreCase))
+                    {
+                        report.CapEff = line.Substring(7).Trim();
+                    }
+                    else if (line.StartsWith("CapAmb:", StringComparison.OrdinalIgnoreCase))
+                    {
+                        report.CapAmb = line.Substring(7).Trim();
+                    }
+                }
+            }
+
+            bool zeroCaps = (report.CapEff == null || report.CapEff == "0000000000000000" || report.CapEff == "0") &&
+                            (report.CapAmb == null || report.CapAmb == "0000000000000000" || report.CapAmb == "0");
+
+            report.Verdicts["ZeroCapabilities"] = zeroCaps ? "PASS" : "FAIL";
+        }
+        catch (Exception ex)
+        {
+            report.Verdicts["ZeroCapabilities"] = "NOT_TESTED";
+            report.Warnings.Add($"Could not read /proc/self/status: {ex.Message}");
+        }
+    }
+
+    private static async Task GenerateTestTrafficAsync(int seconds)
+    {
+        try
+        {
+            using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(seconds + 2) };
+            var stopAt = DateTime.UtcNow.AddSeconds(seconds);
+            while (DateTime.UtcNow < stopAt)
+            {
+                try
+                {
+                    _ = await client.GetByteArrayAsync("http://www.google.com/generate_204");
+                }
+                catch
+                {
+                    // Ignore transient network errors during traffic burst
+                }
+                await Task.Delay(200);
+            }
+        }
+        catch
+        {
+            // Traffic generation is best-effort
+        }
+    }
+
+    private static void EvaluateTrafficFidelity(WifiAcceptanceReport report, LinuxComposedAssociationObservation t0, LinuxComposedAssociationObservation t1)
+    {
+        if (t0.StationInfo != null && t1.StationInfo != null)
+        {
+            bool rxMonotonic = (t1.StationInfo.RxBytes ?? 0) >= (t0.StationInfo.RxBytes ?? 0);
+            bool txMonotonic = (t1.StationInfo.TxBytes ?? 0) >= (t0.StationInfo.TxBytes ?? 0);
+            bool rxPacketsMonotonic = (t1.StationInfo.RxPackets ?? 0) >= (t0.StationInfo.RxPackets ?? 0);
+            bool txPacketsMonotonic = (t1.StationInfo.TxPackets ?? 0) >= (t0.StationInfo.TxPackets ?? 0);
+
+            report.CounterFidelity = new CounterFidelityDto
+            {
+                T0RxBytes = t0.StationInfo.RxBytes,
+                T1RxBytes = t1.StationInfo.RxBytes,
+                T0TxBytes = t0.StationInfo.TxBytes,
+                T1TxBytes = t1.StationInfo.TxBytes,
+                RxBytesNonDecreasing = rxMonotonic,
+                TxBytesNonDecreasing = txMonotonic,
+                RxPacketsNonDecreasing = rxPacketsMonotonic,
+                TxPacketsNonDecreasing = txPacketsMonotonic
+            };
+
+            report.Verdicts["NumericFidelity"] = (rxMonotonic && txMonotonic && rxPacketsMonotonic && txPacketsMonotonic) ? "PASS" : "FAIL";
+        }
+        else
+        {
+            report.Verdicts["NumericFidelity"] = "NOT_TESTED";
+        }
+    }
+
+    private static void EvaluateOverallVerdicts(WifiAcceptanceReport report)
+    {
+        // 1. Interface Identity
+        if (report.ObservationT0 != null && report.ObservationT0.IfIndex > 0 && report.ObservationT0.Wdev > 0)
+        {
+            report.Verdicts["InterfaceIdentity"] = "PASS";
+        }
+        else
+        {
+            report.Verdicts["InterfaceIdentity"] = report.InitialSnapshot?.Medium == "Wireless" ? "FAIL" : "NOT_TESTED";
+        }
+
+        // 2. Association Truth
+        if (report.ObservationT0 != null && report.ObservationT0.State == "Associated")
+        {
+            report.Verdicts["AssociationTruth"] = "PASS";
+        }
+        else
+        {
+            report.Verdicts["AssociationTruth"] = report.InitialSnapshot?.Medium == "Wireless" ? "NOT_TESTED" : "NOT_APPLICABLE";
+        }
+
+        // 3. Station Peer Truth
+        if (report.ObservationT0?.StationInfo != null)
+        {
+            report.Verdicts["StationPeerTruth"] = "PASS";
+        }
+        else if (report.ObservationT0?.State == "Associated")
+        {
+            report.Verdicts["StationPeerTruth"] = "FAIL";
+        }
+        else
+        {
+            report.Verdicts["StationPeerTruth"] = "NOT_APPLICABLE";
+        }
+
+        // 4. MLO Hardware Qualification
+        if (report.ObservationT0?.Links != null && report.ObservationT0.Links.Count > 1)
+        {
+            report.Verdicts["MloHardwareQualification"] = "PASS";
+        }
+        else
+        {
+            report.Verdicts["MloHardwareQualification"] = "NOT_APPLICABLE";
+        }
+    }
+
+    private static ComposedObservationDto MapObservationDto(LinuxComposedAssociationObservation obs)
+    {
+        return new ComposedObservationDto
+        {
+            IfIndex = obs.IfIndex,
+            IfName = obs.IfName,
+            WiphyIndex = obs.WiphyIndex,
+            Wdev = obs.Wdev,
+            State = obs.State.ToString(),
+            ContinuityVerified = obs.ContinuityVerified,
+            Generation = obs.Generation,
+            Links = obs.Links.Select(l => new LinkDto
+            {
+                Bssid = l.Bssid,
+                DisplaySsid = l.DisplaySsid,
+                FrequencyMhz = l.FrequencyMhz,
+                SignalMbm = l.SignalMbm,
+                SignalQuality = l.SignalUnspec,
+                MloLinkId = l.MloLinkId,
+                MldAddress = l.MldAddress
+            }).ToList(),
+            StationInfo = obs.StationInfo == null ? null : new StationInfoDto
+            {
+                PeerMac = obs.StationInfo.PeerMacString,
+                SignalDbm = obs.StationInfo.SignalDbm,
+                SignalAverageDbm = obs.StationInfo.SignalAverageDbm,
+                RxBytes = obs.StationInfo.RxBytes,
+                TxBytes = obs.StationInfo.TxBytes,
+                RxPackets = obs.StationInfo.RxPackets,
+                TxPackets = obs.StationInfo.TxPackets,
+                ConnectedTimeSeconds = obs.StationInfo.ConnectedTimeSeconds,
+                ExpectedThroughputKbps = obs.StationInfo.ExpectedThroughputKbps,
+                AssociationBootTimeNs = obs.StationInfo.AssociationBootTimeNs,
+                TxBitrateBps = obs.StationInfo.TxRate?.BitrateBps,
+                TxMcs = obs.StationInfo.TxRate?.Mcs
+            }
+        };
+    }
+
+    private static void PrintConsoleSummary(WifiAcceptanceReport report)
+    {
+        Console.WriteLine("\n==============================================================================");
+        Console.WriteLine("ACCEPTANCE VERDICTS MATRIX");
+        Console.WriteLine("==============================================================================");
+        foreach (var (gate, verdict) in report.Verdicts)
+        {
+            var color = verdict switch
+            {
+                "PASS" => ConsoleColor.Green,
+                "FAIL" => ConsoleColor.Red,
+                _ => ConsoleColor.Yellow
+            };
+            Console.ForegroundColor = color;
+            Console.WriteLine($"  [{verdict,-14}] {gate}");
+            Console.ResetColor();
+        }
+        Console.WriteLine("==============================================================================");
+    }
+
+    private static string GenerateMarkdownReport(WifiAcceptanceReport report)
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine("# 3.1-7B · Linux Bare-Metal Wi-Fi Acceptance Report");
+        sb.AppendLine();
+        sb.AppendLine($"- **Timestamp UTC**: `{report.TimestampUtc}`");
+        sb.AppendLine($"- **Architecture**: `{report.Architecture}`");
+        sb.AppendLine($"- **OS Description**: `{report.OsDescription}`");
+        sb.AppendLine($"- **Capabilities (CapEff / CapAmb)**: `{report.CapEff ?? "0"}` / `{report.CapAmb ?? "0"}`");
+        sb.AppendLine();
+        sb.AppendLine("## Gate Verdicts");
+        sb.AppendLine();
+        sb.AppendLine("| Gate | Verdict | Note |");
+        sb.AppendLine("|---|---|---|");
+        foreach (var (gate, verdict) in report.Verdicts)
+        {
+            sb.AppendLine($"| `{gate}` | **{verdict}** | |");
+        }
+        sb.AppendLine();
+        sb.AppendLine("## Production Link Snapshot");
+        sb.AppendLine();
+        sb.AppendLine("```json");
+        sb.AppendLine(JsonSerializer.Serialize(report.InitialSnapshot, new JsonSerializerOptions { WriteIndented = true }));
+        sb.AppendLine("```");
+        sb.AppendLine();
+        sb.AppendLine("## Composed Kernel Observation (T0)");
+        sb.AppendLine();
+        sb.AppendLine("```json");
+        sb.AppendLine(JsonSerializer.Serialize(report.ObservationT0, new JsonSerializerOptions { WriteIndented = true }));
+        sb.AppendLine("```");
+        sb.AppendLine();
+        if (report.CounterFidelity != null)
+        {
+            sb.AppendLine("## Numeric Counter Fidelity");
+            sb.AppendLine();
+            sb.AppendLine("```json");
+            sb.AppendLine(JsonSerializer.Serialize(report.CounterFidelity, new JsonSerializerOptions { WriteIndented = true }));
+            sb.AppendLine("```");
+            sb.AppendLine();
+        }
+        return sb.ToString();
+    }
+}
+
+public sealed class WifiAcceptanceReport
+{
+    public string TimestampUtc { get; set; } = string.Empty;
+    public string Architecture { get; set; } = string.Empty;
+    public string Framework { get; set; } = string.Empty;
+    public string OsDescription { get; set; } = string.Empty;
+    public string? CapEff { get; set; }
+    public string? CapAmb { get; set; }
+    public Dictionary<string, string> Verdicts { get; set; } = new();
+    public List<string> Warnings { get; set; } = new();
+    public SnapshotDto? InitialSnapshot { get; set; }
+    public ComposedObservationDto? ObservationT0 { get; set; }
+    public ComposedObservationDto? ObservationT1 { get; set; }
+    public AccessPointDto? AccessPoint { get; set; }
+    public CounterFidelityDto? CounterFidelity { get; set; }
+}
+
+public sealed class SnapshotDto
+{
+    public string? InterfaceName { get; set; }
+    public string? InterfaceId { get; set; }
+    public string? Status { get; set; }
+    public string? Medium { get; set; }
+    public bool IsUp { get; set; }
+    public string? WirelessSsid { get; set; }
+    public string? WirelessBssid { get; set; }
+    public int? SignalQuality { get; set; }
+    public int? Channel { get; set; }
+    public int? RssiDbm { get; set; }
+    public bool? RadioOn { get; set; }
+}
+
+public sealed class ComposedObservationDto
+{
+    public int IfIndex { get; set; }
+    public string? IfName { get; set; }
+    public uint WiphyIndex { get; set; }
+    public ulong? Wdev { get; set; }
+    public string? State { get; set; }
+    public bool ContinuityVerified { get; set; }
+    public uint? Generation { get; set; }
+    public List<LinkDto> Links { get; set; } = new();
+    public StationInfoDto? StationInfo { get; set; }
+}
+
+public sealed class LinkDto
+{
+    public string? Bssid { get; set; }
+    public string? DisplaySsid { get; set; }
+    public uint? FrequencyMhz { get; set; }
+    public int? SignalMbm { get; set; }
+    public byte? SignalQuality { get; set; }
+    public byte? MloLinkId { get; set; }
+    public string? MldAddress { get; set; }
+}
+
+public sealed class StationInfoDto
+{
+    public string? PeerMac { get; set; }
+    public int? SignalDbm { get; set; }
+    public int? SignalAverageDbm { get; set; }
+    public ulong? RxBytes { get; set; }
+    public ulong? TxBytes { get; set; }
+    public uint? RxPackets { get; set; }
+    public uint? TxPackets { get; set; }
+    public uint? ConnectedTimeSeconds { get; set; }
+    public uint? ExpectedThroughputKbps { get; set; }
+    public ulong? AssociationBootTimeNs { get; set; }
+    public ulong? TxBitrateBps { get; set; }
+    public byte? TxMcs { get; set; }
+}
+
+public sealed class AccessPointDto
+{
+    public string? Bssid { get; set; }
+    public int? Channel { get; set; }
+    public int? Rssi { get; set; }
+}
+
+public sealed class CounterFidelityDto
+{
+    public ulong? T0RxBytes { get; set; }
+    public ulong? T1RxBytes { get; set; }
+    public ulong? T0TxBytes { get; set; }
+    public ulong? T1TxBytes { get; set; }
+    public bool RxBytesNonDecreasing { get; set; }
+    public bool TxBytesNonDecreasing { get; set; }
+    public bool RxPacketsNonDecreasing { get; set; }
+    public bool TxPacketsNonDecreasing { get; set; }
+}

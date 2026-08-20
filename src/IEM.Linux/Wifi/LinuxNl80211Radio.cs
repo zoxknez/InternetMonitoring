@@ -22,19 +22,23 @@ public sealed class LinuxNl80211Radio : IWirelessRadio, IDisposable, IAsyncDispo
     private readonly ILinuxRfkillReader _rfkillReader;
     private readonly string? _boundInterfaceId;
     private readonly bool _ownsSocket;
+    private volatile string? _lastQueriedInterfaceId;
     private GenlFamilyInfo? _cachedFamily;
     private readonly SemaphoreSlim _lock = new(1, 1);
 
     public LinuxNl80211Radio(
         ILinuxNl80211Socket? socket = null,
         ILinuxRfkillReader? rfkillReader = null,
-        string? boundInterfaceId = null)
+        string? boundInterfaceId = null,
+        bool? ownsSocket = null)
     {
-        _ownsSocket = socket == null;
+        _ownsSocket = ownsSocket ?? (socket == null);
         _socket = socket ?? LinuxNl80211Socket.Create();
         _rfkillReader = rfkillReader ?? LinuxRfkillReader.Instance;
         _boundInterfaceId = boundInterfaceId;
     }
+
+    public string? BoundInterfaceId => _boundInterfaceId;
 
     /// <summary>
     /// Whether the radio is on for the monitored interface, according to wiphy-scoped rfkill.
@@ -299,6 +303,11 @@ public sealed class LinuxNl80211Radio : IWirelessRadio, IDisposable, IAsyncDispo
         string interfaceId,
         CancellationToken cancellationToken = default)
     {
+        if (!string.IsNullOrWhiteSpace(interfaceId))
+        {
+            _lastQueriedInterfaceId = interfaceId;
+        }
+
         var obs = await ReadAssociationObservationAsync(interfaceId, cancellationToken).ConfigureAwait(false);
         if (obs == null || obs.State != LinuxWirelessAssociationState.Associated)
         {
@@ -860,14 +869,15 @@ public sealed class LinuxNl80211Radio : IWirelessRadio, IDisposable, IAsyncDispo
     /// </summary>
     public WirelessAccessPoint? ReadAccessPoint(string ssid, string bssid)
     {
-        if (string.IsNullOrWhiteSpace(_boundInterfaceId))
+        var targetInterface = _boundInterfaceId ?? _lastQueriedInterfaceId;
+        if (string.IsNullOrWhiteSpace(targetInterface))
         {
             return null;
         }
 
         try
         {
-            return ReadAccessPointAsync(_boundInterfaceId, ssid, bssid).GetAwaiter().GetResult();
+            return ReadAccessPointAsync(targetInterface, ssid, bssid).GetAwaiter().GetResult();
         }
 #pragma warning disable CA1031
         catch (Exception)
