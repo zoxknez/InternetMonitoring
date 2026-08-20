@@ -200,43 +200,49 @@ public sealed class LinuxWifiAcceptanceSimulationTests
         Assert.Equal(0, exitCode);
         Assert.Equal(WifiAcceptanceVerdict.NotApplicable, verdicts["MloHardwareQualification"]);
 
-        // 10. Generate Simulated Acceptance Artifacts
-        var dir = new DirectoryInfo(AppContext.BaseDirectory);
-        while (dir != null && !File.Exists(Path.Combine(dir.FullName, "InternetEvidenceMonitor.slnx")) && !File.Exists(Path.Combine(dir.FullName, "InternetEvidenceMonitor.sln")))
+        // 10. Optional Artifact Emission (Only when IEM_WRITE_SIMULATED_WIFI_ACCEPTANCE=1)
+        if (string.Equals(Environment.GetEnvironmentVariable("IEM_WRITE_SIMULATED_WIFI_ACCEPTANCE"), "1", StringComparison.OrdinalIgnoreCase))
         {
-            dir = dir.Parent;
-        }
-        var rootDir = dir?.FullName ?? AppContext.BaseDirectory;
-        var acceptanceDir = Path.Combine(rootDir, "artifacts/acceptance/3.1-7B");
-        Directory.CreateDirectory(acceptanceDir);
+            var dir = new DirectoryInfo(AppContext.BaseDirectory);
+            while (dir != null && !File.Exists(Path.Combine(dir.FullName, "InternetEvidenceMonitor.slnx")) && !File.Exists(Path.Combine(dir.FullName, "InternetEvidenceMonitor.sln")))
+            {
+                dir = dir.Parent;
+            }
+            var rootDir = dir?.FullName ?? AppContext.BaseDirectory;
+            var acceptanceDir = Path.Combine(rootDir, "artifacts/acceptance/3.1-7B");
+            Directory.CreateDirectory(acceptanceDir);
 
-        var reportJsonPath = Path.Combine(acceptanceDir, "wifi-simulated.json");
-        var reportMdPath = Path.Combine(acceptanceDir, "wifi-simulated.md");
+            var reportJsonPath = Path.Combine(acceptanceDir, "wifi-simulated.json");
+            var reportMdPath = Path.Combine(acceptanceDir, "wifi-simulated.md");
 
-        var reportObj = new
-        {
-            OverallVerdict = overall,
-            ExitCode = exitCode,
-            TimestampUtc = DateTimeOffset.UtcNow.ToString("o"),
-            Architecture = "X64",
-            OsDescription = "Linux Simulated (Kernel 6.8.0-generic cfg80211/nl80211)",
-            CapEff = "0000000000000000",
-            CapAmb = "0000000000000000",
-            Verdicts = verdicts,
-            Snapshot = initialSnapshot,
-            ObservationT0 = t0,
-            ObservationT1 = t1,
-            AccessPoint = ap
-        };
+            var reportObj = new
+            {
+                EvidenceKind = "SIMULATED",
+                HardwareObserved = false,
+                PhysicalAcceptanceVerdict = WifiAcceptanceVerdict.NotTested,
+                SimulationVerdict = WifiAcceptanceVerdict.Pass,
+                SimulationProfile = "AX200-like single-link profile",
+                TimestampUtc = "2026-08-20T00:00:00.0000000Z",
+                Architecture = "X64",
+                OsDescription = "Deterministic Simulator (Kernel 6.8.0-generic cfg80211/nl80211 mock)",
+                CapEff = "0000000000000000",
+                CapAmb = "0000000000000000",
+                Verdicts = verdicts,
+                Snapshot = initialSnapshot,
+                ObservationT0 = t0,
+                ObservationT1 = t1,
+                AccessPoint = ap
+            };
 
-        await File.WriteAllTextAsync(reportJsonPath, JsonSerializer.Serialize(reportObj, new JsonSerializerOptions { WriteIndented = true }));
+            await File.WriteAllTextAsync(reportJsonPath, JsonSerializer.Serialize(reportObj, new JsonSerializerOptions { WriteIndented = true }));
 
-        var mdContent = $@"# 3.1-7B · Linux Bare-Metal Wi-Fi Simulated Acceptance Report
+            var mdContent = @"# 3.1-7B · Deterministic Wi-Fi Acceptance Simulation Report
 
-- **Overall Verdict**: **{overall}** (Exit Code `{exitCode}`)
-- **Timestamp UTC**: `{DateTimeOffset.UtcNow:o}`
-- **Adapter**: `wlan0` (phy0) - Simulating Intel AX200 Wi-Fi 6 (802.11ax / nl80211)
-- **Zero Capabilities**: `CapEff=0000000000000000`, `CapAmb=0000000000000000` (PASS)
+- **Evidence Kind**: `SIMULATED` (Hardware Observed: `false`)
+- **Physical Acceptance Verdict**: **NOT_TESTED** (Deferred to hardware qualification run)
+- **Simulation Verdict**: **PASS** (Exit Code `0`)
+- **Simulation Profile**: `AX200-like single-link profile`
+- **Zero Capabilities Check**: `CapEff=0000000000000000`, `CapAmb=0000000000000000` (PASS on simulated environment)
 
 ## Gate Verdicts Matrix
 
@@ -251,9 +257,10 @@ public sealed class LinuxWifiAcceptanceSimulationTests
 | `CachedBssTruth` | Mandatory | **PASS** | Cached passive GET_SCAN dump resolves BSSID without active scan |
 | `AccessPointEvidence` | Mandatory | **PASS** | Channel 36 and RSSI -58 dBm verified |
 | `NumericFidelity` | Mandatory | **PASS** | RX/TX bytes & packets strictly non-decreasing over traffic interval |
-| `MloHardwareQualification` | Optional | **NOT_APPLICABLE** | Non-MLO single-link hardware (Wi-Fi 6) |
+| `MloHardwareQualification` | Optional | **NOT_APPLICABLE** | Non-MLO single-link hardware profile |
 ";
-        await File.WriteAllTextAsync(reportMdPath, mdContent);
+            await File.WriteAllTextAsync(reportMdPath, mdContent);
+        }
     }
 
     [Fact]
