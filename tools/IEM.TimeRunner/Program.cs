@@ -49,6 +49,8 @@ public static class Program
                 string? genlError = null;
                 int ifCount = 0;
                 bool dumpSuccess = false;
+                string dumpStatus = "Unavailable";
+                int dumpErrorCode = 0;
 
                 try
                 {
@@ -58,9 +60,11 @@ public static class Program
                     {
                         genlSuccess = true;
                         nl80211Id = fam.FamilyId;
-                        var ifs = await genlSock.GetInterfacesAsync(fam.FamilyId);
-                        dumpSuccess = true;
-                        ifCount = ifs.Count;
+                        var dumpRes = await genlSock.DumpInterfacesAsync(fam.FamilyId);
+                        dumpSuccess = dumpRes.IsComplete;
+                        dumpStatus = dumpRes.Status.ToString();
+                        dumpErrorCode = dumpRes.ErrorCode;
+                        ifCount = dumpRes.Items.Count;
                     }
                 }
                 catch (Exception ex)
@@ -92,6 +96,8 @@ public static class Program
                     netlinkGenericSuccess = genlSuccess,
                     nl80211FamilyId = nl80211Id,
                     dumpSuccess,
+                    dumpStatus,
+                    dumpErrorCode,
                     wirelessInterfaceCount = ifCount,
                     genlError,
                     rfkillAvailable

@@ -90,16 +90,14 @@ public sealed class LinuxNl80211Socket : ILinuxNl80211Socket
         }
     }
 
-    public async Task<List<LinuxNl80211InterfaceInfo>> GetInterfacesAsync(
+    public async Task<LinuxNl80211DumpResult<LinuxNl80211InterfaceInfo>> DumpInterfacesAsync(
         ushort nl80211FamilyId,
         int? ifindex = null,
         CancellationToken cancellationToken = default)
     {
-        var interfaces = new List<LinuxNl80211InterfaceInfo>();
-
         if (!RuntimeInformation.IsOSPlatform(OSPlatform.Linux) || nl80211FamilyId == 0)
         {
-            return interfaces;
+            return new LinuxNl80211DumpResult<LinuxNl80211InterfaceInfo>(Array.Empty<LinuxNl80211InterfaceInfo>(), LinuxNl80211DumpStatus.Unavailable);
         }
 
         await _semaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -108,7 +106,7 @@ public sealed class LinuxNl80211Socket : ILinuxNl80211Socket
             EnsureSocket();
             if (_socket is null)
             {
-                return interfaces;
+                return new LinuxNl80211DumpResult<LinuxNl80211InterfaceInfo>(Array.Empty<LinuxNl80211InterfaceInfo>(), LinuxNl80211DumpStatus.Unavailable);
             }
 
             var seq = (uint)Interlocked.Increment(ref _globalSequence);
@@ -118,8 +116,8 @@ public sealed class LinuxNl80211Socket : ILinuxNl80211Socket
 
             using var combinedStream = new MemoryStream();
             var recvBuffer = new byte[8192];
-            bool seenDone = false;
             bool isDump = !ifindex.HasValue;
+            bool timedOut = false;
 
             while (!cancellationToken.IsCancellationRequested)
             {
@@ -130,6 +128,7 @@ public sealed class LinuxNl80211Socket : ILinuxNl80211Socket
                 }
                 catch (TimeoutException)
                 {
+                    timedOut = true;
                     break;
                 }
 
@@ -141,9 +140,9 @@ public sealed class LinuxNl80211Socket : ILinuxNl80211Socket
                 combinedStream.Write(recvBuffer, 0, bytesRead);
 
                 var span = recvBuffer.AsSpan(0, bytesRead);
-                if (IsEndOfMultiPart(span))
+                var (isTerminal, hasFatalError) = InspectChunk(span, seq);
+                if (isTerminal)
                 {
-                    seenDone = true;
                     break;
                 }
 
@@ -153,27 +152,128 @@ public sealed class LinuxNl80211Socket : ILinuxNl80211Socket
                 }
             }
 
-            if (isDump && !seenDone)
+            if (cancellationToken.IsCancellationRequested)
             {
-                // Incomplete dump: reject partial snapshot
-                return interfaces;
+                return new LinuxNl80211DumpResult<LinuxNl80211InterfaceInfo>(Array.Empty<LinuxNl80211InterfaceInfo>(), LinuxNl80211DumpStatus.Cancelled);
             }
 
             var totalBytes = combinedStream.ToArray();
-            if (totalBytes.Length > 0)
+            if (totalBytes.Length == 0)
             {
-                int ret = LinuxNl80211Protocol.ParseInterfaceResponse(totalBytes, seq, isDump, out interfaces);
-                if (ret < 0)
-                {
-                    interfaces.Clear();
-                }
+                return new LinuxNl80211DumpResult<LinuxNl80211InterfaceInfo>(Array.Empty<LinuxNl80211InterfaceInfo>(), timedOut ? LinuxNl80211DumpStatus.TimedOut : LinuxNl80211DumpStatus.Incomplete, -11);
             }
 
-            return interfaces;
+            var result = LinuxNl80211Protocol.ParseInterfaceDump(totalBytes, seq, isDump);
+            if (timedOut && !result.IsComplete)
+            {
+                return new LinuxNl80211DumpResult<LinuxNl80211InterfaceInfo>(Array.Empty<LinuxNl80211InterfaceInfo>(), LinuxNl80211DumpStatus.TimedOut, -11);
+            }
+
+            return result;
         }
         catch (Exception)
         {
-            return interfaces;
+            return new LinuxNl80211DumpResult<LinuxNl80211InterfaceInfo>(Array.Empty<LinuxNl80211InterfaceInfo>(), LinuxNl80211DumpStatus.Unavailable);
+        }
+        finally
+        {
+            _semaphore.Release();
+        }
+    }
+
+    public async Task<List<LinuxNl80211InterfaceInfo>> GetInterfacesAsync(
+        ushort nl80211FamilyId,
+        int? ifindex = null,
+        CancellationToken cancellationToken = default)
+    {
+        var res = await DumpInterfacesAsync(nl80211FamilyId, ifindex, cancellationToken).ConfigureAwait(false);
+        return new List<LinuxNl80211InterfaceInfo>(res.Items);
+    }
+
+    public async Task<LinuxNl80211DumpResult<LinuxNl80211WiphyInfo>> DumpWiphysAsync(
+        ushort nl80211FamilyId,
+        uint? wiphyIndex = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Linux) || nl80211FamilyId == 0)
+        {
+            return new LinuxNl80211DumpResult<LinuxNl80211WiphyInfo>(Array.Empty<LinuxNl80211WiphyInfo>(), LinuxNl80211DumpStatus.Unavailable);
+        }
+
+        await _semaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            EnsureSocket();
+            if (_socket is null)
+            {
+                return new LinuxNl80211DumpResult<LinuxNl80211WiphyInfo>(Array.Empty<LinuxNl80211WiphyInfo>(), LinuxNl80211DumpStatus.Unavailable);
+            }
+
+            var seq = (uint)Interlocked.Increment(ref _globalSequence);
+            var req = LinuxNl80211Protocol.BuildGetWiphyRequest(nl80211FamilyId, wiphyIndex, seq);
+
+            _socket.Send(req);
+
+            using var combinedStream = new MemoryStream();
+            var recvBuffer = new byte[8192];
+            bool isDump = !wiphyIndex.HasValue;
+            bool timedOut = false;
+
+            while (!cancellationToken.IsCancellationRequested)
+            {
+                int bytesRead;
+                try
+                {
+                    bytesRead = _socket.Receive(recvBuffer, timeoutMs: 2000);
+                }
+                catch (TimeoutException)
+                {
+                    timedOut = true;
+                    break;
+                }
+
+                if (bytesRead <= 0)
+                {
+                    break;
+                }
+
+                combinedStream.Write(recvBuffer, 0, bytesRead);
+
+                var span = recvBuffer.AsSpan(0, bytesRead);
+                var (isTerminal, hasFatalError) = InspectChunk(span, seq);
+                if (isTerminal)
+                {
+                    break;
+                }
+
+                if (wiphyIndex.HasValue)
+                {
+                    break;
+                }
+            }
+
+            if (cancellationToken.IsCancellationRequested)
+            {
+                return new LinuxNl80211DumpResult<LinuxNl80211WiphyInfo>(Array.Empty<LinuxNl80211WiphyInfo>(), LinuxNl80211DumpStatus.Cancelled);
+            }
+
+            var totalBytes = combinedStream.ToArray();
+            if (totalBytes.Length == 0)
+            {
+                return new LinuxNl80211DumpResult<LinuxNl80211WiphyInfo>(Array.Empty<LinuxNl80211WiphyInfo>(), timedOut ? LinuxNl80211DumpStatus.TimedOut : LinuxNl80211DumpStatus.Incomplete, -11);
+            }
+
+            var result = LinuxNl80211Protocol.ParseWiphyDump(totalBytes, seq, isDump);
+            if (timedOut && !result.IsComplete)
+            {
+                return new LinuxNl80211DumpResult<LinuxNl80211WiphyInfo>(Array.Empty<LinuxNl80211WiphyInfo>(), LinuxNl80211DumpStatus.TimedOut, -11);
+            }
+
+            return result;
+        }
+        catch (Exception)
+        {
+            return new LinuxNl80211DumpResult<LinuxNl80211WiphyInfo>(Array.Empty<LinuxNl80211WiphyInfo>(), LinuxNl80211DumpStatus.Unavailable);
         }
         finally
         {
@@ -186,93 +286,11 @@ public sealed class LinuxNl80211Socket : ILinuxNl80211Socket
         uint? wiphyIndex = null,
         CancellationToken cancellationToken = default)
     {
-        var wiphys = new List<LinuxNl80211WiphyInfo>();
-
-        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Linux) || nl80211FamilyId == 0)
-        {
-            return wiphys;
-        }
-
-        await _semaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
-        try
-        {
-            EnsureSocket();
-            if (_socket is null)
-            {
-                return wiphys;
-            }
-
-            var seq = (uint)Interlocked.Increment(ref _globalSequence);
-            var req = LinuxNl80211Protocol.BuildGetWiphyRequest(nl80211FamilyId, wiphyIndex, seq);
-
-            _socket.Send(req);
-
-            using var combinedStream = new MemoryStream();
-            var recvBuffer = new byte[8192];
-            bool seenDone = false;
-            bool isDump = !wiphyIndex.HasValue;
-
-            while (!cancellationToken.IsCancellationRequested)
-            {
-                int bytesRead;
-                try
-                {
-                    bytesRead = _socket.Receive(recvBuffer, timeoutMs: 2000);
-                }
-                catch (TimeoutException)
-                {
-                    break;
-                }
-
-                if (bytesRead <= 0)
-                {
-                    break;
-                }
-
-                combinedStream.Write(recvBuffer, 0, bytesRead);
-
-                var span = recvBuffer.AsSpan(0, bytesRead);
-                if (IsEndOfMultiPart(span))
-                {
-                    seenDone = true;
-                    break;
-                }
-
-                if (wiphyIndex.HasValue)
-                {
-                    break;
-                }
-            }
-
-            if (isDump && !seenDone)
-            {
-                // Incomplete dump: reject partial snapshot
-                return wiphys;
-            }
-
-            var totalBytes = combinedStream.ToArray();
-            if (totalBytes.Length > 0)
-            {
-                int ret = LinuxNl80211Protocol.ParseWiphyResponse(totalBytes, seq, isDump, out wiphys);
-                if (ret < 0)
-                {
-                    wiphys.Clear();
-                }
-            }
-
-            return wiphys;
-        }
-        catch (Exception)
-        {
-            return wiphys;
-        }
-        finally
-        {
-            _semaphore.Release();
-        }
+        var res = await DumpWiphysAsync(nl80211FamilyId, wiphyIndex, cancellationToken).ConfigureAwait(false);
+        return new List<LinuxNl80211WiphyInfo>(res.Items);
     }
 
-    private static bool IsEndOfMultiPart(ReadOnlySpan<byte> buffer)
+    private static (bool IsTerminal, bool HasFatalError) InspectChunk(ReadOnlySpan<byte> buffer, uint expectedSeq)
     {
         int offset = 0;
         while (offset + LinuxGenlProtocol.NlmsgHeaderSize <= buffer.Length)
@@ -280,19 +298,40 @@ public sealed class LinuxNl80211Socket : ILinuxNl80211Socket
             int nlmsgLen = MemoryMarshal.Read<int>(buffer.Slice(offset, 4));
             if (nlmsgLen < LinuxGenlProtocol.NlmsgHeaderSize || offset + nlmsgLen > buffer.Length)
             {
-                break;
+                return (true, true);
             }
 
             ushort nlmsgType = MemoryMarshal.Read<ushort>(buffer.Slice(offset + 4, 2));
-            if (nlmsgType == LinuxGenlProtocol.NLMSG_DONE || nlmsgType == LinuxGenlProtocol.NLMSG_ERROR)
+            uint seq = MemoryMarshal.Read<uint>(buffer.Slice(offset + 8, 4));
+
+            if (seq != expectedSeq)
             {
-                return true;
+                offset += LinuxGenlProtocol.NlmsgAlign(nlmsgLen);
+                continue;
+            }
+
+            if (nlmsgType == LinuxGenlProtocol.NLMSG_DONE)
+            {
+                return (true, false);
+            }
+
+            if (nlmsgType == LinuxGenlProtocol.NLMSG_ERROR)
+            {
+                if (nlmsgLen >= LinuxGenlProtocol.NlmsgHeaderSize + 4)
+                {
+                    int error = MemoryMarshal.Read<int>(buffer.Slice(offset + LinuxGenlProtocol.NlmsgHeaderSize, 4));
+                    if (error < 0)
+                    {
+                        return (true, true);
+                    }
+                    // error == 0: pure ACK, do NOT terminate dump!
+                }
             }
 
             offset += LinuxGenlProtocol.NlmsgAlign(nlmsgLen);
         }
 
-        return false;
+        return (false, false);
     }
 
     public void Dispose()

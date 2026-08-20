@@ -656,9 +656,18 @@ ROUTE_SUCCESS=$(echo "${NETLINK_JSON}" | jq -r '.netlinkRouteSuccess // false' 2
 ROUTE_GW=$(echo "${NETLINK_JSON}" | jq -r '.routeGateway // ""' 2>/dev/null || echo "")
 ROUTE_IF=$(echo "${NETLINK_JSON}" | jq -r '.routeIfIndex // ""' 2>/dev/null || echo "")
 
+# Machine assertions on zero capabilities during production Netlink execution
+NETLINK_CAP_EFF=$(echo "${NETLINK_JSON}" | jq -r '.capEff // ""' 2>/dev/null || echo "")
+NETLINK_CAP_AMB=$(echo "${NETLINK_JSON}" | jq -r '.capAmb // ""' 2>/dev/null || echo "")
+if [ "${NETLINK_CAP_EFF}" != "0000000000000000" ] || [ "${NETLINK_CAP_AMB}" != "0000000000000000" ]; then
+    STATUS_NETLINK_ROUTING="FAIL"
+    record_fail "Netlink execution violated capability bounding (CapEff=${NETLINK_CAP_EFF}, CapAmb=${NETLINK_CAP_AMB})"
+    exit 1
+fi
+
 if [ "${ROUTE_SUCCESS}" = "true" ] && [ -n "${ROUTE_IF}" ]; then
     STATUS_NETLINK_ROUTING="PASS"
-    record_pass "Kernel FIB lookup via production C# Netlink RTM_GETROUTE verified without privileges (Gateway=${ROUTE_GW}, Interface=${ROUTE_IF})"
+    record_pass "Kernel FIB lookup via production C# Netlink RTM_GETROUTE verified without privileges (Gateway=${ROUTE_GW}, Interface=${ROUTE_IF}, CapEff=0, CapAmb=0)"
 else
     STATUS_NETLINK_ROUTING="FAIL"
     record_fail "Netlink RTM_GETROUTE verification failed: ${NETLINK_OUTPUT}"
@@ -668,14 +677,15 @@ fi
 GENL_SUCCESS=$(echo "${NETLINK_JSON}" | jq -r '.netlinkGenericSuccess // false' 2>/dev/null || echo "false")
 NL80211_ID=$(echo "${NETLINK_JSON}" | jq -r '.nl80211FamilyId // 0' 2>/dev/null || echo "0")
 DUMP_SUCCESS=$(echo "${NETLINK_JSON}" | jq -r '.dumpSuccess // false' 2>/dev/null || echo "false")
+DUMP_STATUS=$(echo "${NETLINK_JSON}" | jq -r '.dumpStatus // ""' 2>/dev/null || echo "")
 IF_COUNT=$(echo "${NETLINK_JSON}" | jq -r '.wirelessInterfaceCount // 0' 2>/dev/null || echo "0")
 
-if [ "${GENL_SUCCESS}" = "true" ] && [ "${NL80211_ID}" -gt 0 ] && [ "${DUMP_SUCCESS}" = "true" ]; then
+if [ "${GENL_SUCCESS}" = "true" ] && [ "${NL80211_ID}" -gt 0 ] && [ "${DUMP_SUCCESS}" = "true" ] && [ "${DUMP_STATUS}" = "Complete" ]; then
     STATUS_NL80211_GENERIC="PASS"
-    record_pass "Generic Netlink nl80211 discovery & complete interface dump verified (FamilyId=${NL80211_ID}, Interfaces=${IF_COUNT})"
+    record_pass "Generic Netlink nl80211 discovery & complete interface dump verified (FamilyId=${NL80211_ID}, Status=${DUMP_STATUS}, Interfaces=${IF_COUNT}, CapEff=0, CapAmb=0)"
 else
     STATUS_NL80211_GENERIC="FAIL"
-    record_fail "Generic Netlink nl80211 verification failed: ${NETLINK_OUTPUT}"
+    record_fail "Generic Netlink nl80211 verification failed (Status=${DUMP_STATUS}): ${NETLINK_OUTPUT}"
     exit 1
 fi
 

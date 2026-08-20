@@ -9,6 +9,34 @@ namespace IEM.Linux.Wifi;
 /// <summary>
 /// Structured interface facts read from NL80211_CMD_GET_INTERFACE.
 /// </summary>
+/// <summary>
+/// Status of a multi-part or single Netlink dump operation.
+/// </summary>
+public enum LinuxNl80211DumpStatus
+{
+    Complete = 0,
+    Incomplete = 1,
+    Interrupted = 2,
+    KernelError = 3,
+    TimedOut = 4,
+    Cancelled = 5,
+    Malformed = 6,
+    Unavailable = 7
+}
+
+/// <summary>
+/// Rich evidence-grade outcome of a Generic Netlink nl80211 dump operation.
+/// </summary>
+public sealed record LinuxNl80211DumpResult<T>(
+    IReadOnlyList<T> Items,
+    LinuxNl80211DumpStatus Status,
+    int ErrorCode = 0,
+    bool SawDone = false,
+    bool Interrupted = false)
+{
+    public bool IsComplete => Status == LinuxNl80211DumpStatus.Complete;
+}
+
 public sealed record LinuxNl80211InterfaceInfo(
     int IfIndex,
     string IfName,
@@ -170,20 +198,18 @@ public static class LinuxNl80211Protocol
     }
 
     /// <summary>
-    /// Parses an NL80211_CMD_GET_INTERFACE single or multi-part dump response.
-    /// Invariants 249, 252: Incomplete or interrupted dumps are rejected with negative error.
+    /// Parses an NL80211_CMD_GET_INTERFACE single or multi-part dump response with full status provenance.
     /// </summary>
-    public static int ParseInterfaceResponse(
+    public static LinuxNl80211DumpResult<LinuxNl80211InterfaceInfo> ParseInterfaceDump(
         ReadOnlySpan<byte> buffer,
         uint expectedSequence,
-        bool isDump,
-        out List<LinuxNl80211InterfaceInfo> interfaces)
+        bool isDump)
     {
-        interfaces = new List<LinuxNl80211InterfaceInfo>();
+        var interfaces = new List<LinuxNl80211InterfaceInfo>();
 
         if (buffer.Length < LinuxGenlProtocol.NlmsgHeaderSize)
         {
-            return -22; // -EINVAL
+            return new LinuxNl80211DumpResult<LinuxNl80211InterfaceInfo>(Array.Empty<LinuxNl80211InterfaceInfo>(), LinuxNl80211DumpStatus.Malformed, -22);
         }
 
         bool seenDone = false;
@@ -194,8 +220,7 @@ public static class LinuxNl80211Protocol
             int nlmsgLen = MemoryMarshal.Read<int>(buffer.Slice(offset, 4));
             if (nlmsgLen < LinuxGenlProtocol.NlmsgHeaderSize || offset + nlmsgLen > buffer.Length)
             {
-                interfaces.Clear();
-                return -22; // -EINVAL
+                return new LinuxNl80211DumpResult<LinuxNl80211InterfaceInfo>(Array.Empty<LinuxNl80211InterfaceInfo>(), LinuxNl80211DumpStatus.Malformed, -22);
             }
 
             ushort nlmsgType = MemoryMarshal.Read<ushort>(buffer.Slice(offset + 4, 2));
@@ -204,12 +229,12 @@ public static class LinuxNl80211Protocol
 
             if ((flags & LinuxGenlProtocol.NLM_F_DUMP_INTR) != 0)
             {
-                // Dump was interrupted in kernel; non-authoritative, requires retry
-                interfaces.Clear();
-                return -4; // -EINTR
+                // Dump was interrupted in kernel; non-authoritative
+                return new LinuxNl80211DumpResult<LinuxNl80211InterfaceInfo>(Array.Empty<LinuxNl80211InterfaceInfo>(), LinuxNl80211DumpStatus.Interrupted, -4, Interrupted: true);
             }
 
-            if (seq != expectedSequence && seq != 0)
+            // Strict sequence matching: ignore unsolicited notifications / mismatched seq (e.g. seq == 0)
+            if (seq != expectedSequence)
             {
                 offset += LinuxGenlProtocol.NlmsgAlign(nlmsgLen);
                 continue;
@@ -219,22 +244,34 @@ public static class LinuxNl80211Protocol
             {
                 if (nlmsgLen < LinuxGenlProtocol.NlmsgHeaderSize + 4)
                 {
-                    interfaces.Clear();
-                    return -22;
+                    return new LinuxNl80211DumpResult<LinuxNl80211InterfaceInfo>(Array.Empty<LinuxNl80211InterfaceInfo>(), LinuxNl80211DumpStatus.Malformed, -22);
                 }
                 int errorCode = MemoryMarshal.Read<int>(buffer.Slice(offset + LinuxGenlProtocol.NlmsgHeaderSize, 4));
                 if (errorCode < 0)
                 {
-                    interfaces.Clear();
-                    return errorCode; // Negative errno
+                    return new LinuxNl80211DumpResult<LinuxNl80211InterfaceInfo>(Array.Empty<LinuxNl80211InterfaceInfo>(), LinuxNl80211DumpStatus.KernelError, errorCode);
                 }
-                // Pure ACK (errorCode == 0): acknowledgment only, not end of dump
+                // Pure ACK (errorCode == 0): continue processing dump
                 offset += LinuxGenlProtocol.NlmsgAlign(nlmsgLen);
                 continue;
             }
 
             if (nlmsgType == LinuxGenlProtocol.NLMSG_DONE)
             {
+                // Inspect optional error payload in NLMSG_DONE (nlmsgLen >= 20)
+                if (nlmsgLen >= LinuxGenlProtocol.NlmsgHeaderSize + 4)
+                {
+                    int doneErr = MemoryMarshal.Read<int>(buffer.Slice(offset + LinuxGenlProtocol.NlmsgHeaderSize, 4));
+                    if (doneErr < 0)
+                    {
+                        return new LinuxNl80211DumpResult<LinuxNl80211InterfaceInfo>(Array.Empty<LinuxNl80211InterfaceInfo>(), LinuxNl80211DumpStatus.KernelError, doneErr, SawDone: true);
+                    }
+                }
+                else if (nlmsgLen != LinuxGenlProtocol.NlmsgHeaderSize)
+                {
+                    return new LinuxNl80211DumpResult<LinuxNl80211InterfaceInfo>(Array.Empty<LinuxNl80211InterfaceInfo>(), LinuxNl80211DumpStatus.Malformed, -22);
+                }
+
                 seenDone = true;
                 break;
             }
@@ -254,12 +291,25 @@ public static class LinuxNl80211Protocol
 
         if (isDump && !seenDone)
         {
-            // Multipart dump ended without NLMSG_DONE; incomplete/non-authoritative snapshot
-            interfaces.Clear();
-            return -11; // -EAGAIN / incomplete
+            return new LinuxNl80211DumpResult<LinuxNl80211InterfaceInfo>(Array.Empty<LinuxNl80211InterfaceInfo>(), LinuxNl80211DumpStatus.Incomplete, -11);
         }
 
-        return 0;
+        return new LinuxNl80211DumpResult<LinuxNl80211InterfaceInfo>(interfaces, LinuxNl80211DumpStatus.Complete, 0, SawDone: isDump ? seenDone : true);
+    }
+
+    /// <summary>
+    /// Parses an NL80211_CMD_GET_INTERFACE single or multi-part dump response.
+    /// Invariants 249, 252: Incomplete or interrupted dumps are rejected with negative error.
+    /// </summary>
+    public static int ParseInterfaceResponse(
+        ReadOnlySpan<byte> buffer,
+        uint expectedSequence,
+        bool isDump,
+        out List<LinuxNl80211InterfaceInfo> interfaces)
+    {
+        var result = ParseInterfaceDump(buffer, expectedSequence, isDump);
+        interfaces = new List<LinuxNl80211InterfaceInfo>(result.Items);
+        return result.IsComplete ? 0 : (result.ErrorCode != 0 ? result.ErrorCode : -11);
     }
 
     private static bool TryParseInterfacePayload(ReadOnlySpan<byte> payload, out LinuxNl80211InterfaceInfo? ifinfo)
@@ -323,20 +373,18 @@ public static class LinuxNl80211Protocol
     }
 
     /// <summary>
-    /// Parses an NL80211_CMD_GET_WIPHY single or dump response.
-    /// Invariants 249, 252: Incomplete or interrupted dumps are rejected with negative error.
+    /// Parses an NL80211_CMD_GET_WIPHY single or dump response with full status provenance.
     /// </summary>
-    public static int ParseWiphyResponse(
+    public static LinuxNl80211DumpResult<LinuxNl80211WiphyInfo> ParseWiphyDump(
         ReadOnlySpan<byte> buffer,
         uint expectedSequence,
-        bool isDump,
-        out List<LinuxNl80211WiphyInfo> wiphys)
+        bool isDump)
     {
-        wiphys = new List<LinuxNl80211WiphyInfo>();
+        var wiphys = new List<LinuxNl80211WiphyInfo>();
 
         if (buffer.Length < LinuxGenlProtocol.NlmsgHeaderSize)
         {
-            return -22;
+            return new LinuxNl80211DumpResult<LinuxNl80211WiphyInfo>(Array.Empty<LinuxNl80211WiphyInfo>(), LinuxNl80211DumpStatus.Malformed, -22);
         }
 
         bool seenDone = false;
@@ -347,8 +395,7 @@ public static class LinuxNl80211Protocol
             int nlmsgLen = MemoryMarshal.Read<int>(buffer.Slice(offset, 4));
             if (nlmsgLen < LinuxGenlProtocol.NlmsgHeaderSize || offset + nlmsgLen > buffer.Length)
             {
-                wiphys.Clear();
-                return -22;
+                return new LinuxNl80211DumpResult<LinuxNl80211WiphyInfo>(Array.Empty<LinuxNl80211WiphyInfo>(), LinuxNl80211DumpStatus.Malformed, -22);
             }
 
             ushort nlmsgType = MemoryMarshal.Read<ushort>(buffer.Slice(offset + 4, 2));
@@ -357,12 +404,12 @@ public static class LinuxNl80211Protocol
 
             if ((flags & LinuxGenlProtocol.NLM_F_DUMP_INTR) != 0)
             {
-                // Dump was interrupted in kernel; non-authoritative, requires retry
-                wiphys.Clear();
-                return -4; // -EINTR
+                // Dump was interrupted in kernel; non-authoritative
+                return new LinuxNl80211DumpResult<LinuxNl80211WiphyInfo>(Array.Empty<LinuxNl80211WiphyInfo>(), LinuxNl80211DumpStatus.Interrupted, -4, Interrupted: true);
             }
 
-            if (seq != expectedSequence && seq != 0)
+            // Strict sequence matching: ignore unsolicited notifications / mismatched seq (e.g. seq == 0)
+            if (seq != expectedSequence)
             {
                 offset += LinuxGenlProtocol.NlmsgAlign(nlmsgLen);
                 continue;
@@ -372,14 +419,12 @@ public static class LinuxNl80211Protocol
             {
                 if (nlmsgLen < LinuxGenlProtocol.NlmsgHeaderSize + 4)
                 {
-                    wiphys.Clear();
-                    return -22;
+                    return new LinuxNl80211DumpResult<LinuxNl80211WiphyInfo>(Array.Empty<LinuxNl80211WiphyInfo>(), LinuxNl80211DumpStatus.Malformed, -22);
                 }
                 int errorCode = MemoryMarshal.Read<int>(buffer.Slice(offset + LinuxGenlProtocol.NlmsgHeaderSize, 4));
                 if (errorCode < 0)
                 {
-                    wiphys.Clear();
-                    return errorCode;
+                    return new LinuxNl80211DumpResult<LinuxNl80211WiphyInfo>(Array.Empty<LinuxNl80211WiphyInfo>(), LinuxNl80211DumpStatus.KernelError, errorCode);
                 }
                 offset += LinuxGenlProtocol.NlmsgAlign(nlmsgLen);
                 continue;
@@ -387,6 +432,19 @@ public static class LinuxNl80211Protocol
 
             if (nlmsgType == LinuxGenlProtocol.NLMSG_DONE)
             {
+                if (nlmsgLen >= LinuxGenlProtocol.NlmsgHeaderSize + 4)
+                {
+                    int doneErr = MemoryMarshal.Read<int>(buffer.Slice(offset + LinuxGenlProtocol.NlmsgHeaderSize, 4));
+                    if (doneErr < 0)
+                    {
+                        return new LinuxNl80211DumpResult<LinuxNl80211WiphyInfo>(Array.Empty<LinuxNl80211WiphyInfo>(), LinuxNl80211DumpStatus.KernelError, doneErr, SawDone: true);
+                    }
+                }
+                else if (nlmsgLen != LinuxGenlProtocol.NlmsgHeaderSize)
+                {
+                    return new LinuxNl80211DumpResult<LinuxNl80211WiphyInfo>(Array.Empty<LinuxNl80211WiphyInfo>(), LinuxNl80211DumpStatus.Malformed, -22);
+                }
+
                 seenDone = true;
                 break;
             }
@@ -410,11 +468,25 @@ public static class LinuxNl80211Protocol
 
         if (isDump && !seenDone)
         {
-            wiphys.Clear();
-            return -11; // -EAGAIN / incomplete
+            return new LinuxNl80211DumpResult<LinuxNl80211WiphyInfo>(Array.Empty<LinuxNl80211WiphyInfo>(), LinuxNl80211DumpStatus.Incomplete, -11);
         }
 
-        return 0;
+        return new LinuxNl80211DumpResult<LinuxNl80211WiphyInfo>(wiphys, LinuxNl80211DumpStatus.Complete, 0, SawDone: isDump ? seenDone : true);
+    }
+
+    /// <summary>
+    /// Parses an NL80211_CMD_GET_WIPHY single or dump response.
+    /// Invariants 249, 252: Incomplete or interrupted dumps are rejected with negative error.
+    /// </summary>
+    public static int ParseWiphyResponse(
+        ReadOnlySpan<byte> buffer,
+        uint expectedSequence,
+        bool isDump,
+        out List<LinuxNl80211WiphyInfo> wiphys)
+    {
+        var result = ParseWiphyDump(buffer, expectedSequence, isDump);
+        wiphys = new List<LinuxNl80211WiphyInfo>(result.Items);
+        return result.IsComplete ? 0 : (result.ErrorCode != 0 ? result.ErrorCode : -11);
     }
 
     private static bool TryParseWiphyPayload(ReadOnlySpan<byte> payload, out LinuxNl80211WiphyInfo? winfo)
