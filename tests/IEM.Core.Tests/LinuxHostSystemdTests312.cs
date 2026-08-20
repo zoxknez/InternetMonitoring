@@ -2,6 +2,7 @@ using System.Reflection;
 using System.Runtime.CompilerServices;
 using IEM.Core.Hosting;
 using IEM.Core.Probes;
+using IEM.Linux.Storage;
 using IEM.Service.Linux.Lifecycle;
 using IEM.Service.Linux.Storage;
 using IEM.Service.Runtime;
@@ -152,16 +153,17 @@ public sealed class LinuxHostSystemdTests312
     {
         var layout = LinuxSystemStorageLayout.Instance;
 
-        Assert.Equal("/var/lib/internet-evidence-monitor", layout.DefaultOutputRoot);
+        Assert.Equal("/var/lib/internet-evidence-monitor/sessions", layout.DefaultOutputRoot);
         Assert.Equal("/run/internet-evidence-monitor", layout.RuntimeDirectory);
 
         // Installed system resolution
-        Assert.Equal("/var/lib/internet-evidence-monitor", layout.ResolveOutputRoot(isInstalled: true));
-        Assert.Equal("/var/lib/internet-evidence-monitor/Sesija_S123", layout.GetSessionDirectory("S123", isInstalled: true).Replace('\\', '/'));
+        Assert.Equal("/var/lib/internet-evidence-monitor/sessions", layout.ResolveOutputRoot(isInstalled: true));
+        Assert.Equal("/var/lib/internet-evidence-monitor/sessions/Sesija_S123", layout.GetSessionDirectory("S123", isInstalled: true).Replace('\\', '/'));
 
-        // Portable mode resolution
-        var portableRoot = layout.ResolveOutputRoot(isInstalled: false);
-        Assert.Contains("internet-evidence-monitor", portableRoot);
+        // Portable mode resolution (with mocked or real env)
+        var portableLayout = new LinuxStorageLayout(getEnvironmentVariable: key => key == "XDG_STATE_HOME" ? "/home/user/.local/state" : null);
+        var portableRoot = portableLayout.ResolveOutputRoot(isInstalled: false);
+        Assert.Equal("/home/user/.local/state/internet-evidence-monitor/sessions", portableRoot.Replace('\\', '/'));
         Assert.DoesNotContain("/var/lib/", portableRoot);
     }
 
@@ -285,7 +287,7 @@ public sealed class LinuxHostSystemdTests312
     {
         // Uncreatable / invalid state directory path
         var invalidLayout = new LinuxSystemStorageLayout(stateDir: "\0invalid_path");
-        Assert.Equal("\0invalid_path", invalidLayout.DefaultOutputRoot);
+        Assert.Equal("\0invalid_path/sessions", invalidLayout.DefaultOutputRoot);
 
         // Attempting to resolve or create directory throws / fails cleanly without silent fallback
         Assert.ThrowsAny<Exception>(() => Directory.CreateDirectory(invalidLayout.DefaultOutputRoot));

@@ -1,56 +1,43 @@
+using IEM.Linux.Storage;
 using IEM.Storage.Layout;
 
 namespace IEM.Service.Linux.Storage;
 
 /// <summary>
-/// Linux system storage layout implementation for systemd service mode.
-/// Invariant 277 / Roadmap §6:
-/// System mode writes exclusively to /var/lib/internet-evidence-monitor/ (StateDirectory)
+/// Backward-compatible wrapper for <see cref="LinuxStorageLayout"/>.
+/// Invariant 277 / Phase 3.1-8A:
+/// System mode writes sessions to /var/lib/internet-evidence-monitor/sessions
 /// and prepares /run/internet-evidence-monitor/ (RuntimeDirectory).
 /// </summary>
 public sealed class LinuxSystemStorageLayout : IPlatformStorageLayout
 {
     public static readonly LinuxSystemStorageLayout Instance = new();
 
-    public const string DefaultSystemStateDir = "/var/lib/internet-evidence-monitor";
-    public const string DefaultSystemRuntimeDir = "/run/internet-evidence-monitor";
+    public const string DefaultSystemStateDir = LinuxStoragePaths.DefaultSystemStateRoot;
+    public const string DefaultSystemRuntimeDir = LinuxStoragePaths.DefaultSystemRuntimeDir;
 
-    public string DefaultOutputRoot { get; }
+    private readonly LinuxStorageLayout _underlying;
 
-    public string PortableOutputRoot { get; }
+    public string DefaultOutputRoot => _underlying.DefaultOutputRoot;
 
-    public string RuntimeDirectory { get; }
+    public string PortableOutputRoot => _underlying.PortableOutputRoot;
+
+    public string RuntimeDirectory => _underlying.RuntimeDirectory;
 
     public LinuxSystemStorageLayout(
         string? stateDir = null,
         string? runtimeDir = null,
         string? portableDir = null)
     {
-        DefaultOutputRoot = stateDir ?? DefaultSystemStateDir;
-        RuntimeDirectory = runtimeDir ?? DefaultSystemRuntimeDir;
-
-        if (!string.IsNullOrWhiteSpace(portableDir))
-        {
-            PortableOutputRoot = portableDir;
-        }
-        else
-        {
-            var xdgDataHome = Environment.GetEnvironmentVariable("XDG_DATA_HOME");
-            if (!string.IsNullOrWhiteSpace(xdgDataHome))
-            {
-                PortableOutputRoot = Path.Combine(xdgDataHome, "internet-evidence-monitor");
-            }
-            else
-            {
-                var home = Environment.GetEnvironmentVariable("HOME") ?? "/tmp";
-                PortableOutputRoot = Path.Combine(home, ".local", "share", "internet-evidence-monitor");
-            }
-        }
+        _underlying = new LinuxStorageLayout(
+            stateRoot: stateDir,
+            runtimeDir: runtimeDir,
+            getEnvironmentVariable: !string.IsNullOrWhiteSpace(portableDir)
+                ? key => key == "XDG_STATE_HOME" ? portableDir : Environment.GetEnvironmentVariable(key)
+                : null);
     }
 
-    public string ResolveOutputRoot(bool isInstalled) =>
-        isInstalled ? DefaultOutputRoot : PortableOutputRoot;
+    public string ResolveOutputRoot(bool isInstalled) => _underlying.ResolveOutputRoot(isInstalled);
 
-    public string GetSessionDirectory(string sessionId, bool isInstalled) =>
-        Path.Combine(ResolveOutputRoot(isInstalled), $"Sesija_{sessionId}");
+    public string GetSessionDirectory(string sessionId, bool isInstalled) => _underlying.GetSessionDirectory(sessionId, isInstalled);
 }

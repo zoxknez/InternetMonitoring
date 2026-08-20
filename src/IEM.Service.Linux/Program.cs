@@ -29,7 +29,7 @@ builder.Services.AddSingleton<IPlatformProbeFactory>(IEM.Linux.Network.LinuxProb
 builder.Services.AddSingleton<LinuxLogindPowerSource>();
 builder.Services.AddSingleton<IPowerEventSource>(sp => sp.GetRequiredService<LinuxLogindPowerSource>());
 builder.Services.AddHostedService(sp => sp.GetRequiredService<LinuxLogindPowerSource>());
-builder.Services.AddSingleton<IPlatformStorageLayout>(LinuxSystemStorageLayout.Instance);
+builder.Services.AddSingleton<IPlatformStorageLayout>(IEM.Linux.Storage.LinuxStorageLayout.Instance);
 
 // Runtime engine workers reuse from IEM.Service.Runtime
 builder.Services.Configure<MonitorSettings>(builder.Configuration.GetSection(MonitorSettings.SectionName));
