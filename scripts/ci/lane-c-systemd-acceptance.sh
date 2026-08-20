@@ -643,79 +643,20 @@ echo "9.6 NETLINK RTM_GETROUTE FIB ROUTING ACCEPTANCE"
 echo "=============================================================================="
 CURRENT_STAGE="STAGE_9_6_NETLINK_ROUTING"
 
-# Test Netlink RTM_GETROUTE FIB lookup directly as unprivileged service user iem
-cat << 'EOF' > /tmp/iem_netlink_test.py
-import socket, struct, sys
+# Test Netlink RTM_GETROUTE FIB lookup and NETLINK_GENERIC nl80211 via production C# IEM.TimeRunner as unprivileged user iem
+NETLINK_OUTPUT=$(sudo -u iem "${INSTALL_DIR}/tools/IEM.TimeRunner" netlink 2>/dev/null || echo "")
+echo "Netlink test output (production C# as user iem with zero capabilities): ${NETLINK_OUTPUT}"
 
-# Build RTM_GETROUTE Netlink packet for 8.8.8.8
-dest_ip = socket.inet_aton("8.8.8.8")
-nlmsg_len = 16 + 12 + 8 # 36 bytes
-nlmsg_type = 26 # RTM_GETROUTE
-nlmsg_flags = 1 # NLM_F_REQUEST
-nlmsg_seq = 1
-nlmsg_pid = 0
+NETLINK_JSON=$(echo "${NETLINK_OUTPUT}" | grep "IEM_NETLINK_LIVE_JSON=" | sed 's/IEM_NETLINK_LIVE_JSON=//' || echo "")
+echo "Netlink live JSON: ${NETLINK_JSON}"
 
-# nlmsghdr (16 bytes)
-header = struct.pack('<IHHII', nlmsg_len, nlmsg_type, nlmsg_flags, nlmsg_seq, nlmsg_pid)
+ROUTE_SUCCESS=$(echo "${NETLINK_JSON}" | jq -r '.netlinkRouteSuccess // false' 2>/dev/null || echo "false")
+ROUTE_GW=$(echo "${NETLINK_JSON}" | jq -r '.routeGateway // ""' 2>/dev/null || echo "")
+ROUTE_IF=$(echo "${NETLINK_JSON}" | jq -r '.routeIfIndex // ""' 2>/dev/null || echo "")
 
-# rtmsg (12 bytes)
-rtmsg = struct.pack('BBBBBBBBI', 2, 32, 0, 0, 254, 0, 0, 0, 0)
-
-# rtattr RTA_DST (8 bytes)
-rta_len = 8
-rta_type = 1 # RTA_DST
-rtattr = struct.pack('<HH4s', rta_len, rta_type, dest_ip)
-
-packet = header + rtmsg + rtattr
-
-s = socket.socket(socket.AF_NETLINK, socket.SOCK_RAW, 0) # NETLINK_ROUTE
-try:
-    s.send(packet)
-    reply = s.recv(4096)
-    if len(reply) < 16:
-        print("ERROR: Response too short")
-        sys.exit(1)
-    rep_len, rep_type, rep_flags, rep_seq, rep_pid = struct.unpack('<IHHII', reply[:16])
-    if rep_type != 24: # RTM_NEWROUTE
-        print(f"ERROR: Expected RTM_NEWROUTE (24), got {rep_type}")
-        sys.exit(2)
-    
-    # Parse attributes starting at offset 28 (16 nlmsg + 12 rtmsg)
-    offset = 28
-    oif = None
-    prefsrc = None
-    while offset + 4 <= rep_len:
-        a_len, a_type = struct.unpack('<HH', reply[offset:offset+4])
-        if a_len < 4 or offset + a_len > rep_len:
-            break
-        a_payload = reply[offset+4:offset+a_len]
-        if a_type == 4 and len(a_payload) >= 4: # RTA_OIF
-            oif = struct.unpack('<I', a_payload[:4])[0]
-        elif a_type == 7 and len(a_payload) >= 4: # RTA_PREFSRC
-            prefsrc = socket.inet_ntoa(a_payload[:4])
-        # 4-byte align
-        offset += (a_len + 3) & ~3
-    
-    print(f"SUCCESS: OIF={oif}, PREFSRC={prefsrc}")
-    if oif is not None and prefsrc is not None:
-        sys.exit(0)
-    else:
-        sys.exit(3)
-except Exception as e:
-    print(f"EXCEPTION: {e}")
-    sys.exit(99)
-finally:
-    s.close()
-EOF
-chmod 0755 /tmp/iem_netlink_test.py
-
-NETLINK_TEST_RES=0
-NETLINK_OUTPUT=$(sudo -u iem python3 /tmp/iem_netlink_test.py 2>/dev/null || NETLINK_TEST_RES=$?)
-echo "Netlink test output (as user iem with zero capabilities): ${NETLINK_OUTPUT}"
-
-if echo "${NETLINK_OUTPUT}" | grep -q "SUCCESS: OIF="; then
+if [ "${ROUTE_SUCCESS}" = "true" ] && [ -n "${ROUTE_IF}" ]; then
     STATUS_NETLINK_ROUTING="PASS"
-    record_pass "Kernel FIB lookup via Netlink RTM_GETROUTE verified without privileges (zero shell spawned)"
+    record_pass "Kernel FIB lookup via production C# Netlink RTM_GETROUTE verified without privileges (Gateway=${ROUTE_GW}, Interface=${ROUTE_IF})"
 else
     STATUS_NETLINK_ROUTING="FAIL"
     record_fail "Netlink RTM_GETROUTE verification failed: ${NETLINK_OUTPUT}"

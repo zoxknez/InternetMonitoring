@@ -1,10 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Net.Sockets;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
+using IEM.Linux.Network.Netlink;
 
 namespace IEM.Linux.Wifi;
 
@@ -15,7 +15,7 @@ namespace IEM.Linux.Wifi;
 public sealed class LinuxNl80211Socket : ILinuxNl80211Socket
 {
     private static int _globalSequence;
-    private Socket? _socket;
+    private LinuxNativeNetlinkSocket? _socket;
     private readonly SemaphoreSlim _semaphore = new(1, 1);
     private bool _disposed;
 
@@ -23,7 +23,7 @@ public sealed class LinuxNl80211Socket : ILinuxNl80211Socket
 
     private void EnsureSocket()
     {
-        if (_socket is not null && _socket.Connected)
+        if (_socket is not null && _socket.IsOpen)
         {
             return;
         }
@@ -38,16 +38,10 @@ public sealed class LinuxNl80211Socket : ILinuxNl80211Socket
 
         try
         {
-            // AF_NETLINK = 16, SOCK_RAW = 3, NETLINK_GENERIC = 16
-            _socket = new Socket((AddressFamily)16, SocketType.Raw, (ProtocolType)LinuxGenlProtocol.NETLINK_GENERIC)
-            {
-                ReceiveTimeout = 3000,
-                SendTimeout = 3000
-            };
+            _socket = LinuxNativeNetlinkSocket.Open(LinuxGenlProtocol.NETLINK_GENERIC);
         }
         catch (Exception)
         {
-            _socket?.Dispose();
             _socket = null;
         }
     }
@@ -73,10 +67,10 @@ public sealed class LinuxNl80211Socket : ILinuxNl80211Socket
             var seq = (uint)Interlocked.Increment(ref _globalSequence);
             var req = LinuxGenlProtocol.BuildGetFamilyRequest(familyName, seq);
 
-            await _socket.SendAsync(req, SocketFlags.None, cancellationToken).ConfigureAwait(false);
+            _socket.Send(req);
 
             var recvBuffer = new byte[8192];
-            var bytesRead = await _socket.ReceiveAsync(recvBuffer, SocketFlags.None, cancellationToken).ConfigureAwait(false);
+            var bytesRead = _socket.Receive(recvBuffer, timeoutMs: 3000);
 
             if (bytesRead <= 0)
             {
@@ -120,14 +114,23 @@ public sealed class LinuxNl80211Socket : ILinuxNl80211Socket
             var seq = (uint)Interlocked.Increment(ref _globalSequence);
             var req = LinuxNl80211Protocol.BuildGetInterfaceRequest(nl80211FamilyId, ifindex, seq);
 
-            await _socket.SendAsync(req, SocketFlags.None, cancellationToken).ConfigureAwait(false);
+            _socket.Send(req);
 
-            var combinedStream = new MemoryStream();
+            using var combinedStream = new MemoryStream();
             var recvBuffer = new byte[8192];
 
             while (!cancellationToken.IsCancellationRequested)
             {
-                var bytesRead = await _socket.ReceiveAsync(recvBuffer, SocketFlags.None, cancellationToken).ConfigureAwait(false);
+                int bytesRead;
+                try
+                {
+                    bytesRead = _socket.Receive(recvBuffer, timeoutMs: 2000);
+                }
+                catch (TimeoutException)
+                {
+                    break;
+                }
+
                 if (bytesRead <= 0)
                 {
                     break;
@@ -135,24 +138,14 @@ public sealed class LinuxNl80211Socket : ILinuxNl80211Socket
 
                 combinedStream.Write(recvBuffer, 0, bytesRead);
 
-                // Check if last message was NLMSG_DONE or NLMSG_ERROR
                 var span = recvBuffer.AsSpan(0, bytesRead);
                 if (IsEndOfMultiPart(span))
                 {
                     break;
                 }
 
-                if (!ifindex.HasValue)
+                if (ifindex.HasValue)
                 {
-                    // For dump requests, continue receiving until NLMSG_DONE
-                    if (_socket.Available == 0 && combinedStream.Length > 0 && IsEndOfMultiPart(combinedStream.ToArray()))
-                    {
-                        break;
-                    }
-                }
-                else
-                {
-                    // Single query response is complete after 1 receive
                     break;
                 }
             }
@@ -199,14 +192,23 @@ public sealed class LinuxNl80211Socket : ILinuxNl80211Socket
             var seq = (uint)Interlocked.Increment(ref _globalSequence);
             var req = LinuxNl80211Protocol.BuildGetWiphyRequest(nl80211FamilyId, wiphyIndex, seq);
 
-            await _socket.SendAsync(req, SocketFlags.None, cancellationToken).ConfigureAwait(false);
+            _socket.Send(req);
 
-            var combinedStream = new MemoryStream();
+            using var combinedStream = new MemoryStream();
             var recvBuffer = new byte[8192];
 
             while (!cancellationToken.IsCancellationRequested)
             {
-                var bytesRead = await _socket.ReceiveAsync(recvBuffer, SocketFlags.None, cancellationToken).ConfigureAwait(false);
+                int bytesRead;
+                try
+                {
+                    bytesRead = _socket.Receive(recvBuffer, timeoutMs: 2000);
+                }
+                catch (TimeoutException)
+                {
+                    break;
+                }
+
                 if (bytesRead <= 0)
                 {
                     break;

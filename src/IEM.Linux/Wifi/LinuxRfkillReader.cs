@@ -2,6 +2,7 @@ using System;
 using System.Buffers.Binary;
 using System.IO;
 using System.Runtime.InteropServices;
+using IEM.Linux.Network.Netlink;
 
 namespace IEM.Linux.Wifi;
 
@@ -57,44 +58,66 @@ public sealed class LinuxRfkillReader : ILinuxRfkillReader
             return null;
         }
 
+        const int O_RDONLY = 0;
+        const int O_NONBLOCK = 0x800;
+        const int O_CLOEXEC = 0x80000;
+
+        int fd = -1;
         try
         {
-            using var fs = new FileStream(devPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite, 1024, FileOptions.None);
-            var buffer = new byte[8];
+            fd = LinuxNativeNetlinkSocket.NativeMethods.open(devPath, O_RDONLY | O_NONBLOCK | O_CLOEXEC);
+            if (fd < 0)
+            {
+                return null;
+            }
 
+            var buffer = new byte[8];
             LinuxRfkillObservation? matched = null;
 
-            while (fs.Read(buffer, 0, 8) == 8)
+            unsafe
             {
-                uint idx = BinaryPrimitives.ReadUInt32LittleEndian(buffer.AsSpan(0, 4));
-                byte type = buffer[4];
-                byte op = buffer[5];
-                byte soft = buffer[6];
-                byte hard = buffer[7];
-
-                if (type != RFKILL_TYPE_WLAN && type != RFKILL_TYPE_ALL)
+                fixed (byte* pBuf = buffer)
                 {
-                    continue;
-                }
-
-                if (op == RFKILL_OP_DEL)
-                {
-                    if (matched != null && matched.RfkillIndex == (int)idx)
+                    while (true)
                     {
-                        matched = null;
-                    }
-                    continue;
-                }
+                        nint read = LinuxNativeNetlinkSocket.NativeMethods.read(fd, pBuf, 8);
+                        if (read < 8)
+                        {
+                            // EAGAIN / EOF / short read indicates end of current snapshot
+                            break;
+                        }
 
-                // Correlate rfkill index to wiphyIndex
-                if (IsRfkillBoundToWiphy((int)idx, wiphyIndex))
-                {
-                    matched = new LinuxRfkillObservation(
-                        (int)idx,
-                        wiphyIndex,
-                        HardBlocked: hard == 1,
-                        SoftBlocked: soft == 1,
-                        LinuxRfkillEvidenceBasis.DevRfkill);
+                        uint idx = BinaryPrimitives.ReadUInt32LittleEndian(buffer.AsSpan(0, 4));
+                        byte type = buffer[4];
+                        byte op = buffer[5];
+                        byte soft = buffer[6];
+                        byte hard = buffer[7];
+
+                        if (type != RFKILL_TYPE_WLAN && type != RFKILL_TYPE_ALL)
+                        {
+                            continue;
+                        }
+
+                        if (op == RFKILL_OP_DEL)
+                        {
+                            if (matched != null && matched.RfkillIndex == (int)idx)
+                            {
+                                matched = null;
+                            }
+                            continue;
+                        }
+
+                        // Correlate rfkill index to wiphyIndex
+                        if (IsRfkillBoundToWiphy((int)idx, wiphyIndex))
+                        {
+                            matched = new LinuxRfkillObservation(
+                                (int)idx,
+                                wiphyIndex,
+                                HardBlocked: hard == 1,
+                                SoftBlocked: soft == 1,
+                                LinuxRfkillEvidenceBasis.DevRfkill);
+                        }
+                    }
                 }
             }
 
@@ -105,6 +128,13 @@ public sealed class LinuxRfkillReader : ILinuxRfkillReader
 #pragma warning restore CA1031
         {
             return null;
+        }
+        finally
+        {
+            if (fd >= 0)
+            {
+                LinuxNativeNetlinkSocket.NativeMethods.close(fd);
+            }
         }
     }
 

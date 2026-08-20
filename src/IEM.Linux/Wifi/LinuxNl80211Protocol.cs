@@ -58,9 +58,9 @@ public static class LinuxNl80211Protocol
     public const ushort NL80211_ATTR_MAC = 6;
     public const ushort NL80211_ATTR_WIPHY_FREQ = 38;
     public const ushort NL80211_ATTR_SSID = 52;
-    public const ushort NL80211_ATTR_STA_INFO = 20;
-    public const ushort NL80211_ATTR_BSS = 45;
-    public const ushort NL80211_ATTR_SPLIT_WIPHY_DUMP = 289;
+    public const ushort NL80211_ATTR_STA_INFO = 21;
+    public const ushort NL80211_ATTR_BSS = 47;
+    public const ushort NL80211_ATTR_SPLIT_WIPHY_DUMP = 174;
 
     // Interface types
     public const int NL80211_IFTYPE_UNSPECIFIED = 0;
@@ -197,6 +197,12 @@ public static class LinuxNl80211Protocol
             ushort flags = MemoryMarshal.Read<ushort>(buffer.Slice(offset + 6, 2));
             uint seq = MemoryMarshal.Read<uint>(buffer.Slice(offset + 8, 4));
 
+            if ((flags & LinuxGenlProtocol.NLM_F_DUMP_INTR) != 0)
+            {
+                // Dump was interrupted in kernel; non-authoritative, requires retry
+                return -4; // -EINTR
+            }
+
             if (seq != expectedSequence && seq != 0)
             {
                 offset += LinuxGenlProtocol.NlmsgAlign(nlmsgLen);
@@ -318,7 +324,14 @@ public static class LinuxNl80211Protocol
             }
 
             ushort nlmsgType = MemoryMarshal.Read<ushort>(buffer.Slice(offset + 4, 2));
+            ushort flags = MemoryMarshal.Read<ushort>(buffer.Slice(offset + 6, 2));
             uint seq = MemoryMarshal.Read<uint>(buffer.Slice(offset + 8, 4));
+
+            if ((flags & LinuxGenlProtocol.NLM_F_DUMP_INTR) != 0)
+            {
+                // Dump was interrupted in kernel; non-authoritative, requires retry
+                return -4; // -EINTR
+            }
 
             if (seq != expectedSequence && seq != 0)
             {

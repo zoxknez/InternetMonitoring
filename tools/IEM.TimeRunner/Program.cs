@@ -1,10 +1,13 @@
 using System;
 using System.IO;
+using System.Net;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using IEM.Core.Time;
+using IEM.Linux.Network.Netlink;
 using IEM.Linux.Time;
+using IEM.Linux.Wifi;
 using IEM.Service.Linux.Lifecycle.Logind;
 
 namespace IEM.TimeRunner;
@@ -16,6 +19,84 @@ public static class Program
         try
         {
             var mode = args.Length > 0 ? args[0] : "all";
+
+            if (mode == "netlink" || mode == "all")
+            {
+                var proc = ReadProcStatus();
+
+                // 1. Live NETLINK_ROUTE lookup
+                bool routeSuccess = false;
+                string? routeGateway = null;
+                string? routeIfIndex = null;
+                string? routeError = null;
+
+                try
+                {
+                    var routeResp = LinuxNetlinkRouteClient.Instance.QueryRoute(IPAddress.Parse("8.8.8.8"));
+                    routeSuccess = routeResp.Success;
+                    routeGateway = routeResp.Gateway?.ToString();
+                    routeIfIndex = routeResp.InterfaceIndex?.ToString();
+                    routeError = routeResp.ErrorMessage;
+                }
+                catch (Exception ex)
+                {
+                    routeError = ex.Message;
+                }
+
+                // 2. Live NETLINK_GENERIC nl80211 lookup
+                bool genlSuccess = false;
+                ushort nl80211Id = 0;
+                string? genlError = null;
+                int ifCount = 0;
+
+                try
+                {
+                    await using var genlSock = LinuxNl80211Socket.Create();
+                    var fam = await genlSock.GetFamilyAsync("nl80211");
+                    if (fam != null)
+                    {
+                        genlSuccess = true;
+                        nl80211Id = fam.FamilyId;
+                        var ifs = await genlSock.GetInterfacesAsync(fam.FamilyId);
+                        ifCount = ifs.Count;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    genlError = ex.Message;
+                }
+
+                // 3. Live rfkill read
+                bool rfkillAvailable = false;
+                try
+                {
+                    var rfkillObs = LinuxRfkillReader.Instance.ReadObservationForWiphy(0);
+                    rfkillAvailable = rfkillObs != null;
+                }
+                catch
+                {
+                }
+
+                var netlinkOutput = new
+                {
+                    uid = proc.Uid,
+                    gid = proc.Gid,
+                    capEff = proc.CapEff,
+                    capAmb = proc.CapAmb,
+                    netlinkRouteSuccess = routeSuccess,
+                    routeGateway,
+                    routeIfIndex,
+                    routeError,
+                    netlinkGenericSuccess = genlSuccess,
+                    nl80211FamilyId = nl80211Id,
+                    wirelessInterfaceCount = ifCount,
+                    genlError,
+                    rfkillAvailable
+                };
+
+                Console.WriteLine("IEM_NETLINK_LIVE_JSON=" + JsonSerializer.Serialize(netlinkOutput));
+                Console.Out.Flush();
+            }
 
             if (mode == "time" || mode == "all")
             {

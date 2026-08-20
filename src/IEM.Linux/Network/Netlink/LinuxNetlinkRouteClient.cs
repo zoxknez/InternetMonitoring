@@ -13,7 +13,7 @@ namespace IEM.Linux.Network.Netlink;
 public sealed class LinuxNetlinkRouteClient : IDisposable
 {
     private static int _globalSequence;
-    private Socket? _socket;
+    private LinuxNativeNetlinkSocket? _socket;
     private readonly object _syncLock = new();
 
     public static LinuxNetlinkRouteClient Instance { get; } = new();
@@ -82,10 +82,10 @@ public sealed class LinuxNetlinkRouteClient : IDisposable
                     return NetlinkRouteResponse.CreateFailure(destination, "Failed to initialize Netlink socket.", sequence: seq);
                 }
 
-                _socket.Send(requestBuffer, SocketFlags.None);
+                _socket.Send(requestBuffer);
 
                 var responseBuffer = new byte[4096];
-                var received = _socket.Receive(responseBuffer, SocketFlags.None);
+                var received = _socket.Receive(responseBuffer, timeoutMs: 2000);
 
                 if (received <= 0)
                 {
@@ -97,21 +97,12 @@ public sealed class LinuxNetlinkRouteClient : IDisposable
                     destination,
                     expectedSequence: seq);
             }
-            catch (SocketException ex)
-            {
-                ResetSocket();
-                return NetlinkRouteResponse.CreateFailure(
-                    destination,
-                    $"Netlink socket exception: {ex.Message} (ErrorCode: {ex.ErrorCode})",
-                    nativeErrorCode: ex.ErrorCode,
-                    sequence: seq);
-            }
             catch (Exception ex)
             {
                 ResetSocket();
                 return NetlinkRouteResponse.CreateFailure(
                     destination,
-                    $"Unexpected Netlink lookup exception: {ex.Message}",
+                    $"Netlink socket exception: {ex.Message}",
                     sequence: seq);
             }
         }
@@ -119,15 +110,11 @@ public sealed class LinuxNetlinkRouteClient : IDisposable
 
     private void EnsureSocket()
     {
-        if (_socket is not null) return;
+        if (_socket is not null && _socket.IsOpen) return;
 
         try
         {
-            _socket = new Socket((AddressFamily)NetlinkConstants.AF_NETLINK, SocketType.Raw, (ProtocolType)NetlinkConstants.NETLINK_ROUTE)
-            {
-                ReceiveTimeout = 2000,
-                SendTimeout = 2000
-            };
+            _socket = LinuxNativeNetlinkSocket.Open(NetlinkConstants.NETLINK_ROUTE);
         }
         catch
         {

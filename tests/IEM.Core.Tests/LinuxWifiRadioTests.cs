@@ -76,6 +76,25 @@ public class LinuxWifiRadioTests
     }
 
     [Fact]
+    public void Nl80211Protocol_Has_Correct_Authoritative_UAPI_Constants()
+    {
+        Assert.Equal(21, LinuxNl80211Protocol.NL80211_ATTR_STA_INFO);
+        Assert.Equal(47, LinuxNl80211Protocol.NL80211_ATTR_BSS);
+        Assert.Equal(174, LinuxNl80211Protocol.NL80211_ATTR_SPLIT_WIPHY_DUMP);
+    }
+
+    [Fact]
+    public void Nl80211Protocol_Rejects_Interrupted_Dump_NLM_F_DUMP_INTR()
+    {
+        uint seq = 202;
+        byte[] response = BuildMockInterfaceResponse(seq, ifindex: 3, ifname: "wlan0", wiphy: 0, iftype: LinuxNl80211Protocol.NL80211_IFTYPE_STATION, isInterrupted: true);
+
+        int res = LinuxNl80211Protocol.ParseInterfaceResponse(response, seq, out var list);
+        Assert.Equal(-4, res); // -EINTR
+        Assert.Empty(list);
+    }
+
+    [Fact]
     public void Nl80211Protocol_Builds_And_Parses_Interface_Response()
     {
         uint seq = 201;
@@ -263,7 +282,7 @@ public class LinuxWifiRadioTests
         return ms.ToArray();
     }
 
-    private static byte[] BuildMockInterfaceResponse(uint seq, int ifindex, string ifname, uint wiphy, int iftype)
+    private static byte[] BuildMockInterfaceResponse(uint seq, int ifindex, string ifname, uint wiphy, int iftype, bool isInterrupted = false)
     {
         var ms = new MemoryStream();
         using var bw = new BinaryWriter(ms);
@@ -277,10 +296,12 @@ public class LinuxWifiRadioTests
         int totalLen = LinuxGenlProtocol.NlmsgHeaderSize + LinuxGenlProtocol.GenlHeaderSize +
                        ifindexAttrLen + nameAttrLen + wiphyAttrLen + iftypeAttrLen;
 
+        ushort flags = isInterrupted ? LinuxGenlProtocol.NLM_F_DUMP_INTR : (ushort)0;
+
         // nlmsghdr
         bw.Write(totalLen);
         bw.Write((ushort)28); // nl80211 family id
-        bw.Write((ushort)0);
+        bw.Write(flags);
         bw.Write(seq);
         bw.Write((uint)0);
 
