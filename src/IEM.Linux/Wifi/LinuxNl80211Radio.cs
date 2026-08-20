@@ -313,12 +313,29 @@ public sealed class LinuxNl80211Radio : IWirelessRadio, IDisposable, IAsyncDispo
     }
 
     /// <summary>
-    /// Queries station metadata for a verified peer MAC associated with an interface.
+    /// Queries station metadata for a verified peer MAC associated with an interface using a correlation token.
     /// Invariant 257: Station metadata is enrichment truth and never changes the BSS association truth.
-    /// Returns null if station query fails (e.g. ENOENT, timeout, permissions), leaving association intact.
+    /// Returns null if station query fails (e.g. ENOENT, timeout, permissions, WDEV mismatch), leaving association intact.
+    /// </summary>
+    public async Task<LinuxNl80211StationInfo?> ReadStationInfoAsync(
+        LinuxNl80211StationCorrelationToken token,
+        CancellationToken cancellationToken = default)
+    {
+        if (token == null)
+        {
+            return null;
+        }
+
+        return await ReadStationInfoAsync(token.IfIndex, token.Wdev, token.PeerMac, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Queries station metadata for a verified peer MAC on a specific interface index and WDEV.
+    /// Invariant 257: Station metadata is enrichment truth and never changes the BSS association truth.
     /// </summary>
     public async Task<LinuxNl80211StationInfo?> ReadStationInfoAsync(
         int ifindex,
+        ulong wdev,
         byte[] peerMac,
         CancellationToken cancellationToken = default)
     {
@@ -333,7 +350,7 @@ public sealed class LinuxNl80211Radio : IWirelessRadio, IDisposable, IAsyncDispo
             return null;
         }
 
-        var result = await _socket.GetStationAsync(family.FamilyId, ifindex, peerMac, cancellationToken).ConfigureAwait(false);
+        var result = await _socket.GetStationAsync(family.FamilyId, ifindex, wdev, peerMac, cancellationToken).ConfigureAwait(false);
         if (!result.IsSuccess)
         {
             return null;

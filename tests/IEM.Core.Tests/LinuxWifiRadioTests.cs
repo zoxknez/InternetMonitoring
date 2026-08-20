@@ -1640,10 +1640,12 @@ public class LinuxWifiRadioTests
         uint seq = 603;
         ushort familyId = 28;
         int ifindex = 3;
+        ulong wdev = 0x1000UL;
         byte[] peerMac = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x55 };
 
         var staMsg = BuildMockStationRecord(
             seq, familyId, ifindex, peerMac,
+            wdev: wdev,
             generation: 100u,
             signal: -65,
             signalAvg: -68,
@@ -1655,7 +1657,7 @@ public class LinuxWifiRadioTests
             txFailed: 2u,
             connectedTime: 3600u);
 
-        var res = LinuxNl80211Protocol.ParseStationResponse(staMsg, seq, familyId, ifindex, peerMac);
+        var res = LinuxNl80211Protocol.ParseStationResponse(staMsg, seq, familyId, ifindex, wdev, peerMac);
 
         Assert.True(res.IsSuccess);
         Assert.NotNull(res.Item);
@@ -1679,13 +1681,14 @@ public class LinuxWifiRadioTests
         uint seq = 604;
         ushort familyId = 28;
         int ifindex = 3;
+        ulong wdev = 0x1000UL;
         byte[] peerMac = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x55 };
 
         var ack = BuildMockNlmsgError(seq, errorCode: 0);
-        var data = BuildMockStationRecord(seq, familyId, ifindex, peerMac, signal: -70);
+        var data = BuildMockStationRecord(seq, familyId, ifindex, peerMac, wdev: wdev, signal: -70);
         var stream = CombineBuffers(ack, data);
 
-        var res = LinuxNl80211Protocol.ParseStationResponse(stream, seq, familyId, ifindex, peerMac);
+        var res = LinuxNl80211Protocol.ParseStationResponse(stream, seq, familyId, ifindex, wdev, peerMac);
         Assert.True(res.IsSuccess);
         Assert.True(res.SawAck);
         Assert.NotNull(res.Item);
@@ -1698,11 +1701,12 @@ public class LinuxWifiRadioTests
         uint seq = 605;
         ushort familyId = 28;
         int ifindex = 3;
+        ulong wdev = 0x1000UL;
         byte[] peerMac = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x55 };
 
         var ack = BuildMockNlmsgError(seq, errorCode: 0);
 
-        var res = LinuxNl80211Protocol.ParseStationResponse(ack, seq, familyId, ifindex, peerMac);
+        var res = LinuxNl80211Protocol.ParseStationResponse(ack, seq, familyId, ifindex, wdev, peerMac);
         Assert.False(res.IsSuccess);
         Assert.Equal(LinuxNl80211DumpStatus.Incomplete, res.Status);
         Assert.True(res.SawAck);
@@ -1714,11 +1718,12 @@ public class LinuxWifiRadioTests
         uint seq = 606;
         ushort familyId = 28;
         int ifindex = 3;
+        ulong wdev = 0x1000UL;
         byte[] peerMac = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x55 };
 
         var err = BuildMockNlmsgError(seq, errorCode: -2); // ENOENT
 
-        var res = LinuxNl80211Protocol.ParseStationResponse(err, seq, familyId, ifindex, peerMac);
+        var res = LinuxNl80211Protocol.ParseStationResponse(err, seq, familyId, ifindex, wdev, peerMac);
         Assert.False(res.IsSuccess);
         Assert.Equal(LinuxNl80211DumpStatus.KernelError, res.Status);
         Assert.Equal(-2, res.ErrorCode);
@@ -1734,6 +1739,7 @@ public class LinuxWifiRadioTests
         uint seq = 607;
         ushort familyId = 28;
         int ifindex = 3;
+        ulong wdev = 0x1000UL;
         byte[] peerMac = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x55 };
 
         var ms = new MemoryStream();
@@ -1748,7 +1754,7 @@ public class LinuxWifiRadioTests
             WritePadding(bw, shortLen);
         }
 
-        var res = LinuxNl80211Protocol.ParseStationResponse(ms.ToArray(), seq, familyId, ifindex, peerMac);
+        var res = LinuxNl80211Protocol.ParseStationResponse(ms.ToArray(), seq, familyId, ifindex, wdev, peerMac);
         Assert.False(res.IsSuccess);
         Assert.Equal(LinuxNl80211DumpStatus.Malformed, res.Status);
     }
@@ -1758,11 +1764,12 @@ public class LinuxWifiRadioTests
     {
         uint seq = 608;
         ushort familyId = 28;
+        ulong wdev = 0x1000UL;
         byte[] peerMac = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x55 };
 
-        var staMsg = BuildMockStationRecord(seq, familyId, ifindex: 4, peerMac); // expected 3, got 4
+        var staMsg = BuildMockStationRecord(seq, familyId, ifindex: 4, peerMac, wdev: wdev); // expected 3, got 4
 
-        var res = LinuxNl80211Protocol.ParseStationResponse(staMsg, seq, familyId, expectedIfIndex: 3, peerMac);
+        var res = LinuxNl80211Protocol.ParseStationResponse(staMsg, seq, familyId, expectedIfIndex: 3, expectedWdev: wdev, peerMac);
         Assert.False(res.IsSuccess);
         Assert.Equal(LinuxNl80211DumpStatus.Malformed, res.Status);
     }
@@ -1773,11 +1780,77 @@ public class LinuxWifiRadioTests
         uint seq = 609;
         ushort familyId = 28;
         int ifindex = 3;
+        ulong wdev = 0x1000UL;
         byte[] peerMac = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x55 };
 
-        var staMsg = BuildMockStationRecord(seq, familyId, ifindex, peerMac, omitIfindex: true);
+        var staMsg = BuildMockStationRecord(seq, familyId, ifindex, peerMac, wdev: wdev, omitIfindex: true);
 
-        var res = LinuxNl80211Protocol.ParseStationResponse(staMsg, seq, familyId, ifindex, peerMac);
+        var res = LinuxNl80211Protocol.ParseStationResponse(staMsg, seq, familyId, ifindex, wdev, peerMac);
+        Assert.False(res.IsSuccess);
+        Assert.Equal(LinuxNl80211DumpStatus.Malformed, res.Status);
+    }
+
+    [Fact]
+    public void Nl80211Protocol_ParseStationResponse_Matching_Wdev_Accepted()
+    {
+        uint seq = 610;
+        ushort familyId = 28;
+        int ifindex = 3;
+        ulong wdev = 0xABCD1234UL;
+        byte[] peerMac = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x55 };
+
+        var staMsg = BuildMockStationRecord(seq, familyId, ifindex, peerMac, wdev: wdev);
+
+        var res = LinuxNl80211Protocol.ParseStationResponse(staMsg, seq, familyId, ifindex, expectedWdev: wdev, peerMac);
+        Assert.True(res.IsSuccess);
+        Assert.NotNull(res.Item);
+    }
+
+    [Fact]
+    public void Nl80211Protocol_ParseStationResponse_Mismatched_Wdev_Rejected()
+    {
+        uint seq = 611;
+        ushort familyId = 28;
+        int ifindex = 3;
+        ulong requestedWdev = 0x1000UL;
+        ulong responseWdev = 0x2000UL;
+        byte[] peerMac = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x55 };
+
+        var staMsg = BuildMockStationRecord(seq, familyId, ifindex, peerMac, wdev: responseWdev);
+
+        var res = LinuxNl80211Protocol.ParseStationResponse(staMsg, seq, familyId, ifindex, expectedWdev: requestedWdev, peerMac);
+        Assert.False(res.IsSuccess);
+        Assert.Equal(LinuxNl80211DumpStatus.Malformed, res.Status);
+    }
+
+    [Fact]
+    public void Nl80211Protocol_ParseStationResponse_Missing_Wdev_Rejected()
+    {
+        uint seq = 612;
+        ushort familyId = 28;
+        int ifindex = 3;
+        ulong wdev = 0x1000UL;
+        byte[] peerMac = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x55 };
+
+        var staMsg = BuildMockStationRecord(seq, familyId, ifindex, peerMac, omitWdev: true);
+
+        var res = LinuxNl80211Protocol.ParseStationResponse(staMsg, seq, familyId, ifindex, wdev, peerMac);
+        Assert.False(res.IsSuccess);
+        Assert.Equal(LinuxNl80211DumpStatus.Malformed, res.Status);
+    }
+
+    [Fact]
+    public void Nl80211Protocol_ParseStationResponse_Malformed_Wdev_Length_Rejected()
+    {
+        uint seq = 613;
+        ushort familyId = 28;
+        int ifindex = 3;
+        ulong wdev = 0x1000UL;
+        byte[] peerMac = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x55 };
+
+        var staMsg = BuildMockStationRecord(seq, familyId, ifindex, peerMac, customWdevBytes: new byte[] { 1, 2, 3, 4 }); // 4 bytes instead of 8
+
+        var res = LinuxNl80211Protocol.ParseStationResponse(staMsg, seq, familyId, ifindex, wdev, peerMac);
         Assert.False(res.IsSuccess);
         Assert.Equal(LinuxNl80211DumpStatus.Malformed, res.Status);
     }
@@ -1785,16 +1858,17 @@ public class LinuxWifiRadioTests
     [Fact]
     public void Nl80211Protocol_ParseStationResponse_Wrong_Mac_Rejected()
     {
-        uint seq = 610;
+        uint seq = 614;
         ushort familyId = 28;
         int ifindex = 3;
+        ulong wdev = 0x1000UL;
         byte[] expectedMac = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x55 };
         byte[] returnedMac = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0xAA };
 
-        var staMsg = BuildMockStationRecord(seq, familyId, ifindex, returnedMac);
+        var staMsg = BuildMockStationRecord(seq, familyId, ifindex, returnedMac, wdev: wdev);
 
         // Invariant 257: Reply MAC must strictly match requested peer MAC
-        var res = LinuxNl80211Protocol.ParseStationResponse(staMsg, seq, familyId, ifindex, expectedMac);
+        var res = LinuxNl80211Protocol.ParseStationResponse(staMsg, seq, familyId, ifindex, wdev, expectedMac);
         Assert.False(res.IsSuccess);
         Assert.Equal(LinuxNl80211DumpStatus.Malformed, res.Status);
     }
@@ -1802,14 +1876,15 @@ public class LinuxWifiRadioTests
     [Fact]
     public void Nl80211Protocol_ParseStationResponse_Missing_Mac_Rejected()
     {
-        uint seq = 611;
+        uint seq = 615;
         ushort familyId = 28;
         int ifindex = 3;
+        ulong wdev = 0x1000UL;
         byte[] peerMac = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x55 };
 
-        var staMsg = BuildMockStationRecord(seq, familyId, ifindex, peerMac, omitMac: true);
+        var staMsg = BuildMockStationRecord(seq, familyId, ifindex, peerMac, wdev: wdev, omitMac: true);
 
-        var res = LinuxNl80211Protocol.ParseStationResponse(staMsg, seq, familyId, ifindex, peerMac);
+        var res = LinuxNl80211Protocol.ParseStationResponse(staMsg, seq, familyId, ifindex, wdev, peerMac);
         Assert.False(res.IsSuccess);
         Assert.Equal(LinuxNl80211DumpStatus.Malformed, res.Status);
     }
@@ -1817,14 +1892,15 @@ public class LinuxWifiRadioTests
     [Fact]
     public void Nl80211Protocol_ParseStationResponse_Malformed_Mac_Length_Rejected()
     {
-        uint seq = 612;
+        uint seq = 616;
         ushort familyId = 28;
         int ifindex = 3;
+        ulong wdev = 0x1000UL;
         byte[] invalidMac = new byte[] { 0x00, 0x11, 0x22, 0x33 }; // 4 bytes instead of 6
 
-        var staMsg = BuildMockStationRecord(seq, familyId, ifindex, invalidMac);
+        var staMsg = BuildMockStationRecord(seq, familyId, ifindex, invalidMac, wdev: wdev);
 
-        var res = LinuxNl80211Protocol.ParseStationResponse(staMsg, seq, familyId, ifindex, new byte[] { 0, 1, 2, 3, 4, 5 });
+        var res = LinuxNl80211Protocol.ParseStationResponse(staMsg, seq, familyId, ifindex, wdev, new byte[] { 0, 1, 2, 3, 4, 5 });
         Assert.False(res.IsSuccess);
         Assert.Equal(LinuxNl80211DumpStatus.Malformed, res.Status);
     }
@@ -1832,14 +1908,15 @@ public class LinuxWifiRadioTests
     [Fact]
     public void Nl80211Protocol_ParseStationResponse_Missing_Generation_Rejected()
     {
-        uint seq = 613;
+        uint seq = 617;
         ushort familyId = 28;
         int ifindex = 3;
+        ulong wdev = 0x1000UL;
         byte[] peerMac = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x55 };
 
-        var staMsg = BuildMockStationRecord(seq, familyId, ifindex, peerMac, omitGeneration: true);
+        var staMsg = BuildMockStationRecord(seq, familyId, ifindex, peerMac, wdev: wdev, omitGeneration: true);
 
-        var res = LinuxNl80211Protocol.ParseStationResponse(staMsg, seq, familyId, ifindex, peerMac);
+        var res = LinuxNl80211Protocol.ParseStationResponse(staMsg, seq, familyId, ifindex, wdev, peerMac);
         Assert.False(res.IsSuccess);
         Assert.Equal(LinuxNl80211DumpStatus.Malformed, res.Status);
     }
@@ -1847,15 +1924,59 @@ public class LinuxWifiRadioTests
     [Fact]
     public void Nl80211Protocol_ParseStationResponse_Malformed_StaInfo_Nla_Rejected()
     {
-        uint seq = 614;
+        uint seq = 618;
         ushort familyId = 28;
         int ifindex = 3;
+        ulong wdev = 0x1000UL;
         byte[] peerMac = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x55 };
 
         byte[] badNla = new byte[] { 0x0A, 0x00, 0x01, 0x00, 0x01 }; // nla_len = 10, but buffer is 5 bytes
-        var staMsg = BuildMockStationRecord(seq, familyId, ifindex, peerMac, customStaInfoBytes: badNla);
+        var staMsg = BuildMockStationRecord(seq, familyId, ifindex, peerMac, wdev: wdev, customStaInfoBytes: badNla);
 
-        var res = LinuxNl80211Protocol.ParseStationResponse(staMsg, seq, familyId, ifindex, peerMac);
+        var res = LinuxNl80211Protocol.ParseStationResponse(staMsg, seq, familyId, ifindex, wdev, peerMac);
+        Assert.False(res.IsSuccess);
+        Assert.Equal(LinuxNl80211DumpStatus.Malformed, res.Status);
+    }
+
+    [Fact]
+    public void Nl80211Protocol_ParseStationResponse_TopLevel_Mlo_LinkId_And_MldAddr_Preserved()
+    {
+        uint seq = 619;
+        ushort familyId = 28;
+        int ifindex = 3;
+        ulong wdev = 0x1000UL;
+        byte[] peerMac = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x55 };
+        byte[] mldAddr = new byte[] { 0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0x00 };
+
+        var staMsg = BuildMockStationRecord(
+            seq, familyId, ifindex, peerMac,
+            wdev: wdev,
+            mloLinkId: 2,
+            mldAddr: mldAddr);
+
+        var res = LinuxNl80211Protocol.ParseStationResponse(staMsg, seq, familyId, ifindex, wdev, peerMac);
+        Assert.True(res.IsSuccess);
+        Assert.NotNull(res.Item);
+        Assert.Equal((byte)2, res.Item.MloLinkId);
+        Assert.Equal(mldAddr, res.Item.MldAddress);
+        Assert.Equal("AA:BB:CC:DD:EE:00", res.Item.MldAddressString);
+    }
+
+    [Fact]
+    public void Nl80211Protocol_ParseStationResponse_Malformed_MldAddr_Length_Rejected()
+    {
+        uint seq = 620;
+        ushort familyId = 28;
+        int ifindex = 3;
+        ulong wdev = 0x1000UL;
+        byte[] peerMac = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x55 };
+
+        var staMsg = BuildMockStationRecord(
+            seq, familyId, ifindex, peerMac,
+            wdev: wdev,
+            mldAddr: new byte[] { 1, 2, 3 }); // 3 bytes instead of 6
+
+        var res = LinuxNl80211Protocol.ParseStationResponse(staMsg, seq, familyId, ifindex, wdev, peerMac);
         Assert.False(res.IsSuccess);
         Assert.Equal(LinuxNl80211DumpStatus.Malformed, res.Status);
     }
@@ -1863,15 +1984,16 @@ public class LinuxWifiRadioTests
     [Fact]
     public void Nl80211Protocol_ParseStationResponse_Signal_Signed_Byte_0xBC_Decodes_As_Minus68Dbm()
     {
-        uint seq = 615;
+        uint seq = 621;
         ushort familyId = 28;
         int ifindex = 3;
+        ulong wdev = 0x1000UL;
         byte[] peerMac = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x55 };
 
         // 0xBC = 188 unsigned => (sbyte)0xBC == -68
-        var staMsg = BuildMockStationRecord(seq, familyId, ifindex, peerMac, signal: unchecked((sbyte)0xBC));
+        var staMsg = BuildMockStationRecord(seq, familyId, ifindex, peerMac, wdev: wdev, signal: unchecked((sbyte)0xBC));
 
-        var res = LinuxNl80211Protocol.ParseStationResponse(staMsg, seq, familyId, ifindex, peerMac);
+        var res = LinuxNl80211Protocol.ParseStationResponse(staMsg, seq, familyId, ifindex, wdev, peerMac);
         Assert.True(res.IsSuccess);
         Assert.NotNull(res.Item);
         Assert.Equal((sbyte)-68, res.Item.SignalDbm);
@@ -1880,15 +2002,16 @@ public class LinuxWifiRadioTests
     [Fact]
     public void Nl80211Protocol_ParseStationResponse_SignalAvg_Signed_Byte_0x9C_Decodes_As_Minus100Dbm()
     {
-        uint seq = 616;
+        uint seq = 622;
         ushort familyId = 28;
         int ifindex = 3;
+        ulong wdev = 0x1000UL;
         byte[] peerMac = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x55 };
 
         // 0x9C = 156 unsigned => (sbyte)0x9C == -100
-        var staMsg = BuildMockStationRecord(seq, familyId, ifindex, peerMac, signalAvg: unchecked((sbyte)0x9C));
+        var staMsg = BuildMockStationRecord(seq, familyId, ifindex, peerMac, wdev: wdev, signalAvg: unchecked((sbyte)0x9C));
 
-        var res = LinuxNl80211Protocol.ParseStationResponse(staMsg, seq, familyId, ifindex, peerMac);
+        var res = LinuxNl80211Protocol.ParseStationResponse(staMsg, seq, familyId, ifindex, wdev, peerMac);
         Assert.True(res.IsSuccess);
         Assert.NotNull(res.Item);
         Assert.Equal((sbyte)-100, res.Item.SignalAverageDbm);
@@ -1897,9 +2020,10 @@ public class LinuxWifiRadioTests
     [Fact]
     public void Nl80211Protocol_ParseStationResponse_Counters_And_Bytes64_Exact_Widths()
     {
-        uint seq = 617;
+        uint seq = 623;
         ushort familyId = 28;
         int ifindex = 3;
+        ulong wdev = 0x1000UL;
         byte[] peerMac = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x55 };
 
         ulong largeRx = 0x123456789ABCDEF0UL;
@@ -1907,6 +2031,7 @@ public class LinuxWifiRadioTests
 
         var staMsg = BuildMockStationRecord(
             seq, familyId, ifindex, peerMac,
+            wdev: wdev,
             rxBytes: largeRx,
             txBytes: largeTx,
             rxPackets: 999999u,
@@ -1915,7 +2040,7 @@ public class LinuxWifiRadioTests
             txFailed: 66u,
             connectedTime: 7200u);
 
-        var res = LinuxNl80211Protocol.ParseStationResponse(staMsg, seq, familyId, ifindex, peerMac);
+        var res = LinuxNl80211Protocol.ParseStationResponse(staMsg, seq, familyId, ifindex, wdev, peerMac);
         Assert.True(res.IsSuccess);
         Assert.NotNull(res.Item);
         Assert.Equal(largeRx, res.Item.RxBytes);
@@ -1930,9 +2055,10 @@ public class LinuxWifiRadioTests
     [Fact]
     public void Nl80211Protocol_ParseStationResponse_Rate_Bitrate32_Preferred_Over_Bitrate16()
     {
-        uint seq = 618;
+        uint seq = 624;
         ushort familyId = 28;
         int ifindex = 3;
+        ulong wdev = 0x1000UL;
         byte[] peerMac = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x55 };
 
         // Rate info containing BOTH BITRATE (16-bit = 540 => 54 Mbps) and BITRATE32 (32-bit = 12000 => 1200 Mbps)
@@ -1949,9 +2075,9 @@ public class LinuxWifiRadioTests
             rbw.Write(12000u);
         }
 
-        var staMsg = BuildMockStationRecord(seq, familyId, ifindex, peerMac, txRateBytes: rateMs.ToArray());
+        var staMsg = BuildMockStationRecord(seq, familyId, ifindex, peerMac, wdev: wdev, txRateBytes: rateMs.ToArray());
 
-        var res = LinuxNl80211Protocol.ParseStationResponse(staMsg, seq, familyId, ifindex, peerMac);
+        var res = LinuxNl80211Protocol.ParseStationResponse(staMsg, seq, familyId, ifindex, wdev, peerMac);
         Assert.True(res.IsSuccess);
         Assert.NotNull(res.Item);
         Assert.NotNull(res.Item.TxRate);
@@ -1964,9 +2090,10 @@ public class LinuxWifiRadioTests
     [Fact]
     public void Nl80211Protocol_ParseStationResponse_Rate_Bitrate16_Fallback_When_Bitrate32_Missing()
     {
-        uint seq = 619;
+        uint seq = 625;
         ushort familyId = 28;
         int ifindex = 3;
+        ulong wdev = 0x1000UL;
         byte[] peerMac = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x55 };
 
         // Rate info containing ONLY BITRATE (16-bit = 540 => 54 Mbps)
@@ -1979,9 +2106,9 @@ public class LinuxWifiRadioTests
             WritePadding(rbw, LinuxGenlProtocol.NlaHeaderSize + 2);
         }
 
-        var staMsg = BuildMockStationRecord(seq, familyId, ifindex, peerMac, txRateBytes: rateMs.ToArray());
+        var staMsg = BuildMockStationRecord(seq, familyId, ifindex, peerMac, wdev: wdev, txRateBytes: rateMs.ToArray());
 
-        var res = LinuxNl80211Protocol.ParseStationResponse(staMsg, seq, familyId, ifindex, peerMac);
+        var res = LinuxNl80211Protocol.ParseStationResponse(staMsg, seq, familyId, ifindex, wdev, peerMac);
         Assert.True(res.IsSuccess);
         Assert.NotNull(res.Item);
         Assert.NotNull(res.Item.TxRate);
@@ -1992,17 +2119,109 @@ public class LinuxWifiRadioTests
     }
 
     [Fact]
-    public void Nl80211Protocol_ParseStationResponse_Rate_Malformed_Rate_Nla_Rejects_Station()
+    public void Nl80211Protocol_ParseStationResponse_Rate_Without_Bitrate_Yields_Null_BitrateBps()
     {
-        uint seq = 620;
+        uint seq = 626;
         ushort familyId = 28;
         int ifindex = 3;
+        ulong wdev = 0x1000UL;
+        byte[] peerMac = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x55 };
+
+        // Rate info with MCS=7 and VHT_NSS=2, but NO BITRATE or BITRATE32
+        var rateMs = new MemoryStream();
+        using (var rbw = new BinaryWriter(rateMs))
+        {
+            rbw.Write((ushort)(LinuxGenlProtocol.NlaHeaderSize + 1));
+            rbw.Write(LinuxNl80211Protocol.NL80211_RATE_INFO_MCS);
+            rbw.Write((byte)7);
+            WritePadding(rbw, LinuxGenlProtocol.NlaHeaderSize + 1);
+
+            rbw.Write((ushort)(LinuxGenlProtocol.NlaHeaderSize + 1));
+            rbw.Write(LinuxNl80211Protocol.NL80211_RATE_INFO_VHT_NSS);
+            rbw.Write((byte)2);
+            WritePadding(rbw, LinuxGenlProtocol.NlaHeaderSize + 1);
+        }
+
+        var staMsg = BuildMockStationRecord(seq, familyId, ifindex, peerMac, wdev: wdev, txRateBytes: rateMs.ToArray());
+
+        var res = LinuxNl80211Protocol.ParseStationResponse(staMsg, seq, familyId, ifindex, wdev, peerMac);
+        Assert.True(res.IsSuccess);
+        Assert.NotNull(res.Item);
+        Assert.NotNull(res.Item.TxRate);
+
+        // Missing rate attributes must produce null BitrateBps, not synthetic 0
+        Assert.Null(res.Item.TxRate.BitrateBps);
+        Assert.Null(res.Item.TxRate.Bitrate100Kbps);
+        Assert.Equal((byte)7, res.Item.TxRate.Mcs);
+        Assert.Equal((byte)2, res.Item.TxRate.VhtNss);
+    }
+
+    [Fact]
+    public void Nl80211Protocol_ParseStationResponse_Rate_Width_Flag_With_Payload_Rejected()
+    {
+        uint seq = 627;
+        ushort familyId = 28;
+        int ifindex = 3;
+        ulong wdev = 0x1000UL;
+        byte[] peerMac = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x55 };
+
+        // 320_MHZ_WIDTH flag with unexpected 1-byte payload -> must be rejected (NLA flag must be 0 payload)
+        var rateMs = new MemoryStream();
+        using (var rbw = new BinaryWriter(rateMs))
+        {
+            rbw.Write((ushort)(LinuxGenlProtocol.NlaHeaderSize + 1));
+            rbw.Write(LinuxNl80211Protocol.NL80211_RATE_INFO_320_MHZ_WIDTH);
+            rbw.Write((byte)1);
+            WritePadding(rbw, LinuxGenlProtocol.NlaHeaderSize + 1);
+        }
+
+        var staMsg = BuildMockStationRecord(seq, familyId, ifindex, peerMac, wdev: wdev, txRateBytes: rateMs.ToArray());
+
+        var res = LinuxNl80211Protocol.ParseStationResponse(staMsg, seq, familyId, ifindex, wdev, peerMac);
+        Assert.False(res.IsSuccess);
+        Assert.Equal(LinuxNl80211DumpStatus.Malformed, res.Status);
+    }
+
+    [Fact]
+    public void Nl80211Protocol_ParseStationResponse_Rate_Conflicting_Width_Flags_Rejected()
+    {
+        uint seq = 628;
+        ushort familyId = 28;
+        int ifindex = 3;
+        ulong wdev = 0x1000UL;
+        byte[] peerMac = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x55 };
+
+        // Both 80_MHZ_WIDTH and 160_MHZ_WIDTH set simultaneously -> conflicting, reject as Malformed
+        var rateMs = new MemoryStream();
+        using (var rbw = new BinaryWriter(rateMs))
+        {
+            rbw.Write((ushort)LinuxGenlProtocol.NlaHeaderSize);
+            rbw.Write(LinuxNl80211Protocol.NL80211_RATE_INFO_80_MHZ_WIDTH);
+
+            rbw.Write((ushort)LinuxGenlProtocol.NlaHeaderSize);
+            rbw.Write(LinuxNl80211Protocol.NL80211_RATE_INFO_160_MHZ_WIDTH);
+        }
+
+        var staMsg = BuildMockStationRecord(seq, familyId, ifindex, peerMac, wdev: wdev, txRateBytes: rateMs.ToArray());
+
+        var res = LinuxNl80211Protocol.ParseStationResponse(staMsg, seq, familyId, ifindex, wdev, peerMac);
+        Assert.False(res.IsSuccess);
+        Assert.Equal(LinuxNl80211DumpStatus.Malformed, res.Status);
+    }
+
+    [Fact]
+    public void Nl80211Protocol_ParseStationResponse_Rate_Malformed_Rate_Nla_Rejects_Station()
+    {
+        uint seq = 629;
+        ushort familyId = 28;
+        int ifindex = 3;
+        ulong wdev = 0x1000UL;
         byte[] peerMac = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x55 };
 
         byte[] malformedRate = new byte[] { 0x0A, 0x00, 0x01, 0x00, 0x01 }; // nla_len 10 in 5 bytes buffer
-        var staMsg = BuildMockStationRecord(seq, familyId, ifindex, peerMac, txRateBytes: malformedRate);
+        var staMsg = BuildMockStationRecord(seq, familyId, ifindex, peerMac, wdev: wdev, txRateBytes: malformedRate);
 
-        var res = LinuxNl80211Protocol.ParseStationResponse(staMsg, seq, familyId, ifindex, peerMac);
+        var res = LinuxNl80211Protocol.ParseStationResponse(staMsg, seq, familyId, ifindex, wdev, peerMac);
         Assert.False(res.IsSuccess);
         Assert.Equal(LinuxNl80211DumpStatus.Malformed, res.Status);
     }
@@ -2010,9 +2229,10 @@ public class LinuxWifiRadioTests
     [Fact]
     public void Nl80211Protocol_ParseStationResponse_Rate_Preserves_He_And_Eht_Fields()
     {
-        uint seq = 621;
+        uint seq = 630;
         ushort familyId = 28;
         int ifindex = 3;
+        ulong wdev = 0x1000UL;
         byte[] peerMac = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x55 };
 
         var rateMs = new MemoryStream();
@@ -2040,9 +2260,9 @@ public class LinuxWifiRadioTests
             rbw.Write(LinuxNl80211Protocol.NL80211_RATE_INFO_320_MHZ_WIDTH);
         }
 
-        var staMsg = BuildMockStationRecord(seq, familyId, ifindex, peerMac, txRateBytes: rateMs.ToArray());
+        var staMsg = BuildMockStationRecord(seq, familyId, ifindex, peerMac, wdev: wdev, txRateBytes: rateMs.ToArray());
 
-        var res = LinuxNl80211Protocol.ParseStationResponse(staMsg, seq, familyId, ifindex, peerMac);
+        var res = LinuxNl80211Protocol.ParseStationResponse(staMsg, seq, familyId, ifindex, wdev, peerMac);
         Assert.True(res.IsSuccess);
         Assert.NotNull(res.Item);
         Assert.NotNull(res.Item.TxRate);
@@ -2075,7 +2295,7 @@ public class LinuxWifiRadioTests
         Assert.Single(obs.Links);
 
         // 2. Station metadata returns null (Unknown) without breaking association
-        var sta = await radio.ReadStationInfoAsync(3, bssid);
+        var sta = await radio.ReadStationInfoAsync(3, 0x1000UL, bssid);
         Assert.Null(sta);
     }
 
@@ -2090,27 +2310,84 @@ public class LinuxWifiRadioTests
         byte[] bssidB = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x02 };
 
         // Mock has station info for B, caller requests station info for A
-        mockSocket.AddStation(3, bssidB, new LinuxNl80211StationInfo(3, bssidB, "00:11:22:33:44:02", 100u, -60, -62, 100, 200, 10, 20, 0, 0, 100, null, null, null, null, null, null, Array.Empty<LinuxNl80211LinkStationInfo>()));
+        mockSocket.AddStation(3, 0x1000UL, bssidB, new LinuxNl80211StationInfo(3, bssidB, "00:11:22:33:44:02", 100u, -60, -62, 100, 200, 10, 20, 0, 0, 100, null, null, null, null, null, null, Links: Array.Empty<LinuxNl80211LinkStationInfo>()));
 
         using var radio = new LinuxNl80211Radio(mockSocket);
 
-        var sta = await radio.ReadStationInfoAsync(3, bssidA);
+        var sta = await radio.ReadStationInfoAsync(3, 0x1000UL, bssidA);
         Assert.Null(sta); // Invariant 257: MAC mismatch rejected
+    }
+
+    [Fact]
+    public async Task Nl80211Radio_ReadStationInfo_CorrelationToken_EndToEnd_Match_Succeeds()
+    {
+        var mockSocket = new MockLinuxNl80211Socket();
+        mockSocket.AddFamily("nl80211", 28);
+        mockSocket.AddInterface(new LinuxNl80211InterfaceInfo(3, "wlan0", 0, "phy0", null, LinuxNl80211Protocol.NL80211_IFTYPE_STATION, null, null, Wdev: 0x1000UL));
+
+        byte[] bssid = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x55 };
+        var staExpected = new LinuxNl80211StationInfo(3, bssid, "00:11:22:33:44:55", 100u, -55, -58, 2048, 1024, 20, 10, 0, 0, 300, null, null, null, null, null, null, Links: Array.Empty<LinuxNl80211LinkStationInfo>());
+        mockSocket.AddStation(3, 0x1000UL, bssid, staExpected);
+
+        var token = new LinuxNl80211StationCorrelationToken(
+            IfIndex: 3,
+            Wdev: 0x1000UL,
+            WiphyIndex: 0,
+            PeerMac: bssid,
+            PeerMacString: "00:11:22:33:44:55",
+            BssGeneration: 50u);
+
+        using var radio = new LinuxNl80211Radio(mockSocket);
+
+        var sta = await radio.ReadStationInfoAsync(token);
+        Assert.NotNull(sta);
+        Assert.Equal((sbyte)-55, sta.SignalDbm);
+        Assert.Equal(3, sta.IfIndex);
+        Assert.Equal("00:11:22:33:44:55", sta.PeerMacString);
+    }
+
+    [Fact]
+    public async Task Nl80211Radio_ReadStationInfo_Wdev_Mismatch_Leaves_Association_Intact_And_Station_Null()
+    {
+        var mockSocket = new MockLinuxNl80211Socket();
+        mockSocket.AddFamily("nl80211", 28);
+        mockSocket.AddInterface(new LinuxNl80211InterfaceInfo(3, "wlan0", 0, "phy0", null, LinuxNl80211Protocol.NL80211_IFTYPE_STATION, null, null, Wdev: 0x1000UL));
+
+        byte[] bssid = new byte[] { 0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF };
+        mockSocket.AddBss(3, new LinuxNl80211BssInfo(3, bssid, "AA:BB:CC:DD:EE:FF", Encoding.UTF8.GetBytes("HomeNet"), "HomeNet", 5180, LinuxNl80211Protocol.NL80211_BSS_STATUS_ASSOCIATED, -6500, 80, null, null, null, null, null, null, 0x1000UL, 100u));
+
+        // Station is registered with WDEV 0x2000UL in mock, but token requests 0x1000UL
+        mockSocket.AddStation(3, 0x2000UL, bssid, new LinuxNl80211StationInfo(3, bssid, "AA:BB:CC:DD:EE:FF", 100u, -50, -50, 100, 100, 1, 1, 0, 0, 10, null, null, null, null, null, null, Links: Array.Empty<LinuxNl80211LinkStationInfo>()));
+
+        using var radio = new LinuxNl80211Radio(mockSocket);
+
+        // Association remains Associated
+        var obs = await radio.ReadAssociationObservationAsync("wlan0");
+        Assert.NotNull(obs);
+        Assert.Equal(LinuxWirelessAssociationState.Associated, obs.State);
+
+        // Station query with token (Wdev 0x1000UL) fails to match 0x2000UL and returns null
+        var token = new LinuxNl80211StationCorrelationToken(3, 0x1000UL, 0, bssid, "AA:BB:CC:DD:EE:FF", 100u);
+        var sta = await radio.ReadStationInfoAsync(token);
+        Assert.Null(sta);
     }
 
     [Fact]
     public void Nl80211Protocol_StationCorrelationToken_Preserves_Context_Tuple()
     {
+        byte[] peerMac = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x55 };
         var token = new LinuxNl80211StationCorrelationToken(
             IfIndex: 3,
             Wdev: 0x1000UL,
             WiphyIndex: 0,
+            PeerMac: peerMac,
             PeerMacString: "00:11:22:33:44:55",
             BssGeneration: 100u);
 
         Assert.Equal(3, token.IfIndex);
         Assert.Equal(0x1000UL, token.Wdev);
         Assert.Equal(0u, token.WiphyIndex);
+        Assert.Equal(peerMac, token.PeerMac);
         Assert.Equal("00:11:22:33:44:55", token.PeerMacString);
         Assert.Equal(100u, token.BssGeneration);
     }
@@ -2118,9 +2395,10 @@ public class LinuxWifiRadioTests
     [Fact]
     public void Nl80211Protocol_GoldenWire_Literal_StaInfo_And_RateInfo_Attributes()
     {
-        uint seq = 622;
+        uint seq = 631;
         const ushort wireFamilyId = 28;
         const int wireIfIndex = 3;
+        const ulong wireWdev = 0x1000UL;
         byte[] wireMac = new byte[] { 0x11, 0x22, 0x33, 0x44, 0x55, 0x66 };
         const uint wireGeneration = 100u;
 
@@ -2129,6 +2407,7 @@ public class LinuxWifiRadioTests
         const ushort WireAttrMac = 6;
         const ushort WireAttrStaInfo = 21;
         const ushort WireAttrGeneration = 46;
+        const ushort WireAttrWdev = 153;
 
         // StaInfo wire literals
         const ushort WireStaInfoSignal = 7;
@@ -2212,6 +2491,7 @@ public class LinuxWifiRadioTests
         {
             int totalLen = LinuxGenlProtocol.NlmsgHeaderSize + LinuxGenlProtocol.GenlHeaderSize +
                            LinuxGenlProtocol.NlaAlign(LinuxGenlProtocol.NlaHeaderSize + 4) +
+                           LinuxGenlProtocol.NlaAlign(LinuxGenlProtocol.NlaHeaderSize + 8) +
                            LinuxGenlProtocol.NlaAlign(LinuxGenlProtocol.NlaHeaderSize + 6) +
                            LinuxGenlProtocol.NlaAlign(LinuxGenlProtocol.NlaHeaderSize + 4) +
                            LinuxGenlProtocol.NlaAlign(LinuxGenlProtocol.NlaHeaderSize + staBytes.Length);
@@ -2231,6 +2511,11 @@ public class LinuxWifiRadioTests
             bw.Write(WireAttrIfIndex);
             bw.Write(wireIfIndex);
 
+            // WDEV
+            bw.Write((ushort)(LinuxGenlProtocol.NlaHeaderSize + 8));
+            bw.Write(WireAttrWdev);
+            bw.Write(wireWdev);
+
             // MAC
             bw.Write((ushort)(LinuxGenlProtocol.NlaHeaderSize + 6));
             bw.Write(WireAttrMac);
@@ -2249,7 +2534,7 @@ public class LinuxWifiRadioTests
             WritePadding(bw, LinuxGenlProtocol.NlaHeaderSize + staBytes.Length);
         }
 
-        var res = LinuxNl80211Protocol.ParseStationResponse(msgMs.ToArray(), seq, wireFamilyId, wireIfIndex, wireMac);
+        var res = LinuxNl80211Protocol.ParseStationResponse(msgMs.ToArray(), seq, wireFamilyId, wireIfIndex, wireWdev, wireMac);
 
         Assert.True(res.IsSuccess);
         Assert.NotNull(res.Item);
@@ -2561,8 +2846,9 @@ public class LinuxWifiRadioTests
         ushort familyId,
         int ifindex,
         byte[] peerMac,
+        ulong wdev = 0x1000UL,
         uint generation = 100u,
-        sbyte? signal = null,
+        sbyte? signal = -60,
         sbyte? signalAvg = null,
         ulong? rxBytes = null,
         ulong? txBytes = null,
@@ -2574,7 +2860,11 @@ public class LinuxWifiRadioTests
         byte[]? customStaInfoBytes = null,
         byte[]? txRateBytes = null,
         byte[]? rxRateBytes = null,
+        byte? mloLinkId = null,
+        byte[]? mldAddr = null,
         bool omitIfindex = false,
+        bool omitWdev = false,
+        byte[]? customWdevBytes = null,
         bool omitMac = false,
         bool omitGeneration = false)
     {
@@ -2686,6 +2976,20 @@ public class LinuxWifiRadioTests
                 tbw.Write(ifindex);
             }
 
+            if (customWdevBytes != null)
+            {
+                tbw.Write((ushort)(LinuxGenlProtocol.NlaHeaderSize + customWdevBytes.Length));
+                tbw.Write(LinuxNl80211Protocol.NL80211_ATTR_WDEV);
+                tbw.Write(customWdevBytes);
+                WritePadding(tbw, LinuxGenlProtocol.NlaHeaderSize + customWdevBytes.Length);
+            }
+            else if (!omitWdev)
+            {
+                tbw.Write((ushort)(LinuxGenlProtocol.NlaHeaderSize + 8));
+                tbw.Write(LinuxNl80211Protocol.NL80211_ATTR_WDEV);
+                tbw.Write(wdev);
+            }
+
             if (!omitMac && peerMac != null)
             {
                 tbw.Write((ushort)(LinuxGenlProtocol.NlaHeaderSize + peerMac.Length));
@@ -2699,6 +3003,22 @@ public class LinuxWifiRadioTests
                 tbw.Write((ushort)(LinuxGenlProtocol.NlaHeaderSize + 4));
                 tbw.Write(LinuxNl80211Protocol.NL80211_ATTR_GENERATION);
                 tbw.Write(generation);
+            }
+
+            if (mloLinkId.HasValue)
+            {
+                tbw.Write((ushort)(LinuxGenlProtocol.NlaHeaderSize + 1));
+                tbw.Write(LinuxNl80211Protocol.NL80211_ATTR_MLO_LINK_ID);
+                tbw.Write(mloLinkId.Value);
+                WritePadding(tbw, LinuxGenlProtocol.NlaHeaderSize + 1);
+            }
+
+            if (mldAddr != null)
+            {
+                tbw.Write((ushort)(LinuxGenlProtocol.NlaHeaderSize + mldAddr.Length));
+                tbw.Write(LinuxNl80211Protocol.NL80211_ATTR_MLD_ADDR);
+                tbw.Write(mldAddr);
+                WritePadding(tbw, LinuxGenlProtocol.NlaHeaderSize + mldAddr.Length);
             }
 
             tbw.Write((ushort)(LinuxGenlProtocol.NlaHeaderSize + staBytes.Length));
@@ -2758,7 +3078,7 @@ public class LinuxWifiRadioTests
         private readonly List<LinuxNl80211InterfaceInfo> _interfaces = new();
         private readonly List<LinuxNl80211WiphyInfo> _wiphys = new();
         private readonly Dictionary<int, List<LinuxNl80211BssInfo>> _bssRecords = new();
-        private readonly Dictionary<(int IfIndex, string Mac), LinuxNl80211StationInfo> _stations = new();
+        private readonly Dictionary<(int IfIndex, ulong Wdev, string Mac), LinuxNl80211StationInfo> _stations = new();
         private int _dumpInterfacesCallCount = 0;
 
         public LinuxNl80211DumpStatus InterfaceDumpStatus { get; set; } = LinuxNl80211DumpStatus.Complete;
@@ -2782,9 +3102,9 @@ public class LinuxWifiRadioTests
             list.Add(bss);
         }
 
-        public void AddStation(int ifindex, byte[] mac, LinuxNl80211StationInfo sta)
+        public void AddStation(int ifindex, ulong wdev, byte[] mac, LinuxNl80211StationInfo sta)
         {
-            _stations[(ifindex, LinuxNl80211Protocol.FormatMacAddress(mac))] = sta;
+            _stations[(ifindex, wdev, LinuxNl80211Protocol.FormatMacAddress(mac))] = sta;
         }
 
         public Task<GenlFamilyInfo?> GetFamilyAsync(string familyName, CancellationToken cancellationToken = default)
@@ -2850,13 +3170,13 @@ public class LinuxWifiRadioTests
             return Task.FromResult(res);
         }
 
-        public Task<LinuxNl80211SingleResult<LinuxNl80211StationInfo>> GetStationAsync(ushort nl80211FamilyId, int ifindex, byte[] peerMac, CancellationToken cancellationToken = default)
+        public Task<LinuxNl80211SingleResult<LinuxNl80211StationInfo>> GetStationAsync(ushort nl80211FamilyId, int ifindex, ulong expectedWdev, byte[] peerMac, CancellationToken cancellationToken = default)
         {
             if (StationStatus != LinuxNl80211DumpStatus.Complete)
             {
                 return Task.FromResult(new LinuxNl80211SingleResult<LinuxNl80211StationInfo>(null, StationStatus, StationStatus == LinuxNl80211DumpStatus.KernelError ? -2 : -11));
             }
-            _stations.TryGetValue((ifindex, LinuxNl80211Protocol.FormatMacAddress(peerMac)), out var sta);
+            _stations.TryGetValue((ifindex, expectedWdev, LinuxNl80211Protocol.FormatMacAddress(peerMac)), out var sta);
             if (sta == null)
             {
                 // ENOENT (-2) when station not found in kernel table

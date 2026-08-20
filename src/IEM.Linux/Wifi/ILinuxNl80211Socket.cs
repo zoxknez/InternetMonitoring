@@ -43,8 +43,8 @@ public interface ILinuxNl80211Socket : IDisposable, IAsyncDisposable
     Task<List<LinuxNl80211WiphyInfo>> GetWiphysAsync(ushort nl80211FamilyId, uint? wiphyIndex = null, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Queries station metadata for a specific peer MAC on a specific interface index.
-    /// Invariant 257: Exact single/do query for station statistics and rate info.
+    /// Queries station metadata for a specific peer MAC on a specific interface index and WDEV.
+    /// Invariant 257: Exact single/do query for station statistics and rate info with strict device correlation.
     /// </summary>
-    Task<LinuxNl80211SingleResult<LinuxNl80211StationInfo>> GetStationAsync(ushort nl80211FamilyId, int ifindex, byte[] peerMac, CancellationToken cancellationToken = default);
+    Task<LinuxNl80211SingleResult<LinuxNl80211StationInfo>> GetStationAsync(ushort nl80211FamilyId, int ifindex, ulong expectedWdev, byte[] peerMac, CancellationToken cancellationToken = default);
 }

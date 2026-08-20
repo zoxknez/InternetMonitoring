@@ -92,7 +92,7 @@ public sealed record LinuxNl80211BssInfo(
 }
 
 public sealed record LinuxNl80211RateInfo(
-    ulong BitrateBps,
+    ulong? BitrateBps,
     uint? Bitrate100Kbps,
     byte? Mcs,
     byte? VhtMcs,
@@ -141,12 +141,19 @@ public sealed record LinuxNl80211StationInfo(
     ulong? RxDurationUsec,
     ulong? TxDurationUsec,
     ulong? AssociationBootTimeNs,
-    IReadOnlyList<LinuxNl80211LinkStationInfo> Links);
+    byte? MloLinkId = null,
+    byte[]? MldAddress = null,
+    string? MldAddressString = null,
+    IReadOnlyList<LinuxNl80211LinkStationInfo>? Links = null)
+{
+    public IReadOnlyList<LinuxNl80211LinkStationInfo> Links { get; init; } = Links ?? Array.Empty<LinuxNl80211LinkStationInfo>();
+}
 
 public sealed record LinuxNl80211StationCorrelationToken(
     int IfIndex,
     ulong Wdev,
     uint WiphyIndex,
+    byte[] PeerMac,
     string PeerMacString,
     uint BssGeneration);
 
@@ -219,6 +226,9 @@ public static class LinuxNl80211Protocol
     public const ushort NL80211_ATTR_SSID = 52;
     public const ushort NL80211_ATTR_WDEV = 153;
     public const ushort NL80211_ATTR_SPLIT_WIPHY_DUMP = 174;
+    public const ushort NL80211_ATTR_MLO_LINKS = 312;
+    public const ushort NL80211_ATTR_MLO_LINK_ID = 313;
+    public const ushort NL80211_ATTR_MLD_ADDR = 314;
 
     // Nested NL80211_ATTR_BSS attributes (Linux kernel enum nl80211_bss)
     public const ushort NL80211_BSS_INVALID = 0;
@@ -1021,14 +1031,15 @@ public static class LinuxNl80211Protocol
 
     /// <summary>
     /// Parses an NL80211_CMD_GET_STATION response with full status provenance,
-    /// strict sequence matching, top-level ifindex, MAC, and generation verification, and nested STA_INFO parsing.
-    /// Invariant 257: Enforces strict correlation with the expected interface index and peer MAC.
+    /// strict sequence matching, top-level ifindex, WDEV, MAC, and generation verification, and nested STA_INFO parsing.
+    /// Invariant 257: Enforces strict correlation with the expected interface index, expected WDEV, and peer MAC.
     /// </summary>
     public static LinuxNl80211SingleResult<LinuxNl80211StationInfo> ParseStationResponse(
         ReadOnlySpan<byte> buffer,
         uint expectedSequence,
         ushort expectedFamilyId,
         int expectedIfIndex,
+        ulong expectedWdev,
         ReadOnlySpan<byte> expectedPeerMac)
     {
         if (buffer.Length < LinuxGenlProtocol.NlmsgHeaderSize || expectedPeerMac.Length != 6)
@@ -1111,7 +1122,7 @@ public static class LinuxNl80211Protocol
 
             var payload = buffer.Slice(offset + LinuxGenlProtocol.NlmsgHeaderSize + LinuxGenlProtocol.GenlHeaderSize,
                                        nlmsgLen - (LinuxGenlProtocol.NlmsgHeaderSize + LinuxGenlProtocol.GenlHeaderSize));
-            if (!TryParseStationPayload(payload, expectedIfIndex, expectedPeerMac, out stationInfo))
+            if (!TryParseStationPayload(payload, expectedIfIndex, expectedWdev, expectedPeerMac, out stationInfo))
             {
                 return new LinuxNl80211SingleResult<LinuxNl80211StationInfo>(null, LinuxNl80211DumpStatus.Malformed, -22);
             }
@@ -1130,6 +1141,7 @@ public static class LinuxNl80211Protocol
     private static bool TryParseStationPayload(
         ReadOnlySpan<byte> payload,
         int expectedIfIndex,
+        ulong expectedWdev,
         ReadOnlySpan<byte> expectedPeerMac,
         out LinuxNl80211StationInfo? stationInfo)
     {
@@ -1141,9 +1153,12 @@ public static class LinuxNl80211Protocol
         }
 
         int? msgIfIndex = null;
+        ulong? msgWdev = null;
         byte[]? mac = null;
         uint? generation = null;
         byte[]? staInfoBytes = null;
+        byte? mloLinkId = null;
+        byte[]? mldAddr = null;
 
         foreach (var (type, value) in topAttrs)
         {
@@ -1151,6 +1166,10 @@ public static class LinuxNl80211Protocol
             {
                 case NL80211_ATTR_IFINDEX:
                     if (value.Length == 4) msgIfIndex = MemoryMarshal.Read<int>(value);
+                    else return false;
+                    break;
+                case NL80211_ATTR_WDEV:
+                    if (value.Length == 8) msgWdev = MemoryMarshal.Read<ulong>(value);
                     else return false;
                     break;
                 case NL80211_ATTR_MAC:
@@ -1164,13 +1183,26 @@ public static class LinuxNl80211Protocol
                 case NL80211_ATTR_STA_INFO:
                     staInfoBytes = value;
                     break;
+                case NL80211_ATTR_MLO_LINK_ID:
+                    if (value.Length == 1) mloLinkId = value[0];
+                    else return false;
+                    break;
+                case NL80211_ATTR_MLD_ADDR:
+                    if (value.Length == 6) mldAddr = value;
+                    else return false;
+                    break;
             }
         }
 
-        // Strict provenance check: mandatory IFINDEX, MAC matching expected, GENERATION, and STA_INFO
+        // Strict provenance check: mandatory IFINDEX, WDEV matching expected, MAC matching expected, GENERATION, and STA_INFO
         if (!msgIfIndex.HasValue || msgIfIndex.Value != expectedIfIndex)
         {
             return false;
+        }
+
+        if (!msgWdev.HasValue || msgWdev.Value != expectedWdev)
+        {
+            return false; // Invariant: WDEV must strictly match requested device
         }
 
         if (mac == null || !mac.AsSpan().SequenceEqual(expectedPeerMac))
@@ -1300,6 +1332,7 @@ public static class LinuxNl80211Protocol
 
         rxBytes = rxBytes64 ?? rxBytes32;
         txBytes = txBytes64 ?? txBytes32;
+        string? mldStr = mldAddr != null ? FormatMacAddress(mldAddr) : null;
 
         stationInfo = new LinuxNl80211StationInfo(
             IfIndex: msgIfIndex.Value,
@@ -1321,6 +1354,9 @@ public static class LinuxNl80211Protocol
             RxDurationUsec: rxDuration,
             TxDurationUsec: txDuration,
             AssociationBootTimeNs: assocBootTime,
+            MloLinkId: mloLinkId,
+            MldAddress: mldAddr,
+            MldAddressString: mldStr,
             Links: Array.Empty<LinuxNl80211LinkStationInfo>());
 
         return true;
@@ -1352,6 +1388,7 @@ public static class LinuxNl80211Protocol
         byte? ehtRuAlloc = null;
         bool is40 = false;
         bool is80 = false;
+        bool is80p80 = false;
         bool is160 = false;
         bool is320 = false;
         bool isShortGi = false;
@@ -1421,30 +1458,47 @@ public static class LinuxNl80211Protocol
                     break;
 
                 case NL80211_RATE_INFO_40_MHZ_WIDTH:
+                    if (value.Length != 0) return false;
                     is40 = true;
                     break;
 
                 case NL80211_RATE_INFO_80_MHZ_WIDTH:
+                    if (value.Length != 0) return false;
                     is80 = true;
                     break;
 
+                case NL80211_RATE_INFO_80P80_MHZ_WIDTH:
+                    if (value.Length != 0) return false;
+                    is80p80 = true;
+                    break;
+
                 case NL80211_RATE_INFO_160_MHZ_WIDTH:
+                    if (value.Length != 0) return false;
                     is160 = true;
                     break;
 
                 case NL80211_RATE_INFO_320_MHZ_WIDTH:
+                    if (value.Length != 0) return false;
                     is320 = true;
                     break;
 
                 case NL80211_RATE_INFO_SHORT_GI:
+                    if (value.Length != 0) return false;
                     isShortGi = true;
                     break;
             }
         }
 
+        // Rule: Channel width flags are mutually exclusive
+        int widthCount = (is40 ? 1 : 0) + (is80 ? 1 : 0) + (is80p80 ? 1 : 0) + (is160 ? 1 : 0) + (is320 ? 1 : 0);
+        if (widthCount > 1)
+        {
+            return false; // Conflicting channel widths
+        }
+
         // Rule: BITRATE32 is preferred authoritative bitrate (units: 100 kbit/s = 100,000 bit/s).
-        // Fallback: BITRATE (u16, units 100 kbit/s). Never merge or add.
-        ulong bps = 0;
+        // Fallback: BITRATE (u16, units 100 kbit/s). Never merge or add. Missing rate is null, not zero.
+        ulong? bps = null;
         uint? raw100k = null;
 
         if (bitrate32.HasValue)
@@ -1472,7 +1526,7 @@ public static class LinuxNl80211Protocol
             EhtGi: ehtGi,
             EhtRuAlloc: ehtRuAlloc,
             Is40Mhz: is40,
-            Is80Mhz: is80,
+            Is80Mhz: is80 || is80p80,
             Is160Mhz: is160,
             Is320Mhz: is320,
             IsShortGi: isShortGi);

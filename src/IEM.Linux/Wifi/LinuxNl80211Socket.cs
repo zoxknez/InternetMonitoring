@@ -397,6 +397,7 @@ public sealed class LinuxNl80211Socket : ILinuxNl80211Socket
     public async Task<LinuxNl80211SingleResult<LinuxNl80211StationInfo>> GetStationAsync(
         ushort nl80211FamilyId,
         int ifindex,
+        ulong expectedWdev,
         byte[] peerMac,
         CancellationToken cancellationToken = default)
     {
@@ -457,7 +458,7 @@ public sealed class LinuxNl80211Socket : ILinuxNl80211Socket
             }
 
             var fullPayload = combinedStream.ToArray();
-            var result = LinuxNl80211Protocol.ParseStationResponse(fullPayload, seq, nl80211FamilyId, ifindex, peerMac);
+            var result = LinuxNl80211Protocol.ParseStationResponse(fullPayload, seq, nl80211FamilyId, ifindex, expectedWdev, peerMac);
 
             if (timedOut && !result.IsSuccess)
             {
