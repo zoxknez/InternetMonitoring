@@ -775,7 +775,7 @@ public class LinuxWifiRadioTests
         var done = BuildMockDoneMessage(activeSeq, error: 0);
         var stream = CombineBuffers(staleBss, activeBss, done);
 
-        var res = LinuxNl80211Protocol.ParseBssDump(stream, activeSeq, 28, 3);
+        var res = LinuxNl80211Protocol.ParseBssDump(stream, activeSeq, 28, 3, 0x1000UL);
         Assert.True(res.IsComplete);
         Assert.Single(res.Items);
         Assert.Equal(5180u, res.Items[0].FrequencyMhz);
@@ -788,7 +788,7 @@ public class LinuxWifiRadioTests
         byte[] bssid = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x55 };
         var bss = BuildMockBssRecord(seq, familyId: 99, ifindex: 3, bssid: bssid, freq: 2412, status: LinuxNl80211Protocol.NL80211_BSS_STATUS_ASSOCIATED);
 
-        var res = LinuxNl80211Protocol.ParseBssDump(bss, seq, expectedFamilyId: 28, expectedIfIndex: 3);
+        var res = LinuxNl80211Protocol.ParseBssDump(bss, seq, expectedFamilyId: 28, expectedIfIndex: 3, expectedWdev: 0x1000UL);
         Assert.False(res.IsComplete);
         Assert.Equal(LinuxNl80211DumpStatus.Malformed, res.Status);
     }
@@ -809,7 +809,7 @@ public class LinuxWifiRadioTests
         bw.Write((byte)1);
         bw.Write((ushort)0);
 
-        var res = LinuxNl80211Protocol.ParseBssDump(ms.ToArray(), seq, expectedFamilyId: 28, expectedIfIndex: 3);
+        var res = LinuxNl80211Protocol.ParseBssDump(ms.ToArray(), seq, expectedFamilyId: 28, expectedIfIndex: 3, expectedWdev: 0x1000UL);
         Assert.False(res.IsComplete);
         Assert.Equal(LinuxNl80211DumpStatus.Malformed, res.Status);
     }
@@ -822,7 +822,7 @@ public class LinuxWifiRadioTests
         // BSS returned for ifindex 4 when ifindex 3 was requested
         var bss = BuildMockBssRecord(seq, familyId: 28, ifindex: 4, bssid: bssid, freq: 2412, status: LinuxNl80211Protocol.NL80211_BSS_STATUS_ASSOCIATED);
 
-        var res = LinuxNl80211Protocol.ParseBssDump(bss, seq, expectedFamilyId: 28, expectedIfIndex: 3);
+        var res = LinuxNl80211Protocol.ParseBssDump(bss, seq, expectedFamilyId: 28, expectedIfIndex: 3, expectedWdev: 0x1000UL);
         Assert.False(res.IsComplete);
         Assert.Equal(LinuxNl80211DumpStatus.Malformed, res.Status); // Invariant 261
     }
@@ -833,7 +833,7 @@ public class LinuxWifiRadioTests
         uint seq = 407;
         var done = BuildMockDoneMessage(seq, error: 0);
 
-        var res = LinuxNl80211Protocol.ParseBssDump(done, seq, 28, 3);
+        var res = LinuxNl80211Protocol.ParseBssDump(done, seq, 28, 3, 0x1000UL);
         Assert.True(res.IsComplete);
         Assert.Empty(res.Items);
     }
@@ -847,7 +847,7 @@ public class LinuxWifiRadioTests
         var done = BuildMockDoneMessage(seq, error: 0);
         var stream = CombineBuffers(bss1, done);
 
-        var res = LinuxNl80211Protocol.ParseBssDump(stream, seq, 28, 3);
+        var res = LinuxNl80211Protocol.ParseBssDump(stream, seq, 28, 3, 0x1000UL);
         Assert.True(res.IsComplete);
         Assert.Single(res.Items);
         Assert.False(res.Items[0].IsAssociated);
@@ -860,7 +860,7 @@ public class LinuxWifiRadioTests
         byte[] bssid = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x55 };
         var bss1 = BuildMockBssRecord(seq, 28, 3, bssid, 2412, status: LinuxNl80211Protocol.NL80211_BSS_STATUS_ASSOCIATED);
 
-        var res = LinuxNl80211Protocol.ParseBssDump(bss1, seq, 28, 3);
+        var res = LinuxNl80211Protocol.ParseBssDump(bss1, seq, 28, 3, 0x1000UL);
         Assert.False(res.IsComplete);
         Assert.Equal(LinuxNl80211DumpStatus.Incomplete, res.Status);
         Assert.Empty(res.Items);
@@ -875,7 +875,7 @@ public class LinuxWifiRadioTests
         var done = BuildMockDoneMessage(seq, error: 0, isInterrupted: true);
         var stream = CombineBuffers(bss1, done);
 
-        var res = LinuxNl80211Protocol.ParseBssDump(stream, seq, 28, 3);
+        var res = LinuxNl80211Protocol.ParseBssDump(stream, seq, 28, 3, 0x1000UL);
         Assert.False(res.IsComplete);
         Assert.Equal(LinuxNl80211DumpStatus.Interrupted, res.Status);
         Assert.Empty(res.Items);
@@ -890,7 +890,7 @@ public class LinuxWifiRadioTests
         var done = BuildMockDoneMessage(seq, error: -19); // -ENODEV
         var stream = CombineBuffers(bss1, done);
 
-        var res = LinuxNl80211Protocol.ParseBssDump(stream, seq, 28, 3);
+        var res = LinuxNl80211Protocol.ParseBssDump(stream, seq, 28, 3, 0x1000UL);
         Assert.False(res.IsComplete);
         Assert.Equal(LinuxNl80211DumpStatus.KernelError, res.Status);
         Assert.Equal(-19, res.ErrorCode);
@@ -907,7 +907,7 @@ public class LinuxWifiRadioTests
         var done = BuildMockDoneMessage(seq, error: 0);
         var stream = CombineBuffers(bss1, done);
 
-        var res = LinuxNl80211Protocol.ParseBssDump(stream, seq, 28, 3);
+        var res = LinuxNl80211Protocol.ParseBssDump(stream, seq, 28, 3, 0x1000UL);
         Assert.True(res.IsComplete);
         Assert.Single(res.Items);
         var item = res.Items[0];
@@ -927,7 +927,7 @@ public class LinuxWifiRadioTests
         byte[] invalidBssid = new byte[] { 0xAA, 0xBB, 0xCC }; // 3 bytes instead of 6
         var bss = BuildMockBssRecord(seq, 28, 3, invalidBssid, 2412, LinuxNl80211Protocol.NL80211_BSS_STATUS_ASSOCIATED);
 
-        var res = LinuxNl80211Protocol.ParseBssDump(bss, seq, 28, 3);
+        var res = LinuxNl80211Protocol.ParseBssDump(bss, seq, 28, 3, 0x1000UL);
         Assert.False(res.IsComplete);
         Assert.Equal(LinuxNl80211DumpStatus.Malformed, res.Status);
     }
@@ -939,7 +939,7 @@ public class LinuxWifiRadioTests
         byte[] bssid = new byte[] { 0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF };
         var bssCorrupted = BuildMockBssRecord(seq, 28, 3, bssid, 2412, LinuxNl80211Protocol.NL80211_BSS_STATUS_ASSOCIATED, corruptNlattr: true);
 
-        var res = LinuxNl80211Protocol.ParseBssDump(bssCorrupted, seq, 28, 3);
+        var res = LinuxNl80211Protocol.ParseBssDump(bssCorrupted, seq, 28, 3, 0x1000UL);
         Assert.False(res.IsComplete);
         Assert.Equal(LinuxNl80211DumpStatus.Malformed, res.Status);
     }
@@ -954,7 +954,7 @@ public class LinuxWifiRadioTests
         var done = BuildMockDoneMessage(seq, error: 0);
         var stream = CombineBuffers(bss, done);
 
-        var res = LinuxNl80211Protocol.ParseBssDump(stream, seq, 28, 3);
+        var res = LinuxNl80211Protocol.ParseBssDump(stream, seq, 28, 3, 0x1000UL);
         Assert.True(res.IsComplete);
         Assert.Single(res.Items);
         var item = res.Items[0];
@@ -974,7 +974,7 @@ public class LinuxWifiRadioTests
         var done = BuildMockDoneMessage(seq, error: 0);
         var stream = CombineBuffers(bss, done);
 
-        var res = LinuxNl80211Protocol.ParseBssDump(stream, seq, 28, 3);
+        var res = LinuxNl80211Protocol.ParseBssDump(stream, seq, 28, 3, 0x1000UL);
         Assert.True(res.IsComplete);
         Assert.Single(res.Items);
         var item = res.Items[0];
@@ -993,7 +993,7 @@ public class LinuxWifiRadioTests
         var done = BuildMockDoneMessage(seq, error: 0);
         var stream = CombineBuffers(bss, done);
 
-        var res = LinuxNl80211Protocol.ParseBssDump(stream, seq, 28, 3);
+        var res = LinuxNl80211Protocol.ParseBssDump(stream, seq, 28, 3, 0x1000UL);
         Assert.True(res.IsComplete);
         Assert.Single(res.Items);
         Assert.Equal(-8420, res.Items[0].SignalMbm);
@@ -1013,7 +1013,7 @@ public class LinuxWifiRadioTests
         var done = BuildMockDoneMessage(seq, error: 0);
         var stream = CombineBuffers(bss1, bss2, done);
 
-        var res = LinuxNl80211Protocol.ParseBssDump(stream, seq, 28, 3);
+        var res = LinuxNl80211Protocol.ParseBssDump(stream, seq, 28, 3, 0x1000UL);
         Assert.True(res.IsComplete);
         Assert.Equal(2, res.Items.Count);
 
@@ -1032,7 +1032,7 @@ public class LinuxWifiRadioTests
     {
         var mockSocket = new MockLinuxNl80211Socket();
         mockSocket.AddFamily("nl80211", 28);
-        mockSocket.AddInterface(new LinuxNl80211InterfaceInfo(3, "wlan0", 0, "phy0", null, LinuxNl80211Protocol.NL80211_IFTYPE_STATION, null, null));
+        mockSocket.AddInterface(new LinuxNl80211InterfaceInfo(3, "wlan0", 0, "phy0", null, LinuxNl80211Protocol.NL80211_IFTYPE_STATION, null, null, Wdev: 0x1000UL));
 
         // Scan cache has BSS records, but none with STATUS_ASSOCIATED
         byte[] bssid = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x55 };
@@ -1054,7 +1054,7 @@ public class LinuxWifiRadioTests
     {
         var mockSocket = new MockLinuxNl80211Socket();
         mockSocket.AddFamily("nl80211", 28);
-        mockSocket.AddInterface(new LinuxNl80211InterfaceInfo(3, "wlan0", 0, "phy0", null, LinuxNl80211Protocol.NL80211_IFTYPE_STATION, null, null));
+        mockSocket.AddInterface(new LinuxNl80211InterfaceInfo(3, "wlan0", 0, "phy0", null, LinuxNl80211Protocol.NL80211_IFTYPE_STATION, null, null, Wdev: 0x1000UL));
 
         mockSocket.BssDumpStatus = LinuxNl80211DumpStatus.TimedOut;
 
@@ -1074,7 +1074,7 @@ public class LinuxWifiRadioTests
     {
         var mockSocket = new MockLinuxNl80211Socket();
         mockSocket.AddFamily("nl80211", 28);
-        mockSocket.AddInterface(new LinuxNl80211InterfaceInfo(3, "wlan0", 0, "phy0", null, LinuxNl80211Protocol.NL80211_IFTYPE_STATION, null, null));
+        mockSocket.AddInterface(new LinuxNl80211InterfaceInfo(3, "wlan0", 0, "phy0", null, LinuxNl80211Protocol.NL80211_IFTYPE_STATION, null, null, Wdev: 0x1000UL));
 
         byte[] bssid = new byte[] { 0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF };
         mockSocket.AddBss(3, new LinuxNl80211BssInfo(3, bssid, "AA:BB:CC:DD:EE:FF", Encoding.UTF8.GetBytes("HomeNet"), "HomeNet", 5180, LinuxNl80211Protocol.NL80211_BSS_STATUS_ASSOCIATED, -6500, 80, null, null, null, null, null, null, null, null));
@@ -1093,7 +1093,7 @@ public class LinuxWifiRadioTests
     {
         var mockSocket = new MockLinuxNl80211Socket();
         mockSocket.AddFamily("nl80211", 28);
-        mockSocket.AddInterface(new LinuxNl80211InterfaceInfo(3, "wlan0", 0, "phy0", null, LinuxNl80211Protocol.NL80211_IFTYPE_STATION, null, null));
+        mockSocket.AddInterface(new LinuxNl80211InterfaceInfo(3, "wlan0", 0, "phy0", null, LinuxNl80211Protocol.NL80211_IFTYPE_STATION, null, null, Wdev: 0x1000UL));
 
         byte[] bssid1 = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x01 };
         byte[] bssid2 = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x02 };
@@ -1127,6 +1127,74 @@ public class LinuxWifiRadioTests
 
         var assoc = radio.ReadAssociation("wlan0");
         Assert.Null(assoc);
+    }
+
+    [Fact]
+    public async Task Nl80211Radio_ReadAssociationObservation_Null_Wdev_On_T0_Returns_Null()
+    {
+        var mockSocket = new MockLinuxNl80211Socket();
+        mockSocket.AddFamily("nl80211", 28);
+        // Interface has no Wdev (Wdev == null)
+        mockSocket.AddInterface(new LinuxNl80211InterfaceInfo(3, "wlan0", 0, "phy0", null, LinuxNl80211Protocol.NL80211_IFTYPE_STATION, null, null, Wdev: null));
+
+        using var radio = new LinuxNl80211Radio(mockSocket);
+
+        var obs = await radio.ReadAssociationObservationAsync("wlan0");
+        Assert.Null(obs); // Insufficient evidence to proceed with BSS dump / association correlation
+
+        var assoc = radio.ReadAssociation("wlan0");
+        Assert.Null(assoc);
+    }
+
+    [Theory]
+    [InlineData(16)]
+    [InlineData(17)]
+    [InlineData(18)]
+    [InlineData(19)]
+    public void Nl80211Protocol_ParseBssDump_Matching_Family_Short_Data_Frame_Yields_Malformed(int shortLen)
+    {
+        uint seq = 509;
+        const ushort familyId = 28;
+        const int ifindex = 3;
+        const ulong wdev = 0x1000UL;
+
+        // Construct short packet with nlmsgType == familyId, seq == expectedSeq, but length < 20 (no full genlmsghdr)
+        var ms = new MemoryStream();
+        using (var bw = new BinaryWriter(ms))
+        {
+            bw.Write(shortLen);
+            bw.Write(familyId);
+            bw.Write((ushort)0);
+            bw.Write(seq);
+            bw.Write((uint)0);
+            // Write padding/partial genl header up to shortLen
+            for (int i = 16; i < shortLen; i++)
+            {
+                bw.Write((byte)0);
+            }
+            WritePadding(bw, shortLen);
+        }
+
+        var done = BuildMockDoneMessage(seq, error: 0);
+        var stream = CombineBuffers(ms.ToArray(), done);
+
+        var res = LinuxNl80211Protocol.ParseBssDump(stream, seq, familyId, ifindex, wdev);
+        Assert.False(res.IsComplete);
+        Assert.Equal(LinuxNl80211DumpStatus.Malformed, res.Status); // Invariant 261: never silently ignored
+    }
+
+    [Fact]
+    public void Nl80211Protocol_ParseBssDump_Valid_20_Byte_Header_Frame_Passes()
+    {
+        uint seq = 510;
+        byte[] bssid = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x55 };
+        var bss = BuildMockBssRecord(seq, 28, 3, bssid, 2412, LinuxNl80211Protocol.NL80211_BSS_STATUS_ASSOCIATED);
+        var done = BuildMockDoneMessage(seq, error: 0);
+        var stream = CombineBuffers(bss, done);
+
+        var res = LinuxNl80211Protocol.ParseBssDump(stream, seq, 28, 3, 0x1000UL);
+        Assert.True(res.IsComplete);
+        Assert.Single(res.Items);
     }
 
     [Fact]
@@ -1407,7 +1475,7 @@ public class LinuxWifiRadioTests
         var done = BuildMockDoneMessage(seq, error: 0);
         var stream = CombineBuffers(bss, done);
 
-        var res = LinuxNl80211Protocol.ParseBssDump(stream, seq, 28, 3);
+        var res = LinuxNl80211Protocol.ParseBssDump(stream, seq, 28, 3, 0x1000UL);
         Assert.False(res.IsComplete);
         Assert.Equal(LinuxNl80211DumpStatus.Malformed, res.Status);
     }
@@ -1421,7 +1489,7 @@ public class LinuxWifiRadioTests
         var done = BuildMockDoneMessage(seq, error: 0);
         var stream = CombineBuffers(bss, done);
 
-        var res = LinuxNl80211Protocol.ParseBssDump(stream, seq, 28, 3);
+        var res = LinuxNl80211Protocol.ParseBssDump(stream, seq, 28, 3, 0x1000UL);
         Assert.False(res.IsComplete);
         Assert.Equal(LinuxNl80211DumpStatus.Malformed, res.Status);
     }
@@ -1449,7 +1517,7 @@ public class LinuxWifiRadioTests
         var done = BuildMockDoneMessage(seq, error: 0);
         var stream = CombineBuffers(bss, done);
 
-        var res = LinuxNl80211Protocol.ParseBssDump(stream, seq, 28, 3);
+        var res = LinuxNl80211Protocol.ParseBssDump(stream, seq, 28, 3, 0x1000UL);
         Assert.False(res.IsComplete);
         Assert.Equal(LinuxNl80211DumpStatus.Malformed, res.Status);
     }
@@ -1466,7 +1534,7 @@ public class LinuxWifiRadioTests
         var done = BuildMockDoneMessage(seq, error: 0);
         var stream = CombineBuffers(bss1, bss2, done);
 
-        var res = LinuxNl80211Protocol.ParseBssDump(stream, seq, 28, 3);
+        var res = LinuxNl80211Protocol.ParseBssDump(stream, seq, 28, 3, 0x1000UL);
         Assert.False(res.IsComplete);
         Assert.Equal(LinuxNl80211DumpStatus.Interrupted, res.Status);
     }
@@ -1920,7 +1988,7 @@ public class LinuxWifiRadioTests
             return Task.FromResult(new List<LinuxNl80211WiphyInfo>(_wiphys));
         }
 
-        public Task<LinuxNl80211DumpResult<LinuxNl80211BssInfo>> DumpBssAsync(ushort nl80211FamilyId, int ifindex, ulong? expectedWdev = null, CancellationToken cancellationToken = default)
+        public Task<LinuxNl80211DumpResult<LinuxNl80211BssInfo>> DumpBssAsync(ushort nl80211FamilyId, int ifindex, ulong expectedWdev, CancellationToken cancellationToken = default)
         {
             _bssRecords.TryGetValue(ifindex, out var list);
             var items = list ?? new List<LinuxNl80211BssInfo>();

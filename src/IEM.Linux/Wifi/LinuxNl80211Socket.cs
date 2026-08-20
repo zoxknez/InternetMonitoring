@@ -311,7 +311,7 @@ public sealed class LinuxNl80211Socket : ILinuxNl80211Socket
     public async Task<LinuxNl80211DumpResult<LinuxNl80211BssInfo>> DumpBssAsync(
         ushort nl80211FamilyId,
         int ifindex,
-        ulong? expectedWdev = null,
+        ulong expectedWdev,
         CancellationToken cancellationToken = default)
     {
         if (!RuntimeInformation.IsOSPlatform(OSPlatform.Linux) || nl80211FamilyId == 0 || ifindex <= 0)

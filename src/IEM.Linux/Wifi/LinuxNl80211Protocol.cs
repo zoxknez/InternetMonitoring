@@ -723,13 +723,14 @@ public static class LinuxNl80211Protocol
     /// <summary>
     /// Parses an NL80211_CMD_GET_SCAN multi-part dump response with full status provenance,
     /// strict sequence matching, top-level ifindex and wdev verification, generation consistency, and MLO link preservation.
+    /// Invariant 261: Requires non-nullable expectedWdev for strict identity attribution.
     /// </summary>
     public static LinuxNl80211DumpResult<LinuxNl80211BssInfo> ParseBssDump(
         ReadOnlySpan<byte> buffer,
         uint expectedSequence,
         ushort expectedFamilyId,
         int expectedIfIndex,
-        ulong? expectedWdev = null)
+        ulong expectedWdev)
     {
         var bssList = new List<LinuxNl80211BssInfo>();
         if (buffer.Length < LinuxGenlProtocol.NlmsgHeaderSize)
@@ -799,44 +800,47 @@ public static class LinuxNl80211Protocol
                 return new LinuxNl80211DumpResult<LinuxNl80211BssInfo>(Array.Empty<LinuxNl80211BssInfo>(), LinuxNl80211DumpStatus.Malformed, -22);
             }
 
-            if (nlmsgLen >= LinuxGenlProtocol.NlmsgHeaderSize + LinuxGenlProtocol.GenlHeaderSize)
+            if (nlmsgLen < LinuxGenlProtocol.NlmsgHeaderSize + LinuxGenlProtocol.GenlHeaderSize)
             {
-                byte genlCmd = buffer[offset + LinuxGenlProtocol.NlmsgHeaderSize];
-                if (genlCmd != NL80211_CMD_NEW_SCAN_RESULTS)
-                {
-                    return new LinuxNl80211DumpResult<LinuxNl80211BssInfo>(Array.Empty<LinuxNl80211BssInfo>(), LinuxNl80211DumpStatus.Malformed, -22);
-                }
-
-                var payload = buffer.Slice(offset + LinuxGenlProtocol.NlmsgHeaderSize + LinuxGenlProtocol.GenlHeaderSize,
-                                           nlmsgLen - (LinuxGenlProtocol.NlmsgHeaderSize + LinuxGenlProtocol.GenlHeaderSize));
-                if (!TryParseBssPayload(payload, expectedIfIndex, expectedWdev, out var bssInfo))
-                {
-                    // Structural Netlink, exact length, or attribution failure
-                    return new LinuxNl80211DumpResult<LinuxNl80211BssInfo>(Array.Empty<LinuxNl80211BssInfo>(), LinuxNl80211DumpStatus.Malformed, -22);
-                }
-
-                if (bssInfo != null)
-                {
-                    if (!bssInfo.Generation.HasValue)
-                    {
-                        return new LinuxNl80211DumpResult<LinuxNl80211BssInfo>(Array.Empty<LinuxNl80211BssInfo>(), LinuxNl80211DumpStatus.Malformed, -22);
-                    }
-
-                    if (dumpGeneration == null)
-                    {
-                        dumpGeneration = bssInfo.Generation.Value;
-                    }
-                    else if (dumpGeneration.Value != bssInfo.Generation.Value)
-                    {
-                        // Invariant: Generation shifted during dump; snapshot must be retried
-                        return new LinuxNl80211DumpResult<LinuxNl80211BssInfo>(Array.Empty<LinuxNl80211BssInfo>(), LinuxNl80211DumpStatus.Interrupted, -11, Interrupted: true);
-                    }
-
-                    bssList.Add(bssInfo);
-                }
+                // Invariant 261: Matching-family frame without complete genlmsghdr is never ignored; must fail-closed as Malformed
+                return new LinuxNl80211DumpResult<LinuxNl80211BssInfo>(Array.Empty<LinuxNl80211BssInfo>(), LinuxNl80211DumpStatus.Malformed, -22);
             }
 
-            offset += LinuxGenlProtocol.NlmsgAlign(nlmsgLen);
+            byte genlCmd = buffer[offset + LinuxGenlProtocol.NlmsgHeaderSize];
+            if (genlCmd != NL80211_CMD_NEW_SCAN_RESULTS)
+            {
+                return new LinuxNl80211DumpResult<LinuxNl80211BssInfo>(Array.Empty<LinuxNl80211BssInfo>(), LinuxNl80211DumpStatus.Malformed, -22);
+            }
+
+            var payload = buffer.Slice(offset + LinuxGenlProtocol.NlmsgHeaderSize + LinuxGenlProtocol.GenlHeaderSize,
+                                       nlmsgLen - (LinuxGenlProtocol.NlmsgHeaderSize + LinuxGenlProtocol.GenlHeaderSize));
+            if (!TryParseBssPayload(payload, expectedIfIndex, expectedWdev, out var bssInfo))
+            {
+                // Structural Netlink, exact length, or attribution failure
+                return new LinuxNl80211DumpResult<LinuxNl80211BssInfo>(Array.Empty<LinuxNl80211BssInfo>(), LinuxNl80211DumpStatus.Malformed, -22);
+            }
+
+            if (bssInfo != null)
+            {
+                if (!bssInfo.Generation.HasValue)
+                {
+                    return new LinuxNl80211DumpResult<LinuxNl80211BssInfo>(Array.Empty<LinuxNl80211BssInfo>(), LinuxNl80211DumpStatus.Malformed, -22);
+                }
+
+                if (dumpGeneration == null)
+                {
+                    dumpGeneration = bssInfo.Generation.Value;
+                }
+                else if (dumpGeneration.Value != bssInfo.Generation.Value)
+                {
+                    // Invariant: Generation shifted during dump; snapshot must be retried
+                    return new LinuxNl80211DumpResult<LinuxNl80211BssInfo>(Array.Empty<LinuxNl80211BssInfo>(), LinuxNl80211DumpStatus.Interrupted, -11, Interrupted: true);
+                }
+
+                bssList.Add(bssInfo);
+            }
+
+            offset += LinuxGenlProtocol.NlaAlign(nlmsgLen);
         }
 
         if (!seenDone)
@@ -847,7 +851,7 @@ public static class LinuxNl80211Protocol
         return new LinuxNl80211DumpResult<LinuxNl80211BssInfo>(bssList, LinuxNl80211DumpStatus.Complete, 0, SawDone: true);
     }
 
-    private static bool TryParseBssPayload(ReadOnlySpan<byte> payload, int expectedIfIndex, ulong? expectedWdev, out LinuxNl80211BssInfo? bssInfo)
+    private static bool TryParseBssPayload(ReadOnlySpan<byte> payload, int expectedIfIndex, ulong expectedWdev, out LinuxNl80211BssInfo? bssInfo)
     {
         bssInfo = null;
 
@@ -889,7 +893,7 @@ public static class LinuxNl80211Protocol
             return false; // Mandatory IFINDEX missing or mismatched
         }
 
-        if (!wdev.HasValue || (expectedWdev.HasValue && wdev.Value != expectedWdev.Value))
+        if (!wdev.HasValue || wdev.Value != expectedWdev)
         {
             return false; // Mandatory WDEV missing or mismatched
         }

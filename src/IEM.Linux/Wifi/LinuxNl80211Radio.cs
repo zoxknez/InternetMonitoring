@@ -170,12 +170,15 @@ public sealed class LinuxNl80211Radio : IWirelessRadio, IDisposable, IAsyncDispo
             (requestedIfIndex.HasValue && i.IfIndex == requestedIfIndex.Value) ||
             i.IfName.Equals(interfaceId, StringComparison.OrdinalIgnoreCase));
 
-        if (targetIf == null || !targetIf.WiphyIndex.HasValue || targetIf.IfType != LinuxNl80211Protocol.NL80211_IFTYPE_STATION)
+        if (targetIf == null ||
+            !targetIf.WiphyIndex.HasValue ||
+            !targetIf.Wdev.HasValue ||
+            targetIf.IfType != LinuxNl80211Protocol.NL80211_IFTYPE_STATION)
         {
             return null;
         }
 
-        var bssDump = await _socket.DumpBssAsync(family.FamilyId, targetIf.IfIndex, targetIf.Wdev, cancellationToken).ConfigureAwait(false);
+        var bssDump = await _socket.DumpBssAsync(family.FamilyId, targetIf.IfIndex, targetIf.Wdev.Value, cancellationToken).ConfigureAwait(false);
         if (!bssDump.IsComplete)
         {
             // Invariant 256: Incomplete BSS snapshot never becomes Disconnected
