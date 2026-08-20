@@ -1107,9 +1107,12 @@ public class LinuxWifiRadioTests
         Assert.Equal(LinuxWirelessAssociationState.Associated, obs.State);
         Assert.Equal(2, obs.Links.Count);
 
-        // Invariant 262: Core projection returns null for MLO rather than guessing or picking first link
+        // Phase 3.1-7B-5: Core projection preserves common SSID on MLO, but strictly sets Bssid=null, SignalQuality=null
         var assoc = radio.ReadAssociation("wlan0");
-        Assert.Null(assoc);
+        Assert.NotNull(assoc);
+        Assert.Equal("MloNet", assoc.Ssid);
+        Assert.Null(assoc.Bssid);
+        Assert.Null(assoc.SignalQuality);
     }
 
     [Fact]
@@ -3465,6 +3468,515 @@ public class LinuxWifiRadioTests
         Assert.Null(ap);
         Assert.Equal(0, socket.DumpInterfacesCallCount);
         Assert.Equal(0, socket.DumpBssCallCount);
+    }
+
+    #endregion
+
+    #region Phase 3.1-7B-5: MLO Composition Tests
+
+    [Fact]
+    public async Task Nl80211Radio_MloComposition_SingleLink_NonMlo_Yields_NotMlo_And_Core_Exact_Bssid()
+    {
+        var socket = new MockLinuxNl80211Socket();
+        socket.AddFamily("nl80211", 28);
+        socket.AddInterface(new LinuxNl80211InterfaceInfo(3, "wlan0", 0, "phy0", null, LinuxNl80211Protocol.NL80211_IFTYPE_STATION, null, null, Wdev: 0x1000UL));
+
+        byte[] bssid = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x55 };
+        var bss = new LinuxNl80211BssInfo(3, bssid, "00:11:22:33:44:55", null, "SingleWiFi", 5180, LinuxNl80211Protocol.NL80211_BSS_STATUS_ASSOCIATED, -6500, null, null, null, null, null, null, null, 0x1000UL, 100u);
+        socket.AddBss(3, bss);
+
+        using var radio = new LinuxNl80211Radio(socket);
+        var obs = await radio.ReadAssociationObservationAsync("wlan0");
+        Assert.NotNull(obs);
+
+        var mlo = LinuxNl80211Radio.ComposeMloAssociation(obs.Links);
+        Assert.Equal(LinuxMloCompositionState.NotMlo, mlo.State);
+
+        var coreAssoc = await radio.ReadAssociationAsync("wlan0");
+        Assert.NotNull(coreAssoc);
+        Assert.Equal("SingleWiFi", coreAssoc.Ssid);
+        Assert.Equal("00:11:22:33:44:55", coreAssoc.Bssid);
+    }
+
+    [Fact]
+    public void Nl80211Radio_MloComposition_SingleActiveLink_With_MldAddr_And_LinkId_Is_Valid_Mlo()
+    {
+        byte[] bssid = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x01 };
+        byte[] mldAddr = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x00 };
+        byte[] ssidBytes = System.Text.Encoding.UTF8.GetBytes("MloWiFi");
+
+        var link = new LinuxAssociatedBssLink(
+            Bssid: "00:11:22:33:44:01",
+            BssidBytes: bssid,
+            MloLinkId: 0,
+            MldAddress: "00:11:22:33:44:00",
+            MldAddressBytes: mldAddr,
+            SsidBytes: ssidBytes,
+            DisplaySsid: "MloWiFi",
+            FrequencyMhz: 5180,
+            SignalMbm: -6500,
+            SignalUnspec: null,
+            SeenMsAgo: null,
+            LastSeenBootTimeNs: null);
+
+        var mlo = LinuxNl80211Radio.ComposeMloAssociation(new[] { link });
+
+        Assert.Equal(LinuxMloCompositionState.Valid, mlo.State);
+        Assert.Equal(mldAddr, mlo.MldAddressBytes);
+        Assert.Equal("00:11:22:33:44:00", mlo.MldAddress);
+        Assert.Equal("MloWiFi", mlo.DisplaySsid);
+        Assert.Single(mlo.Links);
+    }
+
+    [Fact]
+    public void Nl80211Radio_MloComposition_TwoLinks_CommonMld_UniqueLinkIds_Is_Valid()
+    {
+        byte[] bssidA = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x01 };
+        byte[] bssidB = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x02 };
+        byte[] mldAddr = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x00 };
+        byte[] ssidBytes = System.Text.Encoding.UTF8.GetBytes("MloWiFi");
+
+        var linkA = new LinuxAssociatedBssLink("00:11:22:33:44:01", bssidA, 0, "00:11:22:33:44:00", mldAddr, ssidBytes, "MloWiFi", 5180, -6500, null, null, null);
+        var linkB = new LinuxAssociatedBssLink("00:11:22:33:44:02", bssidB, 1, "00:11:22:33:44:00", mldAddr, ssidBytes, "MloWiFi", 5975, -6000, null, null, null);
+
+        var mlo = LinuxNl80211Radio.ComposeMloAssociation(new[] { linkA, linkB });
+
+        Assert.Equal(LinuxMloCompositionState.Valid, mlo.State);
+        Assert.Equal(mldAddr, mlo.MldAddressBytes);
+        Assert.Equal(2, mlo.Links.Count);
+    }
+
+    [Fact]
+    public void Nl80211Radio_MloComposition_ThreeLinks_Different_Enumeration_Order_Yields_Identical_Canonical_Sequence()
+    {
+        byte[] bssid0 = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x00 };
+        byte[] bssid1 = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x01 };
+        byte[] bssid2 = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x02 };
+        byte[] mldAddr = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0xFF };
+        byte[] ssidBytes = System.Text.Encoding.UTF8.GetBytes("MloWiFi");
+
+        var link0 = new LinuxAssociatedBssLink("00:11:22:33:44:00", bssid0, 0, "00:11:22:33:44:FF", mldAddr, ssidBytes, "MloWiFi", 2412, -6500, null, null, null);
+        var link1 = new LinuxAssociatedBssLink("00:11:22:33:44:01", bssid1, 1, "00:11:22:33:44:FF", mldAddr, ssidBytes, "MloWiFi", 5180, -6000, null, null, null);
+        var link2 = new LinuxAssociatedBssLink("00:11:22:33:44:02", bssid2, 2, "00:11:22:33:44:FF", mldAddr, ssidBytes, "MloWiFi", 5975, -5500, null, null, null);
+
+        // Order 1: link2, link0, link1
+        var mlo1 = LinuxNl80211Radio.ComposeMloAssociation(new[] { link2, link0, link1 });
+        // Order 2: link1, link2, link0
+        var mlo2 = LinuxNl80211Radio.ComposeMloAssociation(new[] { link1, link2, link0 });
+
+        Assert.Equal(3, mlo1.Links.Count);
+        Assert.Equal(3, mlo2.Links.Count);
+
+        for (int i = 0; i < 3; i++)
+        {
+            Assert.Equal(mlo1.Links[i].MloLinkId, mlo2.Links[i].MloLinkId);
+            Assert.Equal(mlo1.Links[i].Bssid, mlo2.Links[i].Bssid);
+        }
+
+        // Canonical order is link0 (id 0), link1 (id 1), link2 (id 2)
+        Assert.Equal((byte)0, mlo1.Links[0].MloLinkId);
+        Assert.Equal((byte)1, mlo1.Links[1].MloLinkId);
+        Assert.Equal((byte)2, mlo1.Links[2].MloLinkId);
+    }
+
+    [Fact]
+    public void Nl80211Radio_MloComposition_MultiLink_One_Missing_MldAddr_Is_Incomplete()
+    {
+        byte[] bssidA = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x01 };
+        byte[] bssidB = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x02 };
+        byte[] mldAddr = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x00 };
+
+        var linkA = new LinuxAssociatedBssLink("00:11:22:33:44:01", bssidA, 0, "00:11:22:33:44:00", mldAddr, null, "MloWiFi", 5180, -6500, null, null, null);
+        var linkB = new LinuxAssociatedBssLink("00:11:22:33:44:02", bssidB, 1, null, null, null, "MloWiFi", 5975, -6000, null, null, null);
+
+        var mlo = LinuxNl80211Radio.ComposeMloAssociation(new[] { linkA, linkB });
+
+        Assert.Equal(LinuxMloCompositionState.Incomplete, mlo.State);
+    }
+
+    [Fact]
+    public void Nl80211Radio_MloComposition_Different_MldAddr_Values_Is_Conflicted()
+    {
+        byte[] bssidA = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x01 };
+        byte[] bssidB = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x02 };
+        byte[] mldAddrA = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x0A };
+        byte[] mldAddrB = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x0B };
+
+        var linkA = new LinuxAssociatedBssLink("00:11:22:33:44:01", bssidA, 0, "00:11:22:33:44:0A", mldAddrA, null, "MloWiFi", 5180, -6500, null, null, null);
+        var linkB = new LinuxAssociatedBssLink("00:11:22:33:44:02", bssidB, 1, "00:11:22:33:44:0B", mldAddrB, null, "MloWiFi", 5975, -6000, null, null, null);
+
+        var mlo = LinuxNl80211Radio.ComposeMloAssociation(new[] { linkA, linkB });
+
+        Assert.Equal(LinuxMloCompositionState.Conflicted, mlo.State);
+        Assert.Null(mlo.MldAddressBytes);
+    }
+
+    [Fact]
+    public void Nl80211Radio_MloComposition_Missing_LinkId_On_One_Link_Is_Incomplete()
+    {
+        byte[] bssidA = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x01 };
+        byte[] bssidB = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x02 };
+        byte[] mldAddr = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x00 };
+
+        var linkA = new LinuxAssociatedBssLink("00:11:22:33:44:01", bssidA, 0, "00:11:22:33:44:00", mldAddr, null, "MloWiFi", 5180, -6500, null, null, null);
+        var linkB = new LinuxAssociatedBssLink("00:11:22:33:44:02", bssidB, null, "00:11:22:33:44:00", mldAddr, null, "MloWiFi", 5975, -6000, null, null, null);
+
+        var mlo = LinuxNl80211Radio.ComposeMloAssociation(new[] { linkA, linkB });
+
+        Assert.Equal(LinuxMloCompositionState.Incomplete, mlo.State);
+    }
+
+    [Fact]
+    public void Nl80211Radio_MloComposition_Duplicate_LinkId_Different_Bssid_Is_Conflicted()
+    {
+        byte[] bssidA = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x01 };
+        byte[] bssidB = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x02 };
+        byte[] mldAddr = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x00 };
+
+        // Both links claim LinkId = 0
+        var linkA = new LinuxAssociatedBssLink("00:11:22:33:44:01", bssidA, 0, "00:11:22:33:44:00", mldAddr, null, "MloWiFi", 5180, -6500, null, null, null);
+        var linkB = new LinuxAssociatedBssLink("00:11:22:33:44:02", bssidB, 0, "00:11:22:33:44:00", mldAddr, null, "MloWiFi", 5975, -6000, null, null, null);
+
+        var mlo = LinuxNl80211Radio.ComposeMloAssociation(new[] { linkA, linkB });
+
+        Assert.Equal(LinuxMloCompositionState.Conflicted, mlo.State);
+    }
+
+    [Fact]
+    public void Nl80211Radio_MloComposition_Duplicate_Raw_Bssid_Different_LinkIds_Is_Conflicted()
+    {
+        byte[] bssidA = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x01 };
+        byte[] mldAddr = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x00 };
+
+        // Same BSSID on different LinkIds
+        var linkA = new LinuxAssociatedBssLink("00:11:22:33:44:01", bssidA, 0, "00:11:22:33:44:00", mldAddr, null, "MloWiFi", 5180, -6500, null, null, null);
+        var linkB = new LinuxAssociatedBssLink("00:11:22:33:44:01", bssidA, 1, "00:11:22:33:44:00", mldAddr, null, "MloWiFi", 5975, -6000, null, null, null);
+
+        var mlo = LinuxNl80211Radio.ComposeMloAssociation(new[] { linkA, linkB });
+
+        Assert.Equal(LinuxMloCompositionState.Conflicted, mlo.State);
+    }
+
+    [Fact]
+    public void Nl80211Radio_MloComposition_Same_Raw_Ssid_Preserves_Common_Ssid()
+    {
+        byte[] bssidA = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x01 };
+        byte[] bssidB = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x02 };
+        byte[] mldAddr = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x00 };
+        byte[] ssidBytes = System.Text.Encoding.UTF8.GetBytes("CampusNet");
+
+        var linkA = new LinuxAssociatedBssLink("00:11:22:33:44:01", bssidA, 0, "00:11:22:33:44:00", mldAddr, ssidBytes, "CampusNet", 5180, -6500, null, null, null);
+        var linkB = new LinuxAssociatedBssLink("00:11:22:33:44:02", bssidB, 1, "00:11:22:33:44:00", mldAddr, ssidBytes, "CampusNet", 5975, -6000, null, null, null);
+
+        var mlo = LinuxNl80211Radio.ComposeMloAssociation(new[] { linkA, linkB });
+
+        Assert.Equal(LinuxMloCompositionState.Valid, mlo.State);
+        Assert.Equal(ssidBytes, mlo.SsidBytes);
+        Assert.Equal("CampusNet", mlo.DisplaySsid);
+    }
+
+    [Fact]
+    public void Nl80211Radio_MloComposition_Different_Raw_Ssid_Values_Is_Conflicted()
+    {
+        byte[] bssidA = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x01 };
+        byte[] bssidB = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x02 };
+        byte[] mldAddr = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x00 };
+        byte[] ssidA = System.Text.Encoding.UTF8.GetBytes("NetA");
+        byte[] ssidB = System.Text.Encoding.UTF8.GetBytes("NetB");
+
+        var linkA = new LinuxAssociatedBssLink("00:11:22:33:44:01", bssidA, 0, "00:11:22:33:44:00", mldAddr, ssidA, "NetA", 5180, -6500, null, null, null);
+        var linkB = new LinuxAssociatedBssLink("00:11:22:33:44:02", bssidB, 1, "00:11:22:33:44:00", mldAddr, ssidB, "NetB", 5975, -6000, null, null, null);
+
+        var mlo = LinuxNl80211Radio.ComposeMloAssociation(new[] { linkA, linkB });
+
+        Assert.Equal(LinuxMloCompositionState.Conflicted, mlo.State);
+        Assert.Null(mlo.DisplaySsid);
+    }
+
+    [Fact]
+    public void Nl80211Radio_MloComposition_Hidden_ZeroLength_Common_Ssid_Retains_Identity_With_Null_DisplaySsid()
+    {
+        byte[] bssidA = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x01 };
+        byte[] bssidB = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x02 };
+        byte[] mldAddr = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x00 };
+
+        var linkA = new LinuxAssociatedBssLink("00:11:22:33:44:01", bssidA, 0, "00:11:22:33:44:00", mldAddr, null, null, 5180, -6500, null, null, null);
+        var linkB = new LinuxAssociatedBssLink("00:11:22:33:44:02", bssidB, 1, "00:11:22:33:44:00", mldAddr, null, null, 5975, -6000, null, null, null);
+
+        var mlo = LinuxNl80211Radio.ComposeMloAssociation(new[] { linkA, linkB });
+
+        Assert.Equal(LinuxMloCompositionState.Valid, mlo.State);
+        Assert.Null(mlo.DisplaySsid);
+        Assert.Equal(mldAddr, mlo.MldAddressBytes);
+    }
+
+    [Fact]
+    public async Task Nl80211Radio_MloComposition_Aggregate_StationInfo_Peer_Equals_Common_Mld()
+    {
+        var socket = new MockLinuxNl80211Socket();
+        socket.AddFamily("nl80211", 28);
+        socket.AddInterface(new LinuxNl80211InterfaceInfo(3, "wlan0", 0, "phy0", null, LinuxNl80211Protocol.NL80211_IFTYPE_STATION, null, null, Wdev: 0x1000UL));
+
+        byte[] bssidA = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x01 };
+        byte[] bssidB = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x02 };
+        byte[] mldAddr = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x00 };
+
+        var bssA = new LinuxNl80211BssInfo(3, bssidA, "00:11:22:33:44:01", null, "MloWiFi", 5180, LinuxNl80211Protocol.NL80211_BSS_STATUS_ASSOCIATED, -6500, null, null, 0, mldAddr, "00:11:22:33:44:00", null, null, 0x1000UL, 100u);
+        var bssB = new LinuxNl80211BssInfo(3, bssidB, "00:11:22:33:44:02", null, "MloWiFi", 5975, LinuxNl80211Protocol.NL80211_BSS_STATUS_ASSOCIATED, -6000, null, null, 1, mldAddr, "00:11:22:33:44:00", null, null, 0x1000UL, 100u);
+        socket.AddBss(3, bssA);
+        socket.AddBss(3, bssB);
+
+        var sta = new LinuxNl80211StationInfo(3, mldAddr, "00:11:22:33:44:00", 100u, -62, null, null, null, null, null, null, null, null, null, null, null, null, null, null);
+        socket.AddStation(3, 0x1000UL, mldAddr, sta);
+
+        using var radio = new LinuxNl80211Radio(socket);
+        var composed = await radio.ReadComposedAssociationObservationAsync("wlan0");
+
+        Assert.NotNull(composed);
+        Assert.NotNull(composed.StationInfo);
+        Assert.Equal("00:11:22:33:44:00", composed.StationInfo.PeerMacString);
+        Assert.Equal(mldAddr, socket.LastRequestedPeerMac);
+    }
+
+    [Fact]
+    public void Nl80211Radio_MloComposition_StationInfo_Absent_Mlo_Identity_Remains_Valid()
+    {
+        byte[] bssidA = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x01 };
+        byte[] bssidB = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x02 };
+        byte[] mldAddr = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x00 };
+
+        var linkA = new LinuxAssociatedBssLink("00:11:22:33:44:01", bssidA, 0, "00:11:22:33:44:00", mldAddr, null, "MloWiFi", 5180, -6500, null, null, null);
+        var linkB = new LinuxAssociatedBssLink("00:11:22:33:44:02", bssidB, 1, "00:11:22:33:44:00", mldAddr, null, "MloWiFi", 5975, -6000, null, null, null);
+
+        var composedObs = new LinuxComposedAssociationObservation(
+            IfIndex: 3,
+            IfName: "wlan0",
+            WiphyIndex: 0,
+            State: LinuxWirelessAssociationState.Associated,
+            Links: new[] { linkA, linkB },
+            Wdev: 0x1000UL,
+            Generation: 100u,
+            StationInfo: null, // Station query absent/failed
+            ContinuityVerified: true,
+            DumpStatus: LinuxNl80211DumpStatus.Complete);
+
+        var mlo = LinuxNl80211Radio.ComposeMloAssociation(composedObs);
+
+        Assert.Equal(LinuxMloCompositionState.Valid, mlo.State);
+        Assert.Equal(mldAddr, mlo.MldAddressBytes);
+    }
+
+    [Fact]
+    public async Task Nl80211Radio_MloComposition_GetStation_Enoent_Associated_Mlo_Remains_Associated()
+    {
+        var socket = new MockLinuxNl80211Socket();
+        socket.AddFamily("nl80211", 28);
+        socket.AddInterface(new LinuxNl80211InterfaceInfo(3, "wlan0", 0, "phy0", null, LinuxNl80211Protocol.NL80211_IFTYPE_STATION, null, null, Wdev: 0x1000UL));
+
+        byte[] bssidA = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x01 };
+        byte[] bssidB = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x02 };
+        byte[] mldAddr = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x00 };
+
+        var bssA = new LinuxNl80211BssInfo(3, bssidA, "00:11:22:33:44:01", null, "MloWiFi", 5180, LinuxNl80211Protocol.NL80211_BSS_STATUS_ASSOCIATED, -6500, null, null, 0, mldAddr, "00:11:22:33:44:00", null, null, 0x1000UL, 100u);
+        var bssB = new LinuxNl80211BssInfo(3, bssidB, "00:11:22:33:44:02", null, "MloWiFi", 5975, LinuxNl80211Protocol.NL80211_BSS_STATUS_ASSOCIATED, -6000, null, null, 1, mldAddr, "00:11:22:33:44:00", null, null, 0x1000UL, 100u);
+        socket.AddBss(3, bssA);
+        socket.AddBss(3, bssB);
+
+        // No station added to socket -> returns ENOENT
+        using var radio = new LinuxNl80211Radio(socket);
+        var res = await radio.ReadComposedAssociationObservationAsync("wlan0");
+
+        Assert.NotNull(res);
+        Assert.Equal(LinuxWirelessAssociationState.Associated, res.State);
+        Assert.Null(res.StationInfo);
+        Assert.True(res.ContinuityVerified);
+
+        var mlo = LinuxNl80211Radio.ComposeMloAssociation(res);
+        Assert.Equal(LinuxMloCompositionState.Valid, mlo.State);
+    }
+
+    [Fact]
+    public void Nl80211Radio_MloComposition_StationInfo_Links_Empty_Is_Normal_Kernel_Result()
+    {
+        byte[] mldAddr = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x00 };
+        var sta = new LinuxNl80211StationInfo(3, mldAddr, "00:11:22:33:44:00", 100u, -62, null, null, null, null, null, null, null, null, null, null, null, null, null, null, Links: null);
+
+        Assert.Empty(sta.Links);
+    }
+
+    [Fact]
+    public async Task Nl80211Radio_MloComposition_Aggregate_StationInfo_Never_Copied_Into_Individual_Bss_Links()
+    {
+        var socket = new MockLinuxNl80211Socket();
+        socket.AddFamily("nl80211", 28);
+        socket.AddInterface(new LinuxNl80211InterfaceInfo(3, "wlan0", 0, "phy0", null, LinuxNl80211Protocol.NL80211_IFTYPE_STATION, null, null, Wdev: 0x1000UL));
+
+        byte[] bssidA = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x01 };
+        byte[] bssidB = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x02 };
+        byte[] mldAddr = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x00 };
+
+        var bssA = new LinuxNl80211BssInfo(3, bssidA, "00:11:22:33:44:01", null, "MloWiFi", 5180, LinuxNl80211Protocol.NL80211_BSS_STATUS_ASSOCIATED, -6500, null, null, 0, mldAddr, "00:11:22:33:44:00", null, null, 0x1000UL, 100u);
+        var bssB = new LinuxNl80211BssInfo(3, bssidB, "00:11:22:33:44:02", null, "MloWiFi", 5975, LinuxNl80211Protocol.NL80211_BSS_STATUS_ASSOCIATED, -6000, null, null, 1, mldAddr, "00:11:22:33:44:00", null, null, 0x1000UL, 100u);
+        socket.AddBss(3, bssA);
+        socket.AddBss(3, bssB);
+
+        var sta = new LinuxNl80211StationInfo(3, mldAddr, "00:11:22:33:44:00", 100u, -62, null, null, null, null, null, null, null, null, null, null, null, null, null, null);
+        socket.AddStation(3, 0x1000UL, mldAddr, sta);
+
+        using var radio = new LinuxNl80211Radio(socket);
+        var res = await radio.ReadComposedAssociationObservationAsync("wlan0");
+
+        Assert.NotNull(res);
+        Assert.NotNull(res.StationInfo);
+        // Individual links retain their BSS-level facts and never copy the aggregate StationInfo signal
+        Assert.Equal(-6500, res.Links[0].SignalMbm);
+        Assert.Equal(-6000, res.Links[1].SignalMbm);
+    }
+
+    [Fact]
+    public async Task Nl80211Radio_ReadAssociation_Valid_Mlo_Core_Projection_Ssid_Common_Bssid_Null_Signal_Null()
+    {
+        var socket = new MockLinuxNl80211Socket();
+        socket.AddFamily("nl80211", 28);
+        socket.AddInterface(new LinuxNl80211InterfaceInfo(3, "wlan0", 0, "phy0", null, LinuxNl80211Protocol.NL80211_IFTYPE_STATION, null, null, Wdev: 0x1000UL));
+
+        byte[] bssidA = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x01 };
+        byte[] bssidB = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x02 };
+        byte[] mldAddr = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x00 };
+
+        var bssA = new LinuxNl80211BssInfo(3, bssidA, "00:11:22:33:44:01", null, "MloWiFi", 5180, LinuxNl80211Protocol.NL80211_BSS_STATUS_ASSOCIATED, -6500, null, null, 0, mldAddr, "00:11:22:33:44:00", null, null, 0x1000UL, 100u);
+        var bssB = new LinuxNl80211BssInfo(3, bssidB, "00:11:22:33:44:02", null, "MloWiFi", 5975, LinuxNl80211Protocol.NL80211_BSS_STATUS_ASSOCIATED, -6000, null, null, 1, mldAddr, "00:11:22:33:44:00", null, null, 0x1000UL, 100u);
+        socket.AddBss(3, bssA);
+        socket.AddBss(3, bssB);
+
+        using var radio = new LinuxNl80211Radio(socket);
+        var assoc = await radio.ReadAssociationAsync("wlan0");
+
+        Assert.NotNull(assoc);
+        Assert.Equal("MloWiFi", assoc.Ssid);
+        Assert.Null(assoc.Bssid); // Must be strictly null on MLO
+        Assert.Null(assoc.SignalQuality); // Must be strictly null on MLO
+    }
+
+    [Fact]
+    public async Task Nl80211Radio_ReadAssociation_Mlo_Projection_Never_Chooses_Strongest_Or_First_Bssid()
+    {
+        var socket = new MockLinuxNl80211Socket();
+        socket.AddFamily("nl80211", 28);
+        socket.AddInterface(new LinuxNl80211InterfaceInfo(3, "wlan0", 0, "phy0", null, LinuxNl80211Protocol.NL80211_IFTYPE_STATION, null, null, Wdev: 0x1000UL));
+
+        byte[] bssidWeak = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x01 };
+        byte[] bssidStrong = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x02 };
+        byte[] mldAddr = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x00 };
+
+        var bss1 = new LinuxNl80211BssInfo(3, bssidWeak, "00:11:22:33:44:01", null, "MloWiFi", 5180, LinuxNl80211Protocol.NL80211_BSS_STATUS_ASSOCIATED, -7500, null, null, 0, mldAddr, "00:11:22:33:44:00", null, null, 0x1000UL, 100u);
+        var bss2 = new LinuxNl80211BssInfo(3, bssidStrong, "00:11:22:33:44:02", null, "MloWiFi", 5975, LinuxNl80211Protocol.NL80211_BSS_STATUS_ASSOCIATED, -3500, null, null, 1, mldAddr, "00:11:22:33:44:00", null, null, 0x1000UL, 100u);
+        socket.AddBss(3, bss1);
+        socket.AddBss(3, bss2);
+
+        using var radio = new LinuxNl80211Radio(socket);
+        var assoc = await radio.ReadAssociationAsync("wlan0");
+
+        Assert.NotNull(assoc);
+        Assert.Null(assoc.Bssid);
+        Assert.NotEqual("00:11:22:33:44:01", assoc.Bssid);
+        Assert.NotEqual("00:11:22:33:44:02", assoc.Bssid);
+    }
+
+    [Fact]
+    public async Task Nl80211Radio_ReadAssociationAsync_Mlo_Path_Does_Not_Invoke_GetStation()
+    {
+        var socket = new MockLinuxNl80211Socket();
+        socket.AddFamily("nl80211", 28);
+        socket.AddInterface(new LinuxNl80211InterfaceInfo(3, "wlan0", 0, "phy0", null, LinuxNl80211Protocol.NL80211_IFTYPE_STATION, null, null, Wdev: 0x1000UL));
+
+        byte[] bssidA = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x01 };
+        byte[] bssidB = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x02 };
+        byte[] mldAddr = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x00 };
+
+        var bssA = new LinuxNl80211BssInfo(3, bssidA, "00:11:22:33:44:01", null, "MloWiFi", 5180, LinuxNl80211Protocol.NL80211_BSS_STATUS_ASSOCIATED, -6500, null, null, 0, mldAddr, "00:11:22:33:44:00", null, null, 0x1000UL, 100u);
+        var bssB = new LinuxNl80211BssInfo(3, bssidB, "00:11:22:33:44:02", null, "MloWiFi", 5975, LinuxNl80211Protocol.NL80211_BSS_STATUS_ASSOCIATED, -6000, null, null, 1, mldAddr, "00:11:22:33:44:00", null, null, 0x1000UL, 100u);
+        socket.AddBss(3, bssA);
+        socket.AddBss(3, bssB);
+
+        using var radio = new LinuxNl80211Radio(socket);
+        await radio.ReadAssociationAsync("wlan0");
+
+        Assert.Equal(0, socket.GetStationCallCount); // Pure BSS projection never calls GET_STATION
+    }
+
+    [Fact]
+    public async Task Nl80211Radio_MloComposition_Link_Set_Change_AB_To_AC_Triggers_Drift()
+    {
+        var socket = new MockLinuxNl80211Socket();
+        socket.AddFamily("nl80211", 28);
+        socket.AddInterface(new LinuxNl80211InterfaceInfo(3, "wlan0", 0, "phy0", null, LinuxNl80211Protocol.NL80211_IFTYPE_STATION, null, null, Wdev: 0x1000UL));
+
+        byte[] bssidA = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x01 };
+        byte[] bssidB = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x02 };
+        byte[] bssidC = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x03 };
+        byte[] mldAddr = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x00 };
+
+        var bssA = new LinuxNl80211BssInfo(3, bssidA, "00:11:22:33:44:01", null, "MloWiFi", 5180, LinuxNl80211Protocol.NL80211_BSS_STATUS_ASSOCIATED, -6500, null, null, 0, mldAddr, "00:11:22:33:44:00", null, null, 0x1000UL, 100u);
+        var bssB = new LinuxNl80211BssInfo(3, bssidB, "00:11:22:33:44:02", null, "MloWiFi", 5975, LinuxNl80211Protocol.NL80211_BSS_STATUS_ASSOCIATED, -6000, null, null, 1, mldAddr, "00:11:22:33:44:00", null, null, 0x1000UL, 100u);
+        var bssC = new LinuxNl80211BssInfo(3, bssidC, "00:11:22:33:44:03", null, "MloWiFi", 5975, LinuxNl80211Protocol.NL80211_BSS_STATUS_ASSOCIATED, -6000, null, null, 1, mldAddr, "00:11:22:33:44:00", null, null, 0x1000UL, 100u);
+
+        var sta = new LinuxNl80211StationInfo(3, mldAddr, "00:11:22:33:44:00", 100u, -62, null, null, null, null, null, null, null, null, null, null, null, null, null, null);
+
+        // Attempt 1: [bssA, bssB] -> sta -> [bssA, bssC] (drift!)
+        socket.QueueBssDump(new List<LinuxNl80211BssInfo> { bssA, bssB });
+        socket.QueueStationResponse(sta);
+        socket.QueueBssDump(new List<LinuxNl80211BssInfo> { bssA, bssC });
+
+        // Attempt 2: [bssA, bssC] -> sta -> [bssA, bssC] (stable!)
+        socket.QueueBssDump(new List<LinuxNl80211BssInfo> { bssA, bssC });
+        socket.QueueStationResponse(sta);
+        socket.QueueBssDump(new List<LinuxNl80211BssInfo> { bssA, bssC });
+
+        using var radio = new LinuxNl80211Radio(socket);
+        var res = await radio.ReadComposedAssociationObservationAsync("wlan0");
+
+        Assert.NotNull(res);
+        Assert.True(res.ContinuityVerified);
+        Assert.Equal(2, socket.GetStationCallCount);
+
+        var mlo = LinuxNl80211Radio.ComposeMloAssociation(res);
+        Assert.Equal(LinuxMloCompositionState.Valid, mlo.State);
+        Assert.Equal("00:11:22:33:44:03", mlo.Links[1].Bssid);
+    }
+
+    [Fact]
+    public async Task Nl80211Radio_MloComposition_Enumeration_Order_Change_Maintains_Continuity()
+    {
+        var socket = new MockLinuxNl80211Socket();
+        socket.AddFamily("nl80211", 28);
+        socket.AddInterface(new LinuxNl80211InterfaceInfo(3, "wlan0", 0, "phy0", null, LinuxNl80211Protocol.NL80211_IFTYPE_STATION, null, null, Wdev: 0x1000UL));
+
+        byte[] bssidA = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x01 };
+        byte[] bssidB = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x02 };
+        byte[] mldAddr = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x00 };
+
+        var bssA = new LinuxNl80211BssInfo(3, bssidA, "00:11:22:33:44:01", null, "MloWiFi", 5180, LinuxNl80211Protocol.NL80211_BSS_STATUS_ASSOCIATED, -6500, null, null, 0, mldAddr, "00:11:22:33:44:00", null, null, 0x1000UL, 100u);
+        var bssB = new LinuxNl80211BssInfo(3, bssidB, "00:11:22:33:44:02", null, "MloWiFi", 5975, LinuxNl80211Protocol.NL80211_BSS_STATUS_ASSOCIATED, -6000, null, null, 1, mldAddr, "00:11:22:33:44:00", null, null, 0x1000UL, 100u);
+
+        var sta = new LinuxNl80211StationInfo(3, mldAddr, "00:11:22:33:44:00", 100u, -62, null, null, null, null, null, null, null, null, null, null, null, null, null, null);
+
+        // t0: [bssA, bssB] -> sta -> t2: [bssB, bssA] (reversed order)
+        socket.QueueBssDump(new List<LinuxNl80211BssInfo> { bssA, bssB });
+        socket.QueueStationResponse(sta);
+        socket.QueueBssDump(new List<LinuxNl80211BssInfo> { bssB, bssA });
+
+        using var radio = new LinuxNl80211Radio(socket);
+        var res = await radio.ReadComposedAssociationObservationAsync("wlan0");
+
+        Assert.NotNull(res);
+        Assert.True(res.ContinuityVerified);
+        Assert.Equal(1, socket.GetStationCallCount);
+
+        var mlo = LinuxNl80211Radio.ComposeMloAssociation(res);
+        Assert.Equal(LinuxMloCompositionState.Valid, mlo.State);
+        Assert.Equal("00:11:22:33:44:01", mlo.Links[0].Bssid);
+        Assert.Equal("00:11:22:33:44:02", mlo.Links[1].Bssid);
     }
 
     #endregion

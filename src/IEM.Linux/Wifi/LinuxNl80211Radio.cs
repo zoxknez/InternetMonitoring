@@ -305,14 +305,22 @@ public sealed class LinuxNl80211Radio : IWirelessRadio, IDisposable, IAsyncDispo
             return null;
         }
 
-        // Invariant 262: If exactly 1 link, project to singular Core record; if multi-link MLO, do NOT arbitrarily choose first link
-        if (obs.Links.Count == 1)
+        var mlo = ComposeMloAssociation(obs.Links);
+        if (mlo.State == LinuxMloCompositionState.NotMlo)
         {
-            var link = obs.Links[0];
-            return new WirelessAssociation(link.DisplaySsid, link.Bssid, link.SignalUnspec);
+            if (obs.Links.Count == 1)
+            {
+                var link = obs.Links[0];
+                return new WirelessAssociation(link.DisplaySsid, link.Bssid, link.SignalUnspec);
+            }
+            return null;
         }
 
-        return null;
+        // MLO association: safe Core projection
+        // Ssid = common DisplaySsid
+        // Bssid = null (strictly never link BSSID, never MLD address)
+        // SignalQuality = null (strictly never copied from arbitrary link)
+        return new WirelessAssociation(mlo.DisplaySsid, null, null);
     }
 
     /// <summary>
@@ -557,6 +565,188 @@ public sealed class LinuxNl80211Radio : IWirelessRadio, IDisposable, IAsyncDispo
         if (a == null && b == null) return true;
         if (a == null || b == null) return false;
         return a.AsSpan().SequenceEqual(b);
+    }
+
+    /// <summary>
+    /// Evaluates MLO candidate links and deterministically composes MLO association facts.
+    /// Phase 3.1-7B-5: Canonical ordering (LinkId, raw BSSID), strict common MLD/SSID validation,
+    /// and separation of aggregate MLD station telemetry from per-link facts.
+    /// </summary>
+    public static LinuxMloAssociationInfo ComposeMloAssociation(LinuxComposedAssociationObservation observation)
+    {
+        if (observation == null)
+        {
+            return new LinuxMloAssociationInfo(
+                State: LinuxMloCompositionState.NotMlo,
+                MldAddressBytes: null,
+                MldAddress: null,
+                SsidBytes: null,
+                DisplaySsid: null,
+                Links: Array.Empty<LinuxAssociatedBssLink>());
+        }
+        return ComposeMloAssociation(observation.Links);
+    }
+
+    /// <summary>
+    /// Evaluates MLO candidate links and deterministically composes MLO association facts.
+    /// </summary>
+    public static LinuxMloAssociationInfo ComposeMloAssociation(IReadOnlyList<LinuxAssociatedBssLink> links)
+    {
+        if (links == null || links.Count == 0)
+        {
+            return new LinuxMloAssociationInfo(
+                State: LinuxMloCompositionState.NotMlo,
+                MldAddressBytes: null,
+                MldAddress: null,
+                SsidBytes: null,
+                DisplaySsid: null,
+                Links: Array.Empty<LinuxAssociatedBssLink>());
+        }
+
+        bool isMloCandidate = links.Count > 1 ||
+                              links.Any(l => l.MloLinkId.HasValue || l.MldAddressBytes != null);
+
+        if (!isMloCandidate)
+        {
+            return new LinuxMloAssociationInfo(
+                State: LinuxMloCompositionState.NotMlo,
+                MldAddressBytes: null,
+                MldAddress: null,
+                SsidBytes: links[0].SsidBytes,
+                DisplaySsid: links[0].DisplaySsid,
+                Links: links);
+        }
+
+        bool hasIncomplete = false;
+        bool hasConflict = false;
+
+        byte[]? commonMldBytes = null;
+        string? commonMldStr = null;
+        byte[]? commonSsidBytes = null;
+        string? commonDisplaySsid = null;
+        bool seenSsid = false;
+
+        var seenLinkIds = new HashSet<byte>();
+        var seenBssids = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var link in links)
+        {
+            // Incomplete check: missing LinkId or missing/invalid MldAddressBytes
+            if (!link.MloLinkId.HasValue || link.MldAddressBytes == null || link.MldAddressBytes.Length != 6)
+            {
+                hasIncomplete = true;
+            }
+
+            // Conflicted check: MLD address mismatch
+            if (link.MldAddressBytes != null && link.MldAddressBytes.Length == 6)
+            {
+                if (commonMldBytes == null)
+                {
+                    commonMldBytes = link.MldAddressBytes;
+                    commonMldStr = link.MldAddress ?? LinuxNl80211Protocol.FormatMacAddress(link.MldAddressBytes);
+                }
+                else if (!commonMldBytes.AsSpan().SequenceEqual(link.MldAddressBytes))
+                {
+                    hasConflict = true;
+                }
+            }
+
+            // Conflicted check: duplicate LinkId
+            if (link.MloLinkId.HasValue)
+            {
+                if (!seenLinkIds.Add(link.MloLinkId.Value))
+                {
+                    hasConflict = true;
+                }
+            }
+
+            // Conflicted check: duplicate BSSID
+            if (!string.IsNullOrEmpty(link.Bssid))
+            {
+                if (!seenBssids.Add(link.Bssid))
+                {
+                    hasConflict = true;
+                }
+            }
+
+            // SSID handling
+            if (link.SsidBytes != null && link.SsidBytes.Length > 0)
+            {
+                if (!seenSsid)
+                {
+                    seenSsid = true;
+                    commonSsidBytes = link.SsidBytes;
+                    commonDisplaySsid = link.DisplaySsid;
+                }
+                else if (commonSsidBytes != null && !commonSsidBytes.AsSpan().SequenceEqual(link.SsidBytes))
+                {
+                    hasConflict = true;
+                }
+            }
+            else if (!string.IsNullOrEmpty(link.DisplaySsid))
+            {
+                if (!seenSsid)
+                {
+                    seenSsid = true;
+                    commonDisplaySsid = link.DisplaySsid;
+                }
+                else if (commonDisplaySsid != null && !string.Equals(commonDisplaySsid, link.DisplaySsid, StringComparison.Ordinal))
+                {
+                    hasConflict = true;
+                }
+            }
+        }
+
+        // Canonical ordering: sort by MloLinkId (ascending, nulls last), then raw BSSID bytes, then Bssid string
+        var canonicalLinks = links
+            .OrderBy(l => l.MloLinkId ?? byte.MaxValue)
+            .ThenBy(l => l.BssidBytes, ByteSequenceComparer.Instance)
+            .ThenBy(l => l.Bssid, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        LinuxMloCompositionState state;
+        if (hasConflict)
+        {
+            state = LinuxMloCompositionState.Conflicted;
+            commonMldBytes = null;
+            commonMldStr = null;
+            commonSsidBytes = null;
+            commonDisplaySsid = null;
+        }
+        else if (hasIncomplete)
+        {
+            state = LinuxMloCompositionState.Incomplete;
+        }
+        else
+        {
+            state = LinuxMloCompositionState.Valid;
+        }
+
+        return new LinuxMloAssociationInfo(
+            State: state,
+            MldAddressBytes: commonMldBytes,
+            MldAddress: commonMldStr,
+            SsidBytes: commonSsidBytes,
+            DisplaySsid: commonDisplaySsid,
+            Links: canonicalLinks);
+    }
+
+    private sealed class ByteSequenceComparer : IComparer<byte[]?>
+    {
+        public static readonly ByteSequenceComparer Instance = new();
+        public int Compare(byte[]? x, byte[]? y)
+        {
+            if (ReferenceEquals(x, y)) return 0;
+            if (x == null) return -1;
+            if (y == null) return 1;
+            int minLen = Math.Min(x.Length, y.Length);
+            for (int i = 0; i < minLen; i++)
+            {
+                int cmp = x[i].CompareTo(y[i]);
+                if (cmp != 0) return cmp;
+            }
+            return x.Length.CompareTo(y.Length);
+        }
     }
 
     /// <summary>

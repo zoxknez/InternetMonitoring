@@ -80,6 +80,22 @@ public sealed record LinuxComposedAssociationObservation(
     bool ContinuityVerified,
     LinuxNl80211DumpStatus DumpStatus);
 
+public enum LinuxMloCompositionState
+{
+    NotMlo = 0,
+    Valid = 1,
+    Incomplete = 2,
+    Conflicted = 3
+}
+
+public sealed record LinuxMloAssociationInfo(
+    LinuxMloCompositionState State,
+    byte[]? MldAddressBytes,
+    string? MldAddress,
+    byte[]? SsidBytes,
+    string? DisplaySsid,
+    IReadOnlyList<LinuxAssociatedBssLink> Links);
+
 public sealed record LinuxNl80211BssInfo(
     int IfIndex,
     byte[] Bssid,
