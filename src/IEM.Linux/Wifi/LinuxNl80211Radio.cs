@@ -20,6 +20,7 @@ public sealed class LinuxNl80211Radio : IWirelessRadio, IDisposable, IAsyncDispo
 {
     private readonly ILinuxNl80211Socket _socket;
     private readonly ILinuxRfkillReader _rfkillReader;
+    private readonly ILinuxWifiScanCompletionTracker _scanCompletionTracker;
     private readonly string? _boundInterfaceId;
     private readonly bool _ownsSocket;
     private volatile string? _lastQueriedInterfaceId;
@@ -30,15 +31,18 @@ public sealed class LinuxNl80211Radio : IWirelessRadio, IDisposable, IAsyncDispo
         ILinuxNl80211Socket? socket = null,
         ILinuxRfkillReader? rfkillReader = null,
         string? boundInterfaceId = null,
-        bool? ownsSocket = null)
+        bool? ownsSocket = null,
+        ILinuxWifiScanCompletionTracker? scanCompletionTracker = null)
     {
         _ownsSocket = ownsSocket ?? (socket == null);
         _socket = socket ?? LinuxNl80211Socket.Create();
         _rfkillReader = rfkillReader ?? LinuxRfkillReader.Instance;
+        _scanCompletionTracker = scanCompletionTracker ?? new LinuxWifiScanCompletionTracker();
         _boundInterfaceId = boundInterfaceId;
     }
 
     public string? BoundInterfaceId => _boundInterfaceId;
+    internal ILinuxWifiScanCompletionTracker ScanCompletionTracker => _scanCompletionTracker;
 
     /// <summary>
     /// Whether the radio is on for the monitored interface, according to wiphy-scoped rfkill.
@@ -1045,7 +1049,7 @@ public sealed class LinuxNl80211Radio : IWirelessRadio, IDisposable, IAsyncDispo
 
         var bssDump = await _socket.DumpBssAsync(family.FamilyId, targetIf.IfIndex, targetIf.Wdev.Value, cancellationToken).ConfigureAwait(false);
         var currentBootTimeNs = LinuxWifiScanCache.TryGetCurrentBootTimeNs();
-        var snapshot = LinuxWifiScanCache.EvaluateScanDump(bssDump, currentBootTimeNs);
+        var snapshot = LinuxWifiScanCache.EvaluateScanDump(bssDump, targetIf.IfIndex, targetIf.Wdev, _scanCompletionTracker, currentBootTimeNs);
 
         return LinuxWifiScanCache.EvaluateSsidVisibility(snapshot, ssid, currentBootTimeNs);
     }

@@ -85,85 +85,136 @@ public sealed class LinuxWifiScanCacheTests
     }
 
     [Fact]
-    public void EvaluateScanDump_Completeness_And_Minimum_Age()
+    public void EvaluateScanDump_Completeness_And_ScanCompletionProvenance()
     {
         var bss1 = CreateBss(ssid: "Net1", seenMsAgo: 50000);
         var bss2 = CreateBss(ssid: "Net2", seenMsAgo: 10000); // freshest
         var bss3 = CreateBss(ssid: "Net3", seenMsAgo: 120000);
 
-        // 1. Complete dump
-        var dumpComplete = new LinuxNl80211DumpResult<LinuxNl80211BssInfo>(
+        var tracker = new LinuxWifiScanCompletionTracker();
+        const ulong nowBootNs = 1_000_000_000_000UL;
+
+        // 1. Complete transport dump WITHOUT scan-completion provenance -> Partial / OpportunisticKernelCache
+        var dumpTransportComplete = new LinuxNl80211DumpResult<LinuxNl80211BssInfo>(
             new[] { bss1, bss2, bss3 },
             LinuxNl80211DumpStatus.Complete);
 
-        var snapComplete = LinuxWifiScanCache.EvaluateScanDump(dumpComplete);
-        Assert.Equal(LinuxWifiScanCompleteness.Complete, snapComplete.Completeness);
-        Assert.Equal(TimeSpan.FromMilliseconds(10000), snapComplete.Age);
-        Assert.Equal(3, snapComplete.Bss.Count);
+        var snapOpportunistic = LinuxWifiScanCache.EvaluateScanDump(dumpTransportComplete, ifIndex: 3, wdev: 0x1000UL, completionTracker: null, currentBootTimeNs: nowBootNs);
+        Assert.Equal(LinuxWifiScanCompleteness.Partial, snapOpportunistic.Completeness);
+        Assert.Equal(LinuxWifiScanEvidenceBasis.OpportunisticKernelCache, snapOpportunistic.EvidenceBasis);
+        Assert.Equal(TimeSpan.FromMilliseconds(10000), snapOpportunistic.Age);
 
-        // 2. Interrupted dump
+        // 2. Complete transport dump WITH affirmative scan-completion event on this adapter -> Complete / CompletedScan
+        tracker.RecordScanEvent(3, 0x1000UL, LinuxWifiScanEventStatus.Completed, nowBootNs - (5_000UL * 1_000_000UL)); // 5s ago
+        var snapCompletedScan = LinuxWifiScanCache.EvaluateScanDump(dumpTransportComplete, ifIndex: 3, wdev: 0x1000UL, completionTracker: tracker, currentBootTimeNs: nowBootNs);
+        Assert.Equal(LinuxWifiScanCompleteness.Complete, snapCompletedScan.Completeness);
+        Assert.Equal(LinuxWifiScanEvidenceBasis.CompletedScan, snapCompletedScan.EvidenceBasis);
+
+        // 3. Interrupted dump -> Partial / OpportunisticKernelCache
         var dumpInterrupted = new LinuxNl80211DumpResult<LinuxNl80211BssInfo>(
             new[] { bss1 },
             LinuxNl80211DumpStatus.Interrupted);
 
-        var snapInterrupted = LinuxWifiScanCache.EvaluateScanDump(dumpInterrupted);
+        var snapInterrupted = LinuxWifiScanCache.EvaluateScanDump(dumpInterrupted, ifIndex: 3, wdev: 0x1000UL, completionTracker: tracker, currentBootTimeNs: nowBootNs);
         Assert.Equal(LinuxWifiScanCompleteness.Partial, snapInterrupted.Completeness);
-        Assert.Equal(TimeSpan.FromMilliseconds(50000), snapInterrupted.Age);
+        Assert.Equal(LinuxWifiScanEvidenceBasis.OpportunisticKernelCache, snapInterrupted.EvidenceBasis);
 
-        // 3. KernelError dump
+        // 4. KernelError dump -> Unknown / Unknown
         var dumpError = new LinuxNl80211DumpResult<LinuxNl80211BssInfo>(
             Array.Empty<LinuxNl80211BssInfo>(),
             LinuxNl80211DumpStatus.KernelError,
             ErrorCode: -19);
 
-        var snapError = LinuxWifiScanCache.EvaluateScanDump(dumpError);
+        var snapError = LinuxWifiScanCache.EvaluateScanDump(dumpError, ifIndex: 3, wdev: 0x1000UL, completionTracker: tracker, currentBootTimeNs: nowBootNs);
         Assert.Equal(LinuxWifiScanCompleteness.Unknown, snapError.Completeness);
-        Assert.Null(snapError.Age);
-        Assert.Empty(snapError.Bss);
+        Assert.Equal(LinuxWifiScanEvidenceBasis.Unknown, snapError.EvidenceBasis);
     }
 
     [Fact]
-    public void EvaluateSsidVisibility_Fresh_Complete_Present_Returns_True()
+    public void EvaluateSsidVisibility_Fresh_Positive_Works_On_Opportunistic_Cache()
     {
+        // Fresh matching SSID in opportunistic cache (no scan-completion event) -> true!
         var bss = CreateBss(ssid: "HomeMesh", seenMsAgo: 2000);
         var dump = new LinuxNl80211DumpResult<LinuxNl80211BssInfo>(new[] { bss }, LinuxNl80211DumpStatus.Complete);
-        var snap = LinuxWifiScanCache.EvaluateScanDump(dump);
+        var snap = LinuxWifiScanCache.EvaluateScanDump(dump, ifIndex: 3, wdev: 0x1000UL, completionTracker: null);
 
         var visible = LinuxWifiScanCache.EvaluateSsidVisibility(snap, "homemesh"); // case-insensitive
         Assert.True(visible);
     }
 
     [Fact]
-    public void EvaluateSsidVisibility_Fresh_Complete_Absent_Returns_False()
+    public void EvaluateSsidVisibility_Opportunistic_Cache_Absence_Returns_Null_Never_False()
     {
+        // Transport complete, fresh other network, but NO scan-completion event -> null (not false!)
         var bss = CreateBss(ssid: "OtherNet", seenMsAgo: 2000);
         var dump = new LinuxNl80211DumpResult<LinuxNl80211BssInfo>(new[] { bss }, LinuxNl80211DumpStatus.Complete);
-        var snap = LinuxWifiScanCache.EvaluateScanDump(dump);
+        var snap = LinuxWifiScanCache.EvaluateScanDump(dump, ifIndex: 3, wdev: 0x1000UL, completionTracker: null);
 
         var visible = LinuxWifiScanCache.EvaluateSsidVisibility(snap, "HomeMesh");
-        Assert.False(visible);
+        Assert.Null(visible); // Invariant 250: Opportunistic cache absence is unknown (null)
     }
 
     [Fact]
-    public void EvaluateSsidVisibility_Fresh_Partial_Present_Returns_True()
+    public void EvaluateSsidVisibility_CompletedScan_Absence_Returns_False()
     {
-        var bss = CreateBss(ssid: "HomeMesh", seenMsAgo: 2000);
-        var dump = new LinuxNl80211DumpResult<LinuxNl80211BssInfo>(new[] { bss }, LinuxNl80211DumpStatus.Interrupted);
-        var snap = LinuxWifiScanCache.EvaluateScanDump(dump);
+        // Transport complete AND affirmative CompletedScan provenance -> false
+        var tracker = new LinuxWifiScanCompletionTracker();
+        const ulong nowBootNs = 1_000_000_000_000UL;
+        tracker.RecordScanEvent(3, 0x1000UL, LinuxWifiScanEventStatus.Completed, nowBootNs - (2_000UL * 1_000_000UL));
 
-        var visible = LinuxWifiScanCache.EvaluateSsidVisibility(snap, "HomeMesh");
-        Assert.True(visible); // Partial positive proof is sufficient
-    }
-
-    [Fact]
-    public void EvaluateSsidVisibility_Partial_Absent_Returns_Null()
-    {
         var bss = CreateBss(ssid: "OtherNet", seenMsAgo: 2000);
-        var dump = new LinuxNl80211DumpResult<LinuxNl80211BssInfo>(new[] { bss }, LinuxNl80211DumpStatus.Interrupted);
-        var snap = LinuxWifiScanCache.EvaluateScanDump(dump);
+        var dump = new LinuxNl80211DumpResult<LinuxNl80211BssInfo>(new[] { bss }, LinuxNl80211DumpStatus.Complete);
+        var snap = LinuxWifiScanCache.EvaluateScanDump(dump, ifIndex: 3, wdev: 0x1000UL, completionTracker: tracker, currentBootTimeNs: nowBootNs);
 
-        var visible = LinuxWifiScanCache.EvaluateSsidVisibility(snap, "HomeMesh");
-        Assert.Null(visible); // Incomplete dump cannot prove absence
+        var visible = LinuxWifiScanCache.EvaluateSsidVisibility(snap, "HomeMesh", nowBootNs);
+        Assert.False(visible); // Proven absence under completed scan
+    }
+
+    [Fact]
+    public void EvaluateSsidVisibility_Different_Adapter_Scan_Event_DoesNotProve_Absence()
+    {
+        // Scan completed on wlan1 (ifindex 4), but query is on wlan0 (ifindex 3)
+        var tracker = new LinuxWifiScanCompletionTracker();
+        const ulong nowBootNs = 1_000_000_000_000UL;
+        tracker.RecordScanEvent(4, 0x2000UL, LinuxWifiScanEventStatus.Completed, nowBootNs); // wlan1
+
+        var bss = CreateBss(ssid: "OtherNet", seenMsAgo: 2000);
+        var dump = new LinuxNl80211DumpResult<LinuxNl80211BssInfo>(new[] { bss }, LinuxNl80211DumpStatus.Complete);
+        var snap = LinuxWifiScanCache.EvaluateScanDump(dump, ifIndex: 3, wdev: 0x1000UL, completionTracker: tracker, currentBootTimeNs: nowBootNs);
+
+        var visible = LinuxWifiScanCache.EvaluateSsidVisibility(snap, "HomeMesh", nowBootNs);
+        Assert.Null(visible); // Adapter-scoped: wlan1 event cannot prove absence on wlan0
+    }
+
+    [Fact]
+    public void EvaluateSsidVisibility_Scan_Aborted_Yields_Null()
+    {
+        var tracker = new LinuxWifiScanCompletionTracker();
+        const ulong nowBootNs = 1_000_000_000_000UL;
+        tracker.RecordScanEvent(3, 0x1000UL, LinuxWifiScanEventStatus.Aborted, nowBootNs);
+
+        var bss = CreateBss(ssid: "OtherNet", seenMsAgo: 2000);
+        var dump = new LinuxNl80211DumpResult<LinuxNl80211BssInfo>(new[] { bss }, LinuxNl80211DumpStatus.Complete);
+        var snap = LinuxWifiScanCache.EvaluateScanDump(dump, ifIndex: 3, wdev: 0x1000UL, completionTracker: tracker, currentBootTimeNs: nowBootNs);
+
+        var visible = LinuxWifiScanCache.EvaluateSsidVisibility(snap, "HomeMesh", nowBootNs);
+        Assert.Null(visible); // Aborted scan cannot prove absence
+    }
+
+    [Fact]
+    public void EvaluateSsidVisibility_Stale_ScanCompletion_Event_Yields_Null()
+    {
+        var tracker = new LinuxWifiScanCompletionTracker();
+        const ulong nowBootNs = 1_000_000_000_000UL;
+        // Scan completed 4 minutes ago (> 3 min)
+        tracker.RecordScanEvent(3, 0x1000UL, LinuxWifiScanEventStatus.Completed, nowBootNs - (240_000UL * 1_000_000UL));
+
+        var bss = CreateBss(ssid: "OtherNet", seenMsAgo: 2000);
+        var dump = new LinuxNl80211DumpResult<LinuxNl80211BssInfo>(new[] { bss }, LinuxNl80211DumpStatus.Complete);
+        var snap = LinuxWifiScanCache.EvaluateScanDump(dump, ifIndex: 3, wdev: 0x1000UL, completionTracker: tracker, currentBootTimeNs: nowBootNs);
+
+        var visible = LinuxWifiScanCache.EvaluateSsidVisibility(snap, "HomeMesh", nowBootNs);
+        Assert.Null(visible); // Stale scan event cannot prove absence
     }
 
     [Fact]
@@ -172,20 +223,24 @@ public sealed class LinuxWifiScanCacheTests
         // Target SSID is in the cache, but is 4 minutes old (> 3 min)
         var bss = CreateBss(ssid: "HomeMesh", seenMsAgo: 240000);
         var dump = new LinuxNl80211DumpResult<LinuxNl80211BssInfo>(new[] { bss }, LinuxNl80211DumpStatus.Complete);
-        var snap = LinuxWifiScanCache.EvaluateScanDump(dump);
+        var snap = LinuxWifiScanCache.EvaluateScanDump(dump, ifIndex: 3, wdev: 0x1000UL);
 
         var visible = LinuxWifiScanCache.EvaluateSsidVisibility(snap, "HomeMesh");
         Assert.Null(visible); // Indeterminate, NEVER false!
     }
 
     [Fact]
-    public void EvaluateSsidVisibility_Empty_Complete_Dump_Returns_Null()
+    public void EvaluateSsidVisibility_Empty_BSS_With_CompletedScan_Returns_False()
     {
-        var dump = new LinuxNl80211DumpResult<LinuxNl80211BssInfo>(Array.Empty<LinuxNl80211BssInfo>(), LinuxNl80211DumpStatus.Complete);
-        var snap = LinuxWifiScanCache.EvaluateScanDump(dump);
+        var tracker = new LinuxWifiScanCompletionTracker();
+        const ulong nowBootNs = 1_000_000_000_000UL;
+        tracker.RecordScanEvent(3, 0x1000UL, LinuxWifiScanEventStatus.Completed, nowBootNs - (2_000UL * 1_000_000UL));
 
-        var visible = LinuxWifiScanCache.EvaluateSsidVisibility(snap, "HomeMesh");
-        Assert.Null(visible); // Empty dump without scan-done evidence cannot prove absence
+        var dump = new LinuxNl80211DumpResult<LinuxNl80211BssInfo>(Array.Empty<LinuxNl80211BssInfo>(), LinuxNl80211DumpStatus.Complete);
+        var snap = LinuxWifiScanCache.EvaluateScanDump(dump, ifIndex: 3, wdev: 0x1000UL, completionTracker: tracker, currentBootTimeNs: nowBootNs);
+
+        var visible = LinuxWifiScanCache.EvaluateSsidVisibility(snap, "HomeMesh", nowBootNs);
+        Assert.False(visible); // Empty airwaves under proven completed scan
     }
 
     [Fact]
@@ -193,7 +248,7 @@ public sealed class LinuxWifiScanCacheTests
     {
         var bss = CreateBss(ssid: "HomeMesh", seenMsAgo: 2000);
         var dump = new LinuxNl80211DumpResult<LinuxNl80211BssInfo>(new[] { bss }, LinuxNl80211DumpStatus.Complete);
-        var snap = LinuxWifiScanCache.EvaluateScanDump(dump);
+        var snap = LinuxWifiScanCache.EvaluateScanDump(dump, ifIndex: 3, wdev: 0x1000UL);
 
         Assert.Null(LinuxWifiScanCache.EvaluateSsidVisibility(snap, ""));
         Assert.Null(LinuxWifiScanCache.EvaluateSsidVisibility(snap, "   "));
@@ -203,7 +258,6 @@ public sealed class LinuxWifiScanCacheTests
     [Fact]
     public void EvaluateSsidVisibility_Hidden_ZeroLength_Ssid_DoesNotMatch_RegularSsid()
     {
-        // Hidden BSS with empty SSID
         var hiddenBss = new LinuxNl80211BssInfo(
             3,
             new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x99 },
@@ -217,23 +271,24 @@ public sealed class LinuxWifiScanCacheTests
             1000,
             null, null, null, null, null, 0x1000UL, 1);
 
-        var dump = new LinuxNl80211DumpResult<LinuxNl80211BssInfo>(new[] { hiddenBss }, LinuxNl80211DumpStatus.Complete);
-        var snap = LinuxWifiScanCache.EvaluateScanDump(dump);
+        var tracker = new LinuxWifiScanCompletionTracker();
+        tracker.RecordScanEvent(3, 0x1000UL, LinuxWifiScanEventStatus.Completed, 1_000_000_000_000UL);
 
-        // Asking for "MyWiFi" should return false (proven absence from complete fresh dump containing only hidden BSS)
-        Assert.False(LinuxWifiScanCache.EvaluateSsidVisibility(snap, "MyWiFi"));
+        var dump = new LinuxNl80211DumpResult<LinuxNl80211BssInfo>(new[] { hiddenBss }, LinuxNl80211DumpStatus.Complete);
+        var snap = LinuxWifiScanCache.EvaluateScanDump(dump, ifIndex: 3, wdev: 0x1000UL, completionTracker: tracker, currentBootTimeNs: 1_000_000_000_000UL);
+
+        Assert.False(LinuxWifiScanCache.EvaluateSsidVisibility(snap, "MyWiFi", 1_000_000_000_000UL));
     }
 
     [Fact]
     public void EvaluateSsidVisibility_Duplicate_Same_Ssid_Multiple_Bssids_Mesh()
     {
-        // Mesh network with multiple APs broadcasting same SSID
         var ap1 = CreateBss(ssid: "MeshHome", seenMsAgo: 1000, bssid: "00:11:22:33:44:01", freq: 2412);
         var ap2 = CreateBss(ssid: "MeshHome", seenMsAgo: 2000, bssid: "00:11:22:33:44:02", freq: 5180);
         var ap3 = CreateBss(ssid: "MeshHome", seenMsAgo: 3000, bssid: "00:11:22:33:44:03", freq: 5975);
 
         var dump = new LinuxNl80211DumpResult<LinuxNl80211BssInfo>(new[] { ap1, ap2, ap3 }, LinuxNl80211DumpStatus.Complete);
-        var snap = LinuxWifiScanCache.EvaluateScanDump(dump);
+        var snap = LinuxWifiScanCache.EvaluateScanDump(dump, ifIndex: 3, wdev: 0x1000UL);
 
         Assert.True(LinuxWifiScanCache.EvaluateSsidVisibility(snap, "MeshHome"));
     }
@@ -241,12 +296,11 @@ public sealed class LinuxWifiScanCacheTests
     [Fact]
     public void EvaluateSsidVisibility_Mixed_Fresh_And_Stale_Same_Ssid_Returns_True_If_Any_Fresh()
     {
-        // AP1 on 2.4GHz is stale (4 min old), but AP2 on 5GHz is fresh (10s old)
         var apStale = CreateBss(ssid: "OfficeMesh", seenMsAgo: 240000, bssid: "00:11:22:33:44:01", freq: 2412);
         var apFresh = CreateBss(ssid: "OfficeMesh", seenMsAgo: 10000, bssid: "00:11:22:33:44:02", freq: 5180);
 
         var dump = new LinuxNl80211DumpResult<LinuxNl80211BssInfo>(new[] { apStale, apFresh }, LinuxNl80211DumpStatus.Complete);
-        var snap = LinuxWifiScanCache.EvaluateScanDump(dump);
+        var snap = LinuxWifiScanCache.EvaluateScanDump(dump, ifIndex: 3, wdev: 0x1000UL);
 
         Assert.True(LinuxWifiScanCache.EvaluateSsidVisibility(snap, "OfficeMesh"));
     }
@@ -254,7 +308,6 @@ public sealed class LinuxWifiScanCacheTests
     [Fact]
     public void EvaluateSsidVisibility_Malformed_NonUtf8_Ssid_DoesNotThrow_And_Matches_DisplaySsid()
     {
-        // Raw bytes contain invalid UTF-8 (e.g. 0xFF, 0xFE), DisplaySsid is fallback replacement
         byte[] rawMalformed = new byte[] { 0xFF, 0xFE, 0x41, 0x42 };
         string display = System.Text.Encoding.UTF8.GetString(rawMalformed); // contains \uFFFD
 
@@ -271,10 +324,13 @@ public sealed class LinuxWifiScanCacheTests
             1000,
             null, null, null, null, null, 0x1000UL, 1);
 
-        var dump = new LinuxNl80211DumpResult<LinuxNl80211BssInfo>(new[] { bss }, LinuxNl80211DumpStatus.Complete);
-        var snap = LinuxWifiScanCache.EvaluateScanDump(dump);
+        var tracker = new LinuxWifiScanCompletionTracker();
+        tracker.RecordScanEvent(3, 0x1000UL, LinuxWifiScanEventStatus.Completed, 1_000_000_000_000UL);
 
-        Assert.True(LinuxWifiScanCache.EvaluateSsidVisibility(snap, display));
-        Assert.False(LinuxWifiScanCache.EvaluateSsidVisibility(snap, "NormalSsid"));
+        var dump = new LinuxNl80211DumpResult<LinuxNl80211BssInfo>(new[] { bss }, LinuxNl80211DumpStatus.Complete);
+        var snap = LinuxWifiScanCache.EvaluateScanDump(dump, ifIndex: 3, wdev: 0x1000UL, completionTracker: tracker, currentBootTimeNs: 1_000_000_000_000UL);
+
+        Assert.True(LinuxWifiScanCache.EvaluateSsidVisibility(snap, display, 1_000_000_000_000UL));
+        Assert.False(LinuxWifiScanCache.EvaluateSsidVisibility(snap, "NormalSsid", 1_000_000_000_000UL));
     }
 }

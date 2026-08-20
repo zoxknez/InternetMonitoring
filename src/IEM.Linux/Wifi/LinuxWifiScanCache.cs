@@ -18,15 +18,75 @@ internal enum LinuxWifiScanSource
     KernelBssCache
 }
 
+public enum LinuxWifiScanEvidenceBasis
+{
+    OpportunisticKernelCache,
+    CompletedScan,
+    Unknown
+}
+
+public enum LinuxWifiScanEventStatus
+{
+    Completed,
+    Aborted
+}
+
+public sealed record LinuxWifiScanCompletionRecord(
+    int IfIndex,
+    ulong? Wdev,
+    ulong CompletedAtBootTimeNs,
+    LinuxWifiScanEventStatus Status);
+
+public interface ILinuxWifiScanCompletionTracker
+{
+    void RecordScanEvent(int ifIndex, ulong? wdev, LinuxWifiScanEventStatus status, ulong? bootTimeNs = null);
+    LinuxWifiScanCompletionRecord? GetLastScanCompletion(int ifIndex, ulong? wdev);
+}
+
+public sealed class LinuxWifiScanCompletionTracker : ILinuxWifiScanCompletionTracker
+{
+    private readonly object _lock = new();
+    private readonly Dictionary<(int IfIndex, ulong Wdev), LinuxWifiScanCompletionRecord> _records = new();
+
+    public void RecordScanEvent(int ifIndex, ulong? wdev, LinuxWifiScanEventStatus status, ulong? bootTimeNs = null)
+    {
+        var bootNs = bootTimeNs ?? LinuxWifiScanCache.TryGetCurrentBootTimeNs() ?? 0UL;
+        var key = (ifIndex, wdev ?? 0UL);
+        lock (_lock)
+        {
+            _records[key] = new LinuxWifiScanCompletionRecord(ifIndex, wdev, bootNs, status);
+        }
+    }
+
+    public LinuxWifiScanCompletionRecord? GetLastScanCompletion(int ifIndex, ulong? wdev)
+    {
+        var key = (ifIndex, wdev ?? 0UL);
+        lock (_lock)
+        {
+            if (_records.TryGetValue(key, out var record))
+            {
+                return record;
+            }
+            if (wdev.HasValue && _records.TryGetValue((ifIndex, 0UL), out var fallback))
+            {
+                return fallback;
+            }
+            return null;
+        }
+    }
+}
+
 internal sealed record LinuxWifiScanSnapshot(
     LinuxWifiScanSource Source,
     LinuxWifiScanCompleteness Completeness,
+    LinuxWifiScanEvidenceBasis EvidenceBasis,
     TimeSpan? Age,
     IReadOnlyList<LinuxNl80211BssInfo> Bss,
     LinuxNl80211DumpStatus DumpStatus);
 
 /// <summary>
-/// Manages cached kernel BSS scan results, freshness evaluation, and SSID visibility tri-state truth.
+/// Manages cached kernel BSS scan results, freshness evaluation, scan completion provenance,
+/// and SSID visibility tri-state truth.
 /// Invariants 250, 251, 252, 258.
 /// </summary>
 internal static class LinuxWifiScanCache
@@ -77,10 +137,16 @@ internal static class LinuxWifiScanCache
     }
 
     /// <summary>
-    /// Evaluates a raw Netlink BSS dump into a structured scan snapshot with proven completeness and freshness.
+    /// Evaluates a raw Netlink BSS dump into a structured scan snapshot with proven completeness,
+    /// scan-completion provenance, and freshness.
+    /// Invariant 250: NLMSG_DONE transport completeness alone does NOT prove RF scan completeness.
+    /// RF scan completeness requires affirmative scan-completion provenance (e.g. NL80211_CMD_NEW_SCAN_RESULTS).
     /// </summary>
     public static LinuxWifiScanSnapshot EvaluateScanDump(
         LinuxNl80211DumpResult<LinuxNl80211BssInfo> dumpResult,
+        int? ifIndex = null,
+        ulong? wdev = null,
+        ILinuxWifiScanCompletionTracker? completionTracker = null,
         ulong? currentBootTimeNs = null)
     {
         if (dumpResult == null)
@@ -88,17 +154,49 @@ internal static class LinuxWifiScanCache
             return new LinuxWifiScanSnapshot(
                 LinuxWifiScanSource.KernelBssCache,
                 LinuxWifiScanCompleteness.Unknown,
+                LinuxWifiScanEvidenceBasis.Unknown,
                 Age: null,
                 Bss: Array.Empty<LinuxNl80211BssInfo>(),
                 DumpStatus: LinuxNl80211DumpStatus.Unavailable);
         }
 
-        var completeness = dumpResult.Status switch
+        var transportComplete = dumpResult.Status == LinuxNl80211DumpStatus.Complete;
+
+        var completeness = LinuxWifiScanCompleteness.Partial;
+        var evidenceBasis = LinuxWifiScanEvidenceBasis.OpportunisticKernelCache;
+
+        if (dumpResult.Status is LinuxNl80211DumpStatus.KernelError or LinuxNl80211DumpStatus.Malformed or LinuxNl80211DumpStatus.Unavailable)
         {
-            LinuxNl80211DumpStatus.Complete => LinuxWifiScanCompleteness.Complete,
-            LinuxNl80211DumpStatus.Interrupted or LinuxNl80211DumpStatus.Incomplete => LinuxWifiScanCompleteness.Partial,
-            _ => LinuxWifiScanCompleteness.Unknown
-        };
+            completeness = LinuxWifiScanCompleteness.Unknown;
+            evidenceBasis = LinuxWifiScanEvidenceBasis.Unknown;
+        }
+        else if (transportComplete && ifIndex.HasValue && completionTracker != null)
+        {
+            var scanRecord = completionTracker.GetLastScanCompletion(ifIndex.Value, wdev);
+            if (scanRecord != null && scanRecord.Status == LinuxWifiScanEventStatus.Completed)
+            {
+                // Verify scan completion event freshness
+                bool scanEventFresh = true;
+                if (currentBootTimeNs.HasValue && scanRecord.CompletedAtBootTimeNs > 0)
+                {
+                    if (currentBootTimeNs.Value >= scanRecord.CompletedAtBootTimeNs)
+                    {
+                        var scanAgeMs = (currentBootTimeNs.Value - scanRecord.CompletedAtBootTimeNs) / 1_000_000.0;
+                        scanEventFresh = scanAgeMs <= MaximumAge.TotalMilliseconds;
+                    }
+                    else
+                    {
+                        scanEventFresh = false; // Scan timestamp in future relative to query clock
+                    }
+                }
+
+                if (scanEventFresh)
+                {
+                    completeness = LinuxWifiScanCompleteness.Complete;
+                    evidenceBasis = LinuxWifiScanEvidenceBasis.CompletedScan;
+                }
+            }
+        }
 
         TimeSpan? minAge = null;
         if (dumpResult.Items != null && dumpResult.Items.Count > 0)
@@ -119,6 +217,7 @@ internal static class LinuxWifiScanCache
         return new LinuxWifiScanSnapshot(
             LinuxWifiScanSource.KernelBssCache,
             completeness,
+            evidenceBasis,
             minAge,
             dumpResult.Items ?? Array.Empty<LinuxNl80211BssInfo>(),
             dumpResult.Status);
@@ -126,10 +225,10 @@ internal static class LinuxWifiScanCache
 
     /// <summary>
     /// Evaluates tri-state visibility for the requested SSID from a scan snapshot.
-    /// Truth Model (Invariant 250):
-    /// - true:  Positive evidence of at least one fresh matching BSS (even in Partial dump).
-    /// - false: Proven absence (Complete dump, non-empty, overall Age <= MaximumAge, zero matching BSS).
-    /// - null:  Stale match, unknown age, incomplete dump without match, empty dump, or blank SSID.
+    /// Truth Model (Invariants 250, 258):
+    /// - true:  Positive evidence of at least one fresh matching BSS (even in Partial / Opportunistic cache).
+    /// - false: Proven absence from a CompletedScan (transport complete, affirmative scan-completion event on this adapter, overall Age &lt;= MaximumAge, zero matching BSS).
+    /// - null:  Opportunistic cache absence without scan-completion provenance, stale match, unknown age, incomplete dump without match, or blank SSID.
     /// </summary>
     public static bool? EvaluateSsidVisibility(
         LinuxWifiScanSnapshot snapshot,
@@ -151,7 +250,7 @@ internal static class LinuxWifiScanCache
                 {
                     if (IsBssFresh(bss, currentBootTimeNs))
                     {
-                        // Fresh positive proof
+                        // Positive proof requires only a single fresh observation
                         return true;
                     }
                     hasStaleMatch = true;
@@ -159,22 +258,34 @@ internal static class LinuxWifiScanCache
             }
         }
 
-        // If a matching BSS entry was seen in the past but is now stale -> indeterminate (null)
+        // If a matching BSS entry was seen in the past but is now stale -> indeterminate (null, never false)
         if (hasStaleMatch)
         {
             return null;
         }
 
-        // Proven absence requires: Complete dump + non-empty + overall snapshot Age <= MaximumAge + zero matching BSS
-        if (snapshot.Completeness == LinuxWifiScanCompleteness.Complete &&
-            snapshot.Bss != null &&
-            snapshot.Bss.Count > 0 &&
-            snapshot.Age.HasValue &&
-            snapshot.Age.Value <= MaximumAge)
+        // Proven negative absence strictly requires:
+        // 1. EvidenceBasis == CompletedScan (proven affirmative scan completion on this adapter)
+        // 2. Completeness == Complete
+        // 3. DumpStatus == Complete
+        // 4. Either non-empty BSS list with Age <= MaximumAge OR empty BSS list with proven scan completion
+        // 5. Zero matching BSS
+        if (snapshot.EvidenceBasis == LinuxWifiScanEvidenceBasis.CompletedScan &&
+            snapshot.Completeness == LinuxWifiScanCompleteness.Complete &&
+            snapshot.DumpStatus == LinuxNl80211DumpStatus.Complete)
         {
-            return false;
+            if (snapshot.Bss == null || snapshot.Bss.Count == 0)
+            {
+                return false;
+            }
+
+            if (snapshot.Age.HasValue && snapshot.Age.Value <= MaximumAge)
+            {
+                return false;
+            }
         }
 
+        // Opportunistic cache without affirmative scan-completion event cannot prove absence
         return null;
     }
 

@@ -4068,7 +4068,7 @@ public class LinuxWifiRadioTests
     }
 
     [Fact]
-    public async Task Nl80211Radio_IsSsidVisibleAsync_Fresh_Complete_Absent_Returns_False()
+    public async Task Nl80211Radio_IsSsidVisibleAsync_Fresh_CompletedScan_Absent_Returns_False()
     {
         var socket = new MockLinuxNl80211Socket();
         socket.AddFamily("nl80211", 28);
@@ -4077,10 +4077,30 @@ public class LinuxWifiRadioTests
         var bss = new LinuxNl80211BssInfo(3, new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x55 }, "00:11:22:33:44:55", System.Text.Encoding.UTF8.GetBytes("OtherNet"), "OtherNet", 5180, LinuxNl80211Protocol.NL80211_BSS_STATUS_ASSOCIATED, -6000, 85, 5000, null, null, null, null, null, 0x1000UL, 1);
         socket.SetBssDump(new List<LinuxNl80211BssInfo> { bss }, LinuxNl80211DumpStatus.Complete);
 
+        var tracker = new LinuxWifiScanCompletionTracker();
+        tracker.RecordScanEvent(3, 0x1000UL, LinuxWifiScanEventStatus.Completed);
+
+        using var radio = new LinuxNl80211Radio(socket, scanCompletionTracker: tracker);
+        var visible = await radio.IsSsidVisibleAsync("wlan0", "HomeMesh");
+
+        Assert.False(visible); // CompletedScan provenance permits false
+    }
+
+    [Fact]
+    public async Task Nl80211Radio_IsSsidVisibleAsync_Opportunistic_Cache_Absent_Returns_Null()
+    {
+        var socket = new MockLinuxNl80211Socket();
+        socket.AddFamily("nl80211", 28);
+        socket.AddInterface(new LinuxNl80211InterfaceInfo(3, "wlan0", 0, "phy0", null, LinuxNl80211Protocol.NL80211_IFTYPE_STATION, null, null, Wdev: 0x1000UL));
+
+        var bss = new LinuxNl80211BssInfo(3, new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x55 }, "00:11:22:33:44:55", System.Text.Encoding.UTF8.GetBytes("OtherNet"), "OtherNet", 5180, LinuxNl80211Protocol.NL80211_BSS_STATUS_ASSOCIATED, -6000, 85, 5000, null, null, null, null, null, 0x1000UL, 1);
+        socket.SetBssDump(new List<LinuxNl80211BssInfo> { bss }, LinuxNl80211DumpStatus.Complete);
+
+        // No scan completion tracker -> Opportunistic cache only
         using var radio = new LinuxNl80211Radio(socket);
         var visible = await radio.IsSsidVisibleAsync("wlan0", "HomeMesh");
 
-        Assert.False(visible);
+        Assert.Null(visible); // Invariant 250: Opportunistic cache absence is unknown (null)
     }
 
     [Fact]

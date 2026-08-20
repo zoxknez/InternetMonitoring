@@ -116,21 +116,23 @@ public sealed class LinuxWifiAttributionInvariantTests
             Generation: 1);
     }
 
-    // 1. Fresh complete scan + SSID absent + RadioOn=true + Link=Down -> SsidVisible=false -> WifiRadioDown
+    // 1. Fresh CompletedScan + SSID absent + RadioOn=true + Link=Down -> SsidVisible=false -> WifiRadioDown
     [Fact]
-    public void Invariant250_Scenario1_Fresh_Complete_Scan_Absent_Yields_WifiRadioDown()
+    public void Invariant250_Scenario1_Fresh_CompletedScan_Absent_Yields_WifiRadioDown()
     {
         var inner = new StubLinkInspector(LinkStatus.Down, LinkMedium.Wireless);
         var socket = new MockNl80211Socket();
         var rfkill = new StubRfkillReader { HardBlocked = false, SoftBlocked = false };
+        var tracker = new LinuxWifiScanCompletionTracker();
+        tracker.RecordScanEvent(3, 0x1000UL, LinuxWifiScanEventStatus.Completed);
 
         // Associated BSS present in remembered state, but in scan dump only OtherNet is fresh
         socket.BssDump.Add(CreateBss("OtherNet", seenMsAgo: 5000));
         socket.BssDumpStatus = LinuxNl80211DumpStatus.Complete;
 
-        using var radio = new LinuxNl80211Radio(socket, rfkill, boundInterfaceId: "wlan0");
+        using var radio = new LinuxNl80211Radio(socket, rfkill, boundInterfaceId: "wlan0", scanCompletionTracker: tracker);
         var visible = radio.IsSsidVisible("HomeMesh");
-        Assert.False(visible);
+        Assert.False(visible); // CompletedScan provenance permits false
 
         var link = new LinkSnapshot("wlan0", "wlan0", LinkStatus.Down, LinkMedium.Wireless)
         {
@@ -144,6 +146,37 @@ public sealed class LinuxWifiAttributionInvariantTests
 
         var verdict = _classifier.Classify(BuildCycle(link));
         Assert.Equal(NetworkState.WifiRadioDown, verdict.State);
+    }
+
+    // 1b. R1 Characterization: Opportunistic cache (no scan completion event) + SSID absent -> SsidVisible=null -> MUST be AdapterDown, NEVER WifiRadioDown
+    [Fact]
+    public void Invariant250_Scenario1b_Opportunistic_Cache_Absent_MustYield_AdapterDown_Never_WifiRadioDown()
+    {
+        var inner = new StubLinkInspector(LinkStatus.Down, LinkMedium.Wireless);
+        var socket = new MockNl80211Socket();
+        var rfkill = new StubRfkillReader { HardBlocked = false, SoftBlocked = false };
+
+        socket.BssDump.Add(CreateBss("OtherNet", seenMsAgo: 5000));
+        socket.BssDumpStatus = LinuxNl80211DumpStatus.Complete;
+
+        // No scan completion tracker -> Opportunistic cache only
+        using var radio = new LinuxNl80211Radio(socket, rfkill, boundInterfaceId: "wlan0");
+        var visible = radio.IsSsidVisible("HomeMesh");
+        Assert.Null(visible); // Invariant 250: absence in opportunistic cache is unknown (null)
+
+        var link = new LinkSnapshot("wlan0", "wlan0", LinkStatus.Down, LinkMedium.Wireless)
+        {
+            Wireless = new WirelessSnapshot("HomeMesh", "00:11:22:33:44:55", 85, 36)
+            {
+                SsidVisibleInScan = visible, // null
+                RadioOn = true,
+                MeasuredRssiDbm = -60
+            }
+        };
+
+        var verdict = _classifier.Classify(BuildCycle(link));
+        Assert.Equal(NetworkState.AdapterDown, verdict.State); // MUST be AdapterDown
+        Assert.NotEqual(NetworkState.WifiRadioDown, verdict.State); // MUST NEVER be WifiRadioDown
     }
 
     // 2. Fresh complete scan + SSID present + RadioOn=true + Link=Down -> SsidVisible=true -> AdapterDown
