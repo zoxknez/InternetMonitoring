@@ -624,15 +624,17 @@ public sealed class LinuxNl80211Radio : IWirelessRadio, IDisposable, IAsyncDispo
         string? commonMldStr = null;
         byte[]? commonSsidBytes = null;
         string? commonDisplaySsid = null;
-        bool seenSsid = false;
+        bool seenSsidBytes = false;
+        bool seenDisplaySsidOnly = false;
 
         var seenLinkIds = new HashSet<byte>();
-        var seenBssids = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var seenRawBssids = new List<byte[]>();
 
         foreach (var link in links)
         {
-            // Incomplete check: missing LinkId or missing/invalid MldAddressBytes
-            if (!link.MloLinkId.HasValue || link.MldAddressBytes == null || link.MldAddressBytes.Length != 6)
+            // Incomplete check: missing LinkId or missing/invalid MldAddressBytes or invalid BssidBytes
+            if (!link.MloLinkId.HasValue || link.MldAddressBytes == null || link.MldAddressBytes.Length != 6 ||
+                link.BssidBytes == null || link.BssidBytes.Length != 6)
             {
                 hasIncomplete = true;
             }
@@ -660,34 +662,48 @@ public sealed class LinuxNl80211Radio : IWirelessRadio, IDisposable, IAsyncDispo
                 }
             }
 
-            // Conflicted check: duplicate BSSID
-            if (!string.IsNullOrEmpty(link.Bssid))
+            // Conflicted check: duplicate raw BSSID bytes (wire identity authority)
+            if (link.BssidBytes != null && link.BssidBytes.Length == 6)
             {
-                if (!seenBssids.Add(link.Bssid))
+                bool isDuplicateRawBssid = false;
+                foreach (var seen in seenRawBssids)
+                {
+                    if (seen.AsSpan().SequenceEqual(link.BssidBytes))
+                    {
+                        isDuplicateRawBssid = true;
+                        break;
+                    }
+                }
+
+                if (isDuplicateRawBssid)
                 {
                     hasConflict = true;
                 }
+                else
+                {
+                    seenRawBssids.Add(link.BssidBytes);
+                }
             }
 
-            // SSID handling
-            if (link.SsidBytes != null && link.SsidBytes.Length > 0)
+            // SSID handling: raw byte authority (including observed zero-length hidden SSID)
+            if (link.SsidBytes != null)
             {
-                if (!seenSsid)
+                if (!seenSsidBytes)
                 {
-                    seenSsid = true;
+                    seenSsidBytes = true;
                     commonSsidBytes = link.SsidBytes;
                     commonDisplaySsid = link.DisplaySsid;
                 }
-                else if (commonSsidBytes != null && !commonSsidBytes.AsSpan().SequenceEqual(link.SsidBytes))
+                else if (!commonSsidBytes!.AsSpan().SequenceEqual(link.SsidBytes))
                 {
                     hasConflict = true;
                 }
             }
             else if (!string.IsNullOrEmpty(link.DisplaySsid))
             {
-                if (!seenSsid)
+                if (!seenSsidBytes && !seenDisplaySsidOnly)
                 {
-                    seenSsid = true;
+                    seenDisplaySsidOnly = true;
                     commonDisplaySsid = link.DisplaySsid;
                 }
                 else if (commonDisplaySsid != null && !string.Equals(commonDisplaySsid, link.DisplaySsid, StringComparison.Ordinal))

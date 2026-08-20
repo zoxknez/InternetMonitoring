@@ -3658,6 +3658,52 @@ public class LinuxWifiRadioTests
     }
 
     [Fact]
+    public void Nl80211Radio_MloComposition_Same_Raw_Bssid_Different_Presentation_Strings_Is_Conflicted()
+    {
+        byte[] bssidA = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x01 };
+        byte[] mldAddr = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x00 };
+
+        // Same raw BSSID bytes, but differing presentation strings
+        var linkA = new LinuxAssociatedBssLink("00:11:22:33:44:01", bssidA, 0, "00:11:22:33:44:00", mldAddr, null, "MloWiFi", 5180, -6500, null, null, null);
+        var linkB = new LinuxAssociatedBssLink("00-11-22-33-44-01", bssidA, 1, "00:11:22:33:44:00", mldAddr, null, "MloWiFi", 5975, -6000, null, null, null);
+
+        var mlo = LinuxNl80211Radio.ComposeMloAssociation(new[] { linkA, linkB });
+
+        Assert.Equal(LinuxMloCompositionState.Conflicted, mlo.State);
+    }
+
+    [Fact]
+    public void Nl80211Radio_MloComposition_Different_Raw_Bssid_Identical_Presentation_Strings_Does_Not_Conflict()
+    {
+        byte[] bssidA = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x01 };
+        byte[] bssidB = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x02 };
+        byte[] mldAddr = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x00 };
+
+        // Different raw BSSID bytes, but synthetic identical presentation strings -> Raw byte authority wins, no conflict
+        var linkA = new LinuxAssociatedBssLink("00:11:22:33:44:FF", bssidA, 0, "00:11:22:33:44:00", mldAddr, null, "MloWiFi", 5180, -6500, null, null, null);
+        var linkB = new LinuxAssociatedBssLink("00:11:22:33:44:FF", bssidB, 1, "00:11:22:33:44:00", mldAddr, null, "MloWiFi", 5975, -6000, null, null, null);
+
+        var mlo = LinuxNl80211Radio.ComposeMloAssociation(new[] { linkA, linkB });
+
+        Assert.Equal(LinuxMloCompositionState.Valid, mlo.State);
+    }
+
+    [Fact]
+    public void Nl80211Radio_MloComposition_Invalid_BssidBytes_Length_Is_Incomplete()
+    {
+        byte[] bssidInvalid = new byte[] { 0x00, 0x11, 0x22 };
+        byte[] bssidB = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x02 };
+        byte[] mldAddr = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x00 };
+
+        var linkA = new LinuxAssociatedBssLink("00:11:22", bssidInvalid, 0, "00:11:22:33:44:00", mldAddr, null, "MloWiFi", 5180, -6500, null, null, null);
+        var linkB = new LinuxAssociatedBssLink("00:11:22:33:44:02", bssidB, 1, "00:11:22:33:44:00", mldAddr, null, "MloWiFi", 5975, -6000, null, null, null);
+
+        var mlo = LinuxNl80211Radio.ComposeMloAssociation(new[] { linkA, linkB });
+
+        Assert.Equal(LinuxMloCompositionState.Incomplete, mlo.State);
+    }
+
+    [Fact]
     public void Nl80211Radio_MloComposition_Same_Raw_Ssid_Preserves_Common_Ssid()
     {
         byte[] bssidA = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x01 };
@@ -3699,15 +3745,37 @@ public class LinuxWifiRadioTests
         byte[] bssidA = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x01 };
         byte[] bssidB = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x02 };
         byte[] mldAddr = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x00 };
+        byte[] zeroSsid = Array.Empty<byte>();
 
-        var linkA = new LinuxAssociatedBssLink("00:11:22:33:44:01", bssidA, 0, "00:11:22:33:44:00", mldAddr, null, null, 5180, -6500, null, null, null);
-        var linkB = new LinuxAssociatedBssLink("00:11:22:33:44:02", bssidB, 1, "00:11:22:33:44:00", mldAddr, null, null, 5975, -6000, null, null, null);
+        var linkA = new LinuxAssociatedBssLink("00:11:22:33:44:01", bssidA, 0, "00:11:22:33:44:00", mldAddr, zeroSsid, null, 5180, -6500, null, null, null);
+        var linkB = new LinuxAssociatedBssLink("00:11:22:33:44:02", bssidB, 1, "00:11:22:33:44:00", mldAddr, zeroSsid, null, 5975, -6000, null, null, null);
 
         var mlo = LinuxNl80211Radio.ComposeMloAssociation(new[] { linkA, linkB });
 
         Assert.Equal(LinuxMloCompositionState.Valid, mlo.State);
+        Assert.NotNull(mlo.SsidBytes);
+        Assert.Empty(mlo.SsidBytes);
         Assert.Null(mlo.DisplaySsid);
         Assert.Equal(mldAddr, mlo.MldAddressBytes);
+    }
+
+    [Fact]
+    public void Nl80211Radio_MloComposition_Raw_ZeroLength_Ssid_Vs_Raw_NonEmpty_Ssid_Is_Conflicted()
+    {
+        byte[] bssidA = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x01 };
+        byte[] bssidB = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x02 };
+        byte[] mldAddr = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x00 };
+        byte[] zeroSsid = Array.Empty<byte>();
+        byte[] nonEmptySsid = System.Text.Encoding.UTF8.GetBytes("VisibleWiFi");
+
+        var linkA = new LinuxAssociatedBssLink("00:11:22:33:44:01", bssidA, 0, "00:11:22:33:44:00", mldAddr, zeroSsid, null, 5180, -6500, null, null, null);
+        var linkB = new LinuxAssociatedBssLink("00:11:22:33:44:02", bssidB, 1, "00:11:22:33:44:00", mldAddr, nonEmptySsid, "VisibleWiFi", 5975, -6000, null, null, null);
+
+        var mlo = LinuxNl80211Radio.ComposeMloAssociation(new[] { linkA, linkB });
+
+        Assert.Equal(LinuxMloCompositionState.Conflicted, mlo.State);
+        Assert.Null(mlo.SsidBytes);
+        Assert.Null(mlo.DisplaySsid);
     }
 
     [Fact]
