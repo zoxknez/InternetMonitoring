@@ -313,6 +313,36 @@ public sealed class LinuxNl80211Radio : IWirelessRadio, IDisposable, IAsyncDispo
     }
 
     /// <summary>
+    /// Queries station metadata for a verified peer MAC associated with an interface.
+    /// Invariant 257: Station metadata is enrichment truth and never changes the BSS association truth.
+    /// Returns null if station query fails (e.g. ENOENT, timeout, permissions), leaving association intact.
+    /// </summary>
+    public async Task<LinuxNl80211StationInfo?> ReadStationInfoAsync(
+        int ifindex,
+        byte[] peerMac,
+        CancellationToken cancellationToken = default)
+    {
+        if (ifindex <= 0 || peerMac == null || peerMac.Length != 6)
+        {
+            return null;
+        }
+
+        var family = await EnsureFamilyAsync(cancellationToken).ConfigureAwait(false);
+        if (family == null)
+        {
+            return null;
+        }
+
+        var result = await _socket.GetStationAsync(family.FamilyId, ifindex, peerMac, cancellationToken).ConfigureAwait(false);
+        if (!result.IsSuccess)
+        {
+            return null;
+        }
+
+        return result.Item;
+    }
+
+    /// <summary>
     /// Access point details (Phase 3.1-7B-4). Returns null in 7B-1.
     /// </summary>
     public WirelessAccessPoint? ReadAccessPoint(string ssid, string bssid) => null;

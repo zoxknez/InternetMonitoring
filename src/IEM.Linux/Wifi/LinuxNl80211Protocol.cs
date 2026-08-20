@@ -91,6 +91,76 @@ public sealed record LinuxNl80211BssInfo(
     public int? SignalDbm => SignalMbm.HasValue ? SignalMbm.Value / 100 : null;
 }
 
+public sealed record LinuxNl80211RateInfo(
+    ulong BitrateBps,
+    uint? Bitrate100Kbps,
+    byte? Mcs,
+    byte? VhtMcs,
+    byte? VhtNss,
+    byte? HeMcs,
+    byte? HeNss,
+    byte? HeGi,
+    byte? EhtMcs,
+    byte? EhtNss,
+    byte? EhtGi,
+    byte? EhtRuAlloc,
+    bool Is40Mhz,
+    bool Is80Mhz,
+    bool Is160Mhz,
+    bool Is320Mhz,
+    bool IsShortGi);
+
+public sealed record LinuxNl80211LinkStationInfo(
+    byte LinkId,
+    sbyte? SignalDbm,
+    sbyte? SignalAverageDbm,
+    ulong? RxBytes,
+    ulong? TxBytes,
+    uint? RxPackets,
+    uint? TxPackets,
+    LinuxNl80211RateInfo? TxRate,
+    LinuxNl80211RateInfo? RxRate);
+
+public sealed record LinuxNl80211StationInfo(
+    int IfIndex,
+    byte[] PeerMac,
+    string PeerMacString,
+    uint Generation,
+    sbyte? SignalDbm,
+    sbyte? SignalAverageDbm,
+    ulong? RxBytes,
+    ulong? TxBytes,
+    uint? RxPackets,
+    uint? TxPackets,
+    uint? TxRetries,
+    uint? TxFailed,
+    uint? ConnectedTimeSeconds,
+    LinuxNl80211RateInfo? TxRate,
+    LinuxNl80211RateInfo? RxRate,
+    uint? ExpectedThroughputKbps,
+    ulong? RxDurationUsec,
+    ulong? TxDurationUsec,
+    ulong? AssociationBootTimeNs,
+    IReadOnlyList<LinuxNl80211LinkStationInfo> Links);
+
+public sealed record LinuxNl80211StationCorrelationToken(
+    int IfIndex,
+    ulong Wdev,
+    uint WiphyIndex,
+    string PeerMacString,
+    uint BssGeneration);
+
+public sealed record LinuxNl80211SingleResult<T>(
+    T? Item,
+    LinuxNl80211DumpStatus Status,
+    int ErrorCode = 0,
+    bool Interrupted = false,
+    bool SawAck = false,
+    bool SawDone = false)
+{
+    public bool IsSuccess => Status == LinuxNl80211DumpStatus.Complete && Item != null;
+}
+
 public sealed record LinuxNl80211InterfaceInfo(
     int IfIndex,
     string IfName,
@@ -126,6 +196,9 @@ public static class LinuxNl80211Protocol
     public const byte NL80211_CMD_NEW_INTERFACE = 7;
     public const byte NL80211_CMD_DEL_INTERFACE = 8;
     public const byte NL80211_CMD_GET_STATION = 17;
+    public const byte NL80211_CMD_SET_STATION = 18;
+    public const byte NL80211_CMD_NEW_STATION = 19;
+    public const byte NL80211_CMD_DEL_STATION = 20;
     public const byte NL80211_CMD_GET_SCAN = 32;
     public const byte NL80211_CMD_TRIGGER_SCAN = 33;
     public const byte NL80211_CMD_NEW_SCAN_RESULTS = 34;
@@ -173,6 +246,56 @@ public static class LinuxNl80211Protocol
     public const ushort NL80211_BSS_MLD_ADDR = 22;
     public const ushort NL80211_BSS_USE_FOR = 23;
     public const ushort NL80211_BSS_CANNOT_USE_REASONS = 24;
+
+    // Nested NL80211_ATTR_STA_INFO attributes (Linux kernel enum nl80211_sta_info)
+    public const ushort NL80211_STA_INFO_INVALID = 0;
+    public const ushort NL80211_STA_INFO_INACTIVE_TIME = 1;
+    public const ushort NL80211_STA_INFO_RX_BYTES = 2;
+    public const ushort NL80211_STA_INFO_TX_BYTES = 3;
+    public const ushort NL80211_STA_INFO_SIGNAL = 7;
+    public const ushort NL80211_STA_INFO_TX_BITRATE = 8;
+    public const ushort NL80211_STA_INFO_RX_PACKETS = 9;
+    public const ushort NL80211_STA_INFO_TX_PACKETS = 10;
+    public const ushort NL80211_STA_INFO_TX_RETRIES = 11;
+    public const ushort NL80211_STA_INFO_TX_FAILED = 12;
+    public const ushort NL80211_STA_INFO_SIGNAL_AVG = 13;
+    public const ushort NL80211_STA_INFO_RX_BITRATE = 14;
+    public const ushort NL80211_STA_INFO_CONNECTED_TIME = 16;
+    public const ushort NL80211_STA_INFO_RX_BYTES64 = 23;
+    public const ushort NL80211_STA_INFO_TX_BYTES64 = 24;
+    public const ushort NL80211_STA_INFO_EXPECTED_THROUGHPUT = 27;
+    public const ushort NL80211_STA_INFO_BEACON_RX = 29;
+    public const ushort NL80211_STA_INFO_BEACON_SIGNAL_AVG = 30;
+    public const ushort NL80211_STA_INFO_RX_DURATION = 32;
+    public const ushort NL80211_STA_INFO_ACK_SIGNAL = 34;
+    public const ushort NL80211_STA_INFO_ACK_SIGNAL_AVG = 35;
+    public const ushort NL80211_STA_INFO_TX_DURATION = 39;
+    public const ushort NL80211_STA_INFO_ASSOC_AT_BOOTTIME = 42;
+
+    // Nested rate info attributes (Linux kernel enum nl80211_rate_info)
+    public const ushort NL80211_RATE_INFO_INVALID = 0;
+    public const ushort NL80211_RATE_INFO_BITRATE = 1;
+    public const ushort NL80211_RATE_INFO_MCS = 2;
+    public const ushort NL80211_RATE_INFO_40_MHZ_WIDTH = 3;
+    public const ushort NL80211_RATE_INFO_SHORT_GI = 4;
+    public const ushort NL80211_RATE_INFO_BITRATE32 = 5;
+    public const ushort NL80211_RATE_INFO_VHT_MCS = 6;
+    public const ushort NL80211_RATE_INFO_VHT_NSS = 7;
+    public const ushort NL80211_RATE_INFO_80_MHZ_WIDTH = 8;
+    public const ushort NL80211_RATE_INFO_80P80_MHZ_WIDTH = 9;
+    public const ushort NL80211_RATE_INFO_160_MHZ_WIDTH = 10;
+    public const ushort NL80211_RATE_INFO_10_MHZ_WIDTH = 11;
+    public const ushort NL80211_RATE_INFO_5_MHZ_WIDTH = 12;
+    public const ushort NL80211_RATE_INFO_HE_MCS = 13;
+    public const ushort NL80211_RATE_INFO_HE_NSS = 14;
+    public const ushort NL80211_RATE_INFO_HE_GI = 15;
+    public const ushort NL80211_RATE_INFO_HE_DCM = 16;
+    public const ushort NL80211_RATE_INFO_HE_RU_ALLOC = 17;
+    public const ushort NL80211_RATE_INFO_320_MHZ_WIDTH = 18;
+    public const ushort NL80211_RATE_INFO_EHT_MCS = 19;
+    public const ushort NL80211_RATE_INFO_EHT_NSS = 20;
+    public const ushort NL80211_RATE_INFO_EHT_GI = 21;
+    public const ushort NL80211_RATE_INFO_EHT_RU_ALLOC = 22;
 
     // BSS status enum (NL80211_BSS_STATUS)
     public const uint NL80211_BSS_STATUS_AUTHENTICATED = 0;
@@ -840,7 +963,7 @@ public static class LinuxNl80211Protocol
                 bssList.Add(bssInfo);
             }
 
-            offset += LinuxGenlProtocol.NlaAlign(nlmsgLen);
+            offset += LinuxGenlProtocol.NlmsgAlign(nlmsgLen);
         }
 
         if (!seenDone)
@@ -849,6 +972,512 @@ public static class LinuxNl80211Protocol
         }
 
         return new LinuxNl80211DumpResult<LinuxNl80211BssInfo>(bssList, LinuxNl80211DumpStatus.Complete, 0, SawDone: true);
+    }
+
+    /// <summary>
+    /// Builds an NL80211_CMD_GET_STATION single request for a specific peer MAC scoped to an interface.
+    /// Invariant 257: Requests exact peer station metadata without dumping.
+    /// </summary>
+    public static byte[] BuildGetStationRequest(ushort nl80211FamilyId, int ifindex, ReadOnlySpan<byte> peerMac, uint sequence, uint pid = 0)
+    {
+        if (peerMac.Length != 6)
+        {
+            throw new ArgumentException("Peer MAC address must be exactly 6 octets.", nameof(peerMac));
+        }
+
+        ushort flags = (ushort)(LinuxGenlProtocol.NLM_F_REQUEST | LinuxGenlProtocol.NLM_F_ACK);
+        int ifindexAttrLen = LinuxGenlProtocol.NlaAlign(LinuxGenlProtocol.NlaHeaderSize + 4);
+        int macAttrLen = LinuxGenlProtocol.NlaAlign(LinuxGenlProtocol.NlaHeaderSize + 6);
+        int totalLen = LinuxGenlProtocol.NlmsgHeaderSize + LinuxGenlProtocol.GenlHeaderSize + ifindexAttrLen + macAttrLen;
+
+        byte[] buffer = new byte[totalLen];
+        var span = buffer.AsSpan();
+
+        // 1. nlmsghdr
+        BinaryPrimitives.WriteInt32LittleEndian(span.Slice(0, 4), totalLen);
+        BinaryPrimitives.WriteUInt16LittleEndian(span.Slice(4, 2), nl80211FamilyId);
+        BinaryPrimitives.WriteUInt16LittleEndian(span.Slice(6, 2), flags);
+        BinaryPrimitives.WriteUInt32LittleEndian(span.Slice(8, 4), sequence);
+        BinaryPrimitives.WriteUInt32LittleEndian(span.Slice(12, 4), pid);
+
+        // 2. genlmsghdr
+        span[16] = NL80211_CMD_GET_STATION;
+        span[17] = 1;
+        BinaryPrimitives.WriteUInt16LittleEndian(span.Slice(18, 2), 0);
+
+        // 3. NL80211_ATTR_IFINDEX
+        BinaryPrimitives.WriteUInt16LittleEndian(span.Slice(20, 2), (ushort)(LinuxGenlProtocol.NlaHeaderSize + 4));
+        BinaryPrimitives.WriteUInt16LittleEndian(span.Slice(22, 2), NL80211_ATTR_IFINDEX);
+        BinaryPrimitives.WriteInt32LittleEndian(span.Slice(24, 4), ifindex);
+
+        // 4. NL80211_ATTR_MAC
+        int offset = 20 + ifindexAttrLen;
+        BinaryPrimitives.WriteUInt16LittleEndian(span.Slice(offset, 2), (ushort)(LinuxGenlProtocol.NlaHeaderSize + 6));
+        BinaryPrimitives.WriteUInt16LittleEndian(span.Slice(offset + 2, 2), NL80211_ATTR_MAC);
+        peerMac.CopyTo(span.Slice(offset + 4, 6));
+
+        return buffer;
+    }
+
+    /// <summary>
+    /// Parses an NL80211_CMD_GET_STATION response with full status provenance,
+    /// strict sequence matching, top-level ifindex, MAC, and generation verification, and nested STA_INFO parsing.
+    /// Invariant 257: Enforces strict correlation with the expected interface index and peer MAC.
+    /// </summary>
+    public static LinuxNl80211SingleResult<LinuxNl80211StationInfo> ParseStationResponse(
+        ReadOnlySpan<byte> buffer,
+        uint expectedSequence,
+        ushort expectedFamilyId,
+        int expectedIfIndex,
+        ReadOnlySpan<byte> expectedPeerMac)
+    {
+        if (buffer.Length < LinuxGenlProtocol.NlmsgHeaderSize || expectedPeerMac.Length != 6)
+        {
+            return new LinuxNl80211SingleResult<LinuxNl80211StationInfo>(null, LinuxNl80211DumpStatus.Malformed, -22);
+        }
+
+        bool seenAck = false;
+        LinuxNl80211StationInfo? stationInfo = null;
+        int offset = 0;
+
+        while (offset + LinuxGenlProtocol.NlmsgHeaderSize <= buffer.Length)
+        {
+            int nlmsgLen = MemoryMarshal.Read<int>(buffer.Slice(offset, 4));
+            if (nlmsgLen < LinuxGenlProtocol.NlmsgHeaderSize || offset + nlmsgLen > buffer.Length)
+            {
+                return new LinuxNl80211SingleResult<LinuxNl80211StationInfo>(null, LinuxNl80211DumpStatus.Malformed, -22);
+            }
+
+            ushort nlmsgType = MemoryMarshal.Read<ushort>(buffer.Slice(offset + 4, 2));
+            ushort flags = MemoryMarshal.Read<ushort>(buffer.Slice(offset + 6, 2));
+            uint seq = MemoryMarshal.Read<uint>(buffer.Slice(offset + 8, 4));
+
+            if (seq != expectedSequence)
+            {
+                offset += LinuxGenlProtocol.NlmsgAlign(nlmsgLen);
+                continue;
+            }
+
+            if ((flags & LinuxGenlProtocol.NLM_F_DUMP_INTR) != 0)
+            {
+                return new LinuxNl80211SingleResult<LinuxNl80211StationInfo>(null, LinuxNl80211DumpStatus.Interrupted, -4, Interrupted: true);
+            }
+
+            if (nlmsgType == LinuxGenlProtocol.NLMSG_ERROR)
+            {
+                if (nlmsgLen < LinuxGenlProtocol.NlmsgHeaderSize + 4)
+                {
+                    return new LinuxNl80211SingleResult<LinuxNl80211StationInfo>(null, LinuxNl80211DumpStatus.Malformed, -22);
+                }
+                int errorCode = MemoryMarshal.Read<int>(buffer.Slice(offset + LinuxGenlProtocol.NlmsgHeaderSize, 4));
+                if (errorCode < 0)
+                {
+                    return new LinuxNl80211SingleResult<LinuxNl80211StationInfo>(null, LinuxNl80211DumpStatus.KernelError, errorCode);
+                }
+                seenAck = true;
+                offset += LinuxGenlProtocol.NlmsgAlign(nlmsgLen);
+                continue;
+            }
+
+            if (nlmsgType == LinuxGenlProtocol.NLMSG_DONE)
+            {
+                if (nlmsgLen >= LinuxGenlProtocol.NlmsgHeaderSize + 4)
+                {
+                    int doneErr = MemoryMarshal.Read<int>(buffer.Slice(offset + LinuxGenlProtocol.NlmsgHeaderSize, 4));
+                    if (doneErr < 0)
+                    {
+                        return new LinuxNl80211SingleResult<LinuxNl80211StationInfo>(null, LinuxNl80211DumpStatus.KernelError, doneErr, SawDone: true);
+                    }
+                }
+                offset += LinuxGenlProtocol.NlmsgAlign(nlmsgLen);
+                continue;
+            }
+
+            if (nlmsgType != expectedFamilyId)
+            {
+                return new LinuxNl80211SingleResult<LinuxNl80211StationInfo>(null, LinuxNl80211DumpStatus.Malformed, -22);
+            }
+
+            if (nlmsgLen < LinuxGenlProtocol.NlmsgHeaderSize + LinuxGenlProtocol.GenlHeaderSize)
+            {
+                return new LinuxNl80211SingleResult<LinuxNl80211StationInfo>(null, LinuxNl80211DumpStatus.Malformed, -22);
+            }
+
+            byte genlCmd = buffer[offset + LinuxGenlProtocol.NlmsgHeaderSize];
+            if (genlCmd != NL80211_CMD_NEW_STATION)
+            {
+                return new LinuxNl80211SingleResult<LinuxNl80211StationInfo>(null, LinuxNl80211DumpStatus.Malformed, -22);
+            }
+
+            var payload = buffer.Slice(offset + LinuxGenlProtocol.NlmsgHeaderSize + LinuxGenlProtocol.GenlHeaderSize,
+                                       nlmsgLen - (LinuxGenlProtocol.NlmsgHeaderSize + LinuxGenlProtocol.GenlHeaderSize));
+            if (!TryParseStationPayload(payload, expectedIfIndex, expectedPeerMac, out stationInfo))
+            {
+                return new LinuxNl80211SingleResult<LinuxNl80211StationInfo>(null, LinuxNl80211DumpStatus.Malformed, -22);
+            }
+
+            offset += LinuxGenlProtocol.NlmsgAlign(nlmsgLen);
+        }
+
+        if (stationInfo == null)
+        {
+            return new LinuxNl80211SingleResult<LinuxNl80211StationInfo>(null, LinuxNl80211DumpStatus.Incomplete, -11, SawAck: seenAck);
+        }
+
+        return new LinuxNl80211SingleResult<LinuxNl80211StationInfo>(stationInfo, LinuxNl80211DumpStatus.Complete, 0, SawAck: seenAck);
+    }
+
+    private static bool TryParseStationPayload(
+        ReadOnlySpan<byte> payload,
+        int expectedIfIndex,
+        ReadOnlySpan<byte> expectedPeerMac,
+        out LinuxNl80211StationInfo? stationInfo)
+    {
+        stationInfo = null;
+
+        if (!LinuxGenlProtocol.TryEnumerateAttributesStrict(payload, out var topAttrs))
+        {
+            return false;
+        }
+
+        int? msgIfIndex = null;
+        byte[]? mac = null;
+        uint? generation = null;
+        byte[]? staInfoBytes = null;
+
+        foreach (var (type, value) in topAttrs)
+        {
+            switch (type)
+            {
+                case NL80211_ATTR_IFINDEX:
+                    if (value.Length == 4) msgIfIndex = MemoryMarshal.Read<int>(value);
+                    else return false;
+                    break;
+                case NL80211_ATTR_MAC:
+                    if (value.Length == 6) mac = value;
+                    else return false;
+                    break;
+                case NL80211_ATTR_GENERATION:
+                    if (value.Length == 4) generation = MemoryMarshal.Read<uint>(value);
+                    else return false;
+                    break;
+                case NL80211_ATTR_STA_INFO:
+                    staInfoBytes = value;
+                    break;
+            }
+        }
+
+        // Strict provenance check: mandatory IFINDEX, MAC matching expected, GENERATION, and STA_INFO
+        if (!msgIfIndex.HasValue || msgIfIndex.Value != expectedIfIndex)
+        {
+            return false;
+        }
+
+        if (mac == null || !mac.AsSpan().SequenceEqual(expectedPeerMac))
+        {
+            return false; // Invariant 257: peer MAC must match requested peer
+        }
+
+        if (!generation.HasValue || staInfoBytes == null || staInfoBytes.Length == 0)
+        {
+            return false;
+        }
+
+        if (!LinuxGenlProtocol.TryEnumerateAttributesStrict(staInfoBytes, out var staAttrs))
+        {
+            return false;
+        }
+
+        sbyte? signal = null;
+        sbyte? signalAvg = null;
+        ulong? rxBytes = null;
+        ulong? txBytes = null;
+        uint? rxPackets = null;
+        uint? txPackets = null;
+        uint? txRetries = null;
+        uint? txFailed = null;
+        uint? connectedTime = null;
+        LinuxNl80211RateInfo? txRate = null;
+        LinuxNl80211RateInfo? rxRate = null;
+        uint? expectedThroughput = null;
+        ulong? rxDuration = null;
+        ulong? txDuration = null;
+        ulong? assocBootTime = null;
+
+        uint? rxBytes32 = null;
+        uint? txBytes32 = null;
+        ulong? rxBytes64 = null;
+        ulong? txBytes64 = null;
+
+        foreach (var (stype, sval) in staAttrs)
+        {
+            switch (stype)
+            {
+                case NL80211_STA_INFO_SIGNAL:
+                    if (sval.Length == 1) signal = unchecked((sbyte)sval[0]);
+                    else return false;
+                    break;
+
+                case NL80211_STA_INFO_SIGNAL_AVG:
+                    if (sval.Length == 1) signalAvg = unchecked((sbyte)sval[0]);
+                    else return false;
+                    break;
+
+                case NL80211_STA_INFO_RX_BYTES:
+                    if (sval.Length == 4) rxBytes32 = MemoryMarshal.Read<uint>(sval);
+                    else return false;
+                    break;
+
+                case NL80211_STA_INFO_TX_BYTES:
+                    if (sval.Length == 4) txBytes32 = MemoryMarshal.Read<uint>(sval);
+                    else return false;
+                    break;
+
+                case NL80211_STA_INFO_RX_BYTES64:
+                    if (sval.Length == 8) rxBytes64 = MemoryMarshal.Read<ulong>(sval);
+                    else return false;
+                    break;
+
+                case NL80211_STA_INFO_TX_BYTES64:
+                    if (sval.Length == 8) txBytes64 = MemoryMarshal.Read<ulong>(sval);
+                    else return false;
+                    break;
+
+                case NL80211_STA_INFO_RX_PACKETS:
+                    if (sval.Length == 4) rxPackets = MemoryMarshal.Read<uint>(sval);
+                    else return false;
+                    break;
+
+                case NL80211_STA_INFO_TX_PACKETS:
+                    if (sval.Length == 4) txPackets = MemoryMarshal.Read<uint>(sval);
+                    else return false;
+                    break;
+
+                case NL80211_STA_INFO_TX_RETRIES:
+                    if (sval.Length == 4) txRetries = MemoryMarshal.Read<uint>(sval);
+                    else return false;
+                    break;
+
+                case NL80211_STA_INFO_TX_FAILED:
+                    if (sval.Length == 4) txFailed = MemoryMarshal.Read<uint>(sval);
+                    else return false;
+                    break;
+
+                case NL80211_STA_INFO_CONNECTED_TIME:
+                    if (sval.Length == 4) connectedTime = MemoryMarshal.Read<uint>(sval);
+                    else return false;
+                    break;
+
+                case NL80211_STA_INFO_EXPECTED_THROUGHPUT:
+                    if (sval.Length == 4) expectedThroughput = MemoryMarshal.Read<uint>(sval);
+                    else return false;
+                    break;
+
+                case NL80211_STA_INFO_RX_DURATION:
+                    if (sval.Length == 8) rxDuration = MemoryMarshal.Read<ulong>(sval);
+                    else return false;
+                    break;
+
+                case NL80211_STA_INFO_TX_DURATION:
+                    if (sval.Length == 8) txDuration = MemoryMarshal.Read<ulong>(sval);
+                    else return false;
+                    break;
+
+                case NL80211_STA_INFO_ASSOC_AT_BOOTTIME:
+                    if (sval.Length == 8) assocBootTime = MemoryMarshal.Read<ulong>(sval);
+                    else return false;
+                    break;
+
+                case NL80211_STA_INFO_TX_BITRATE:
+                    if (!TryParseRateInfo(sval, out txRate)) return false;
+                    break;
+
+                case NL80211_STA_INFO_RX_BITRATE:
+                    if (!TryParseRateInfo(sval, out rxRate)) return false;
+                    break;
+            }
+        }
+
+        rxBytes = rxBytes64 ?? rxBytes32;
+        txBytes = txBytes64 ?? txBytes32;
+
+        stationInfo = new LinuxNl80211StationInfo(
+            IfIndex: msgIfIndex.Value,
+            PeerMac: mac,
+            PeerMacString: FormatMacAddress(mac),
+            Generation: generation.Value,
+            SignalDbm: signal,
+            SignalAverageDbm: signalAvg,
+            RxBytes: rxBytes,
+            TxBytes: txBytes,
+            RxPackets: rxPackets,
+            TxPackets: txPackets,
+            TxRetries: txRetries,
+            TxFailed: txFailed,
+            ConnectedTimeSeconds: connectedTime,
+            TxRate: txRate,
+            RxRate: rxRate,
+            ExpectedThroughputKbps: expectedThroughput,
+            RxDurationUsec: rxDuration,
+            TxDurationUsec: txDuration,
+            AssociationBootTimeNs: assocBootTime,
+            Links: Array.Empty<LinuxNl80211LinkStationInfo>());
+
+        return true;
+    }
+
+    /// <summary>
+    /// Parses nested nl80211_rate_info attributes.
+    /// Prefers BITRATE32 (u32, 100 kbit/s) over legacy BITRATE (u16, 100 kbit/s).
+    /// </summary>
+    public static bool TryParseRateInfo(ReadOnlySpan<byte> rateAttrBytes, out LinuxNl80211RateInfo? rateInfo)
+    {
+        rateInfo = null;
+        if (!LinuxGenlProtocol.TryEnumerateAttributesStrict(rateAttrBytes, out var attrs))
+        {
+            return false;
+        }
+
+        ushort? bitrate16 = null;
+        uint? bitrate32 = null;
+        byte? mcs = null;
+        byte? vhtMcs = null;
+        byte? vhtNss = null;
+        byte? heMcs = null;
+        byte? heNss = null;
+        byte? heGi = null;
+        byte? ehtMcs = null;
+        byte? ehtNss = null;
+        byte? ehtGi = null;
+        byte? ehtRuAlloc = null;
+        bool is40 = false;
+        bool is80 = false;
+        bool is160 = false;
+        bool is320 = false;
+        bool isShortGi = false;
+
+        foreach (var (type, value) in attrs)
+        {
+            switch (type)
+            {
+                case NL80211_RATE_INFO_BITRATE:
+                    if (value.Length == 2) bitrate16 = MemoryMarshal.Read<ushort>(value);
+                    else return false;
+                    break;
+
+                case NL80211_RATE_INFO_BITRATE32:
+                    if (value.Length == 4) bitrate32 = MemoryMarshal.Read<uint>(value);
+                    else return false;
+                    break;
+
+                case NL80211_RATE_INFO_MCS:
+                    if (value.Length == 1) mcs = value[0];
+                    else return false;
+                    break;
+
+                case NL80211_RATE_INFO_VHT_MCS:
+                    if (value.Length == 1) vhtMcs = value[0];
+                    else return false;
+                    break;
+
+                case NL80211_RATE_INFO_VHT_NSS:
+                    if (value.Length == 1) vhtNss = value[0];
+                    else return false;
+                    break;
+
+                case NL80211_RATE_INFO_HE_MCS:
+                    if (value.Length == 1) heMcs = value[0];
+                    else return false;
+                    break;
+
+                case NL80211_RATE_INFO_HE_NSS:
+                    if (value.Length == 1) heNss = value[0];
+                    else return false;
+                    break;
+
+                case NL80211_RATE_INFO_HE_GI:
+                    if (value.Length == 1) heGi = value[0];
+                    else return false;
+                    break;
+
+                case NL80211_RATE_INFO_EHT_MCS:
+                    if (value.Length == 1) ehtMcs = value[0];
+                    else return false;
+                    break;
+
+                case NL80211_RATE_INFO_EHT_NSS:
+                    if (value.Length == 1) ehtNss = value[0];
+                    else return false;
+                    break;
+
+                case NL80211_RATE_INFO_EHT_GI:
+                    if (value.Length == 1) ehtGi = value[0];
+                    else return false;
+                    break;
+
+                case NL80211_RATE_INFO_EHT_RU_ALLOC:
+                    if (value.Length == 1) ehtRuAlloc = value[0];
+                    else return false;
+                    break;
+
+                case NL80211_RATE_INFO_40_MHZ_WIDTH:
+                    is40 = true;
+                    break;
+
+                case NL80211_RATE_INFO_80_MHZ_WIDTH:
+                    is80 = true;
+                    break;
+
+                case NL80211_RATE_INFO_160_MHZ_WIDTH:
+                    is160 = true;
+                    break;
+
+                case NL80211_RATE_INFO_320_MHZ_WIDTH:
+                    is320 = true;
+                    break;
+
+                case NL80211_RATE_INFO_SHORT_GI:
+                    isShortGi = true;
+                    break;
+            }
+        }
+
+        // Rule: BITRATE32 is preferred authoritative bitrate (units: 100 kbit/s = 100,000 bit/s).
+        // Fallback: BITRATE (u16, units 100 kbit/s). Never merge or add.
+        ulong bps = 0;
+        uint? raw100k = null;
+
+        if (bitrate32.HasValue)
+        {
+            bps = (ulong)bitrate32.Value * 100_000UL;
+            raw100k = bitrate32.Value;
+        }
+        else if (bitrate16.HasValue)
+        {
+            bps = (ulong)bitrate16.Value * 100_000UL;
+            raw100k = bitrate16.Value;
+        }
+
+        rateInfo = new LinuxNl80211RateInfo(
+            BitrateBps: bps,
+            Bitrate100Kbps: raw100k,
+            Mcs: mcs,
+            VhtMcs: vhtMcs,
+            VhtNss: vhtNss,
+            HeMcs: heMcs,
+            HeNss: heNss,
+            HeGi: heGi,
+            EhtMcs: ehtMcs,
+            EhtNss: ehtNss,
+            EhtGi: ehtGi,
+            EhtRuAlloc: ehtRuAlloc,
+            Is40Mhz: is40,
+            Is80Mhz: is80,
+            Is160Mhz: is160,
+            Is320Mhz: is320,
+            IsShortGi: isShortGi);
+
+        return true;
     }
 
     private static bool TryParseBssPayload(ReadOnlySpan<byte> payload, int expectedIfIndex, ulong expectedWdev, out LinuxNl80211BssInfo? bssInfo)
