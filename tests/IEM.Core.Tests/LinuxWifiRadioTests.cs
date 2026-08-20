@@ -89,18 +89,117 @@ public class LinuxWifiRadioTests
         uint seq = 202;
         byte[] response = BuildMockInterfaceResponse(seq, ifindex: 3, ifname: "wlan0", wiphy: 0, iftype: LinuxNl80211Protocol.NL80211_IFTYPE_STATION, isInterrupted: true);
 
-        int res = LinuxNl80211Protocol.ParseInterfaceResponse(response, seq, out var list);
+        int res = LinuxNl80211Protocol.ParseInterfaceResponse(response, seq, isDump: true, out var list);
         Assert.Equal(-4, res); // -EINTR
         Assert.Empty(list);
     }
 
     [Fact]
-    public void Nl80211Protocol_Builds_And_Parses_Interface_Response()
+    public void Nl80211Protocol_Rejects_Incomplete_Dump_Without_NLMSG_DONE()
+    {
+        uint seq = 203;
+        // Interface payload received, but stream timed out before NLMSG_DONE
+        byte[] response = BuildMockInterfaceResponse(seq, ifindex: 3, ifname: "wlan0", wiphy: 0, iftype: LinuxNl80211Protocol.NL80211_IFTYPE_STATION, includeDone: false);
+
+        int res = LinuxNl80211Protocol.ParseInterfaceResponse(response, seq, isDump: true, out var list);
+        Assert.Equal(-11, res); // -EAGAIN / incomplete dump
+        Assert.Empty(list);     // Must reject partial snapshot
+    }
+
+    [Fact]
+    public void Nl80211Protocol_Rejects_Dump_With_Only_Pure_ACK()
+    {
+        uint seq = 204;
+        // Kernel returns pure ACK (NLMSG_ERROR with error=0) for request receipt, but timeout before NLMSG_DONE
+        byte[] response = BuildMockNlmsgError(seq, errorCode: 0);
+
+        int res = LinuxNl80211Protocol.ParseInterfaceResponse(response, seq, isDump: true, out var list);
+        Assert.Equal(-11, res); // -EAGAIN / incomplete dump
+        Assert.Empty(list);
+    }
+
+    [Fact]
+    public void Nl80211Protocol_Accepts_Complete_Dump_With_NLMSG_DONE()
+    {
+        uint seq = 205;
+        // Valid interface payload followed by NLMSG_DONE
+        byte[] response = BuildMockInterfaceResponse(seq, ifindex: 3, ifname: "wlan0", wiphy: 0, iftype: LinuxNl80211Protocol.NL80211_IFTYPE_STATION, includeDone: true);
+
+        int res = LinuxNl80211Protocol.ParseInterfaceResponse(response, seq, isDump: true, out var list);
+        Assert.Equal(0, res);
+        Assert.Single(list);
+        Assert.Equal(3, list[0].IfIndex);
+        Assert.Equal("wlan0", list[0].IfName);
+        Assert.Equal(0u, list[0].WiphyIndex);
+    }
+
+    [Fact]
+    public void Nl80211Protocol_Rejects_Dump_When_NLMSG_DONE_Has_DUMP_INTR()
+    {
+        uint seq = 206;
+        // Valid interface payload, but final NLMSG_DONE has NLM_F_DUMP_INTR set
+        byte[] response = BuildMockInterfaceResponse(seq, ifindex: 3, ifname: "wlan0", wiphy: 0, iftype: LinuxNl80211Protocol.NL80211_IFTYPE_STATION, includeDone: true, isInterruptedDone: true);
+
+        int res = LinuxNl80211Protocol.ParseInterfaceResponse(response, seq, isDump: true, out var list);
+        Assert.Equal(-4, res); // -EINTR
+        Assert.Empty(list);
+    }
+
+    [Fact]
+    public void Nl80211Protocol_Interface_Without_WIPHY_Yields_Null_WiphyIndex()
+    {
+        uint seq = 207;
+        // Interface response lacking NL80211_ATTR_WIPHY
+        byte[] response = BuildMockInterfaceResponse(seq, ifindex: 5, ifname: "wlan1", wiphy: null, iftype: LinuxNl80211Protocol.NL80211_IFTYPE_STATION, includeDone: true);
+
+        int res = LinuxNl80211Protocol.ParseInterfaceResponse(response, seq, isDump: true, out var list);
+        Assert.Equal(0, res);
+        Assert.Single(list);
+        Assert.Equal(5, list[0].IfIndex);
+        Assert.Equal("wlan1", list[0].IfName);
+        Assert.Null(list[0].WiphyIndex); // Crucial: must be null, never default to 0 (phy0)!
+    }
+
+    [Fact]
+    public void Nl80211Protocol_Interface_With_Explicit_WIPHY_Zero_Yields_WiphyIndex_Zero()
+    {
+        uint seq = 208;
+        // Interface response with explicit NL80211_ATTR_WIPHY = 0
+        byte[] response = BuildMockInterfaceResponse(seq, ifindex: 3, ifname: "wlan0", wiphy: 0, iftype: LinuxNl80211Protocol.NL80211_IFTYPE_STATION, includeDone: true);
+
+        int res = LinuxNl80211Protocol.ParseInterfaceResponse(response, seq, isDump: true, out var list);
+        Assert.Equal(0, res);
+        Assert.Single(list);
+        Assert.Equal(3, list[0].IfIndex);
+        Assert.Equal(0u, list[0].WiphyIndex); // Explicit phy0 preserved
+    }
+
+    [Fact]
+    public void Nl80211Radio_Missing_WiphyIndex_And_Blocked_Phy0_Never_Yields_RadioOn_False()
+    {
+        // Interface with missing WiphyIndex (null)
+        var mockSocket = new MockLinuxNl80211Socket();
+        mockSocket.AddFamily("nl80211", 28);
+        mockSocket.AddInterface(new LinuxNl80211InterfaceInfo(5, "wlan1", null, null, null, LinuxNl80211Protocol.NL80211_IFTYPE_STATION, null, null));
+
+        // phy0 is hard and soft blocked!
+        var mockRfkill = new MockLinuxRfkillReader();
+        mockRfkill.SetObservation(0, new LinuxRfkillObservation(0, 0, HardBlocked: true, SoftBlocked: true, LinuxRfkillEvidenceBasis.DevRfkill));
+
+        using var radio = new LinuxNl80211Radio(mockSocket, mockRfkill);
+
+        // Crucial Invariant 249 check: Unmapped interface must NEVER be falsely attributed to phy0 and must return null (unknown), NOT false!
+        bool? isRadioOn = radio.IsRadioOn("wlan1");
+        Assert.Null(isRadioOn);
+    }
+
+    [Fact]
+    public void Nl80211Protocol_Builds_And_Parses_Single_Interface_Response()
     {
         uint seq = 201;
         byte[] response = BuildMockInterfaceResponse(seq, ifindex: 3, ifname: "wlan0", wiphy: 0, iftype: LinuxNl80211Protocol.NL80211_IFTYPE_STATION);
 
-        int res = LinuxNl80211Protocol.ParseInterfaceResponse(response, seq, out var list);
+        int res = LinuxNl80211Protocol.ParseInterfaceResponse(response, seq, isDump: false, out var list);
         Assert.Equal(0, res);
         Assert.Single(list);
         Assert.Equal(3, list[0].IfIndex);
@@ -282,7 +381,15 @@ public class LinuxWifiRadioTests
         return ms.ToArray();
     }
 
-    private static byte[] BuildMockInterfaceResponse(uint seq, int ifindex, string ifname, uint wiphy, int iftype, bool isInterrupted = false)
+    private static byte[] BuildMockInterfaceResponse(
+        uint seq,
+        int ifindex,
+        string ifname,
+        uint? wiphy,
+        int iftype,
+        bool isInterrupted = false,
+        bool includeDone = false,
+        bool isInterruptedDone = false)
     {
         var ms = new MemoryStream();
         using var bw = new BinaryWriter(ms);
@@ -290,7 +397,7 @@ public class LinuxWifiRadioTests
         byte[] nameBytes = Encoding.UTF8.GetBytes(ifname);
         int nameAttrLen = LinuxGenlProtocol.NlaAlign(LinuxGenlProtocol.NlaHeaderSize + nameBytes.Length + 1);
         int ifindexAttrLen = LinuxGenlProtocol.NlaAlign(LinuxGenlProtocol.NlaHeaderSize + 4);
-        int wiphyAttrLen = LinuxGenlProtocol.NlaAlign(LinuxGenlProtocol.NlaHeaderSize + 4);
+        int wiphyAttrLen = wiphy.HasValue ? LinuxGenlProtocol.NlaAlign(LinuxGenlProtocol.NlaHeaderSize + 4) : 0;
         int iftypeAttrLen = LinuxGenlProtocol.NlaAlign(LinuxGenlProtocol.NlaHeaderSize + 4);
 
         int totalLen = LinuxGenlProtocol.NlmsgHeaderSize + LinuxGenlProtocol.GenlHeaderSize +
@@ -298,39 +405,52 @@ public class LinuxWifiRadioTests
 
         ushort flags = isInterrupted ? LinuxGenlProtocol.NLM_F_DUMP_INTR : (ushort)0;
 
-        // nlmsghdr
+        // 1. nlmsghdr
         bw.Write(totalLen);
         bw.Write((ushort)28); // nl80211 family id
         bw.Write(flags);
         bw.Write(seq);
         bw.Write((uint)0);
 
-        // genlmsghdr
+        // 2. genlmsghdr
         bw.Write(LinuxNl80211Protocol.NL80211_CMD_NEW_INTERFACE);
         bw.Write((byte)1);
         bw.Write((ushort)0);
 
-        // NL80211_ATTR_IFINDEX
+        // 3. NL80211_ATTR_IFINDEX
         bw.Write((ushort)(LinuxGenlProtocol.NlaHeaderSize + 4));
         bw.Write(LinuxNl80211Protocol.NL80211_ATTR_IFINDEX);
         bw.Write(ifindex);
 
-        // NL80211_ATTR_IFNAME
+        // 4. NL80211_ATTR_IFNAME
         bw.Write((ushort)(LinuxGenlProtocol.NlaHeaderSize + nameBytes.Length + 1));
         bw.Write(LinuxNl80211Protocol.NL80211_ATTR_IFNAME);
         bw.Write(nameBytes);
         bw.Write((byte)0);
         WritePadding(bw, LinuxGenlProtocol.NlaHeaderSize + nameBytes.Length + 1);
 
-        // NL80211_ATTR_WIPHY
-        bw.Write((ushort)(LinuxGenlProtocol.NlaHeaderSize + 4));
-        bw.Write(LinuxNl80211Protocol.NL80211_ATTR_WIPHY);
-        bw.Write(wiphy);
+        // 5. NL80211_ATTR_WIPHY (if present)
+        if (wiphy.HasValue)
+        {
+            bw.Write((ushort)(LinuxGenlProtocol.NlaHeaderSize + 4));
+            bw.Write(LinuxNl80211Protocol.NL80211_ATTR_WIPHY);
+            bw.Write(wiphy.Value);
+        }
 
-        // NL80211_ATTR_IFTYPE
+        // 6. NL80211_ATTR_IFTYPE
         bw.Write((ushort)(LinuxGenlProtocol.NlaHeaderSize + 4));
         bw.Write(LinuxNl80211Protocol.NL80211_ATTR_IFTYPE);
         bw.Write(iftype);
+
+        // Optional NLMSG_DONE
+        if (includeDone)
+        {
+            bw.Write(LinuxGenlProtocol.NlmsgHeaderSize);
+            bw.Write(LinuxGenlProtocol.NLMSG_DONE);
+            bw.Write(isInterruptedDone ? LinuxGenlProtocol.NLM_F_DUMP_INTR : (ushort)0);
+            bw.Write(seq);
+            bw.Write((uint)0);
+        }
 
         return ms.ToArray();
     }

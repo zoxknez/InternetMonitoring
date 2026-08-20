@@ -143,6 +143,7 @@ write_evidence_reports() {
     "protectSystemStrict": "${STATUS_PROTECT_SYSTEM}",
     "unixIpcIdentity": "${STATUS_UNIX_IPC_IDENTITY}",
     "netlinkRouting": "${STATUS_NETLINK_ROUTING}",
+    "nl80211Generic": "${STATUS_NL80211_GENERIC}",
     "datagramIcmp": "${STATUS_DATAGRAM_ICMP}",
     "sourceBindingParity": "${STATUS_SOURCE_BINDING_PARITY}",
     "coreProtocolParity": "${STATUS_CORE_PROTOCOL_PARITY}",
@@ -216,6 +217,7 @@ EOF
 | RuntimeDirectory Ephemeral Lifecycle | **${STATUS_RUNTIME_DIRECTORY}** |
 | Unix IPC control.sock 5-Layer Identity | **${STATUS_UNIX_IPC_IDENTITY}** |
 | Netlink RTM_GETROUTE Kernel FIB Routing | **${STATUS_NETLINK_ROUTING}** |
+| Generic Netlink nl80211 Family & Interface Dump | **${STATUS_NL80211_GENERIC}** |
 | Unprivileged Datagram ICMP Echo (SOCK_DGRAM) | **${STATUS_DATAGRAM_ICMP}** |
 | Source-Address Binding Parity (ICMP/TCP/DNS/HTTP) | **${STATUS_SOURCE_BINDING_PARITY}** |
 | Core Protocol Parity (System DNS/Public DNS/TLS/HTTP) | **${STATUS_CORE_PROTOCOL_PARITY}** |
@@ -660,6 +662,20 @@ if [ "${ROUTE_SUCCESS}" = "true" ] && [ -n "${ROUTE_IF}" ]; then
 else
     STATUS_NETLINK_ROUTING="FAIL"
     record_fail "Netlink RTM_GETROUTE verification failed: ${NETLINK_OUTPUT}"
+    exit 1
+fi
+
+GENL_SUCCESS=$(echo "${NETLINK_JSON}" | jq -r '.netlinkGenericSuccess // false' 2>/dev/null || echo "false")
+NL80211_ID=$(echo "${NETLINK_JSON}" | jq -r '.nl80211FamilyId // 0' 2>/dev/null || echo "0")
+DUMP_SUCCESS=$(echo "${NETLINK_JSON}" | jq -r '.dumpSuccess // false' 2>/dev/null || echo "false")
+IF_COUNT=$(echo "${NETLINK_JSON}" | jq -r '.wirelessInterfaceCount // 0' 2>/dev/null || echo "0")
+
+if [ "${GENL_SUCCESS}" = "true" ] && [ "${NL80211_ID}" -gt 0 ] && [ "${DUMP_SUCCESS}" = "true" ]; then
+    STATUS_NL80211_GENERIC="PASS"
+    record_pass "Generic Netlink nl80211 discovery & complete interface dump verified (FamilyId=${NL80211_ID}, Interfaces=${IF_COUNT})"
+else
+    STATUS_NL80211_GENERIC="FAIL"
+    record_fail "Generic Netlink nl80211 verification failed: ${NETLINK_OUTPUT}"
     exit 1
 fi
 

@@ -118,6 +118,8 @@ public sealed class LinuxNl80211Socket : ILinuxNl80211Socket
 
             using var combinedStream = new MemoryStream();
             var recvBuffer = new byte[8192];
+            bool seenDone = false;
+            bool isDump = !ifindex.HasValue;
 
             while (!cancellationToken.IsCancellationRequested)
             {
@@ -141,6 +143,7 @@ public sealed class LinuxNl80211Socket : ILinuxNl80211Socket
                 var span = recvBuffer.AsSpan(0, bytesRead);
                 if (IsEndOfMultiPart(span))
                 {
+                    seenDone = true;
                     break;
                 }
 
@@ -150,10 +153,20 @@ public sealed class LinuxNl80211Socket : ILinuxNl80211Socket
                 }
             }
 
+            if (isDump && !seenDone)
+            {
+                // Incomplete dump: reject partial snapshot
+                return interfaces;
+            }
+
             var totalBytes = combinedStream.ToArray();
             if (totalBytes.Length > 0)
             {
-                LinuxNl80211Protocol.ParseInterfaceResponse(totalBytes, seq, out interfaces);
+                int ret = LinuxNl80211Protocol.ParseInterfaceResponse(totalBytes, seq, isDump, out interfaces);
+                if (ret < 0)
+                {
+                    interfaces.Clear();
+                }
             }
 
             return interfaces;
@@ -196,6 +209,8 @@ public sealed class LinuxNl80211Socket : ILinuxNl80211Socket
 
             using var combinedStream = new MemoryStream();
             var recvBuffer = new byte[8192];
+            bool seenDone = false;
+            bool isDump = !wiphyIndex.HasValue;
 
             while (!cancellationToken.IsCancellationRequested)
             {
@@ -219,6 +234,7 @@ public sealed class LinuxNl80211Socket : ILinuxNl80211Socket
                 var span = recvBuffer.AsSpan(0, bytesRead);
                 if (IsEndOfMultiPart(span))
                 {
+                    seenDone = true;
                     break;
                 }
 
@@ -228,10 +244,20 @@ public sealed class LinuxNl80211Socket : ILinuxNl80211Socket
                 }
             }
 
+            if (isDump && !seenDone)
+            {
+                // Incomplete dump: reject partial snapshot
+                return wiphys;
+            }
+
             var totalBytes = combinedStream.ToArray();
             if (totalBytes.Length > 0)
             {
-                LinuxNl80211Protocol.ParseWiphyResponse(totalBytes, seq, out wiphys);
+                int ret = LinuxNl80211Protocol.ParseWiphyResponse(totalBytes, seq, isDump, out wiphys);
+                if (ret < 0)
+                {
+                    wiphys.Clear();
+                }
             }
 
             return wiphys;

@@ -81,9 +81,21 @@ public sealed class LinuxRfkillReader : ILinuxRfkillReader
                     while (true)
                     {
                         nint read = LinuxNativeNetlinkSocket.NativeMethods.read(fd, pBuf, 8);
+                        if (read < 0)
+                        {
+                            int err = Marshal.GetLastPInvokeError();
+                            const int EAGAIN = 11;
+                            if (err == EAGAIN)
+                            {
+                                // Normal completion of non-blocking device snapshot
+                                break;
+                            }
+                            // Real I/O / permission failure
+                            return null;
+                        }
                         if (read < 8)
                         {
-                            // EAGAIN / EOF / short read indicates end of current snapshot
+                            // EOF / partial read
                             break;
                         }
 

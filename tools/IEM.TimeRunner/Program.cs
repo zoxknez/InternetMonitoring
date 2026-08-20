@@ -48,6 +48,7 @@ public static class Program
                 ushort nl80211Id = 0;
                 string? genlError = null;
                 int ifCount = 0;
+                bool dumpSuccess = false;
 
                 try
                 {
@@ -58,6 +59,7 @@ public static class Program
                         genlSuccess = true;
                         nl80211Id = fam.FamilyId;
                         var ifs = await genlSock.GetInterfacesAsync(fam.FamilyId);
+                        dumpSuccess = true;
                         ifCount = ifs.Count;
                     }
                 }
@@ -89,6 +91,7 @@ public static class Program
                     routeError,
                     netlinkGenericSuccess = genlSuccess,
                     nl80211FamilyId = nl80211Id,
+                    dumpSuccess,
                     wirelessInterfaceCount = ifCount,
                     genlError,
                     rfkillAvailable

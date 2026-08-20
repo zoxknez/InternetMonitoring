@@ -88,12 +88,13 @@ public sealed class LinuxNl80211Radio : IWirelessRadio, IDisposable, IAsyncDispo
             (requestedIfIndex.HasValue && i.IfIndex == requestedIfIndex.Value) ||
             i.IfName.Equals(interfaceId, StringComparison.OrdinalIgnoreCase));
 
-        if (targetIf == null)
+        if (targetIf == null || !targetIf.WiphyIndex.HasValue)
         {
+            // Invariant 249: Unmapped interface or missing WIPHY attribute cannot be attributed to phy0
             return null;
         }
 
-        var obs = _rfkillReader.ReadObservationForWiphy(targetIf.WiphyIndex, targetIf.IfName);
+        var obs = _rfkillReader.ReadObservationForWiphy(targetIf.WiphyIndex.Value, targetIf.IfName);
         if (obs == null)
         {
             // Invariant 249: Unknown rfkill never becomes false

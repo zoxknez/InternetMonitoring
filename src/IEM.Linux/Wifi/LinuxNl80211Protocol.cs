@@ -12,7 +12,7 @@ namespace IEM.Linux.Wifi;
 public sealed record LinuxNl80211InterfaceInfo(
     int IfIndex,
     string IfName,
-    uint WiphyIndex,
+    uint? WiphyIndex,
     string? WiphyName,
     byte[]? MacAddress,
     int IfType,
@@ -171,26 +171,31 @@ public static class LinuxNl80211Protocol
 
     /// <summary>
     /// Parses an NL80211_CMD_GET_INTERFACE single or multi-part dump response.
+    /// Invariants 249, 252: Incomplete or interrupted dumps are rejected with negative error.
     /// </summary>
     public static int ParseInterfaceResponse(
         ReadOnlySpan<byte> buffer,
         uint expectedSequence,
+        bool isDump,
         out List<LinuxNl80211InterfaceInfo> interfaces)
     {
         interfaces = new List<LinuxNl80211InterfaceInfo>();
 
         if (buffer.Length < LinuxGenlProtocol.NlmsgHeaderSize)
         {
-            return -22;
+            return -22; // -EINVAL
         }
 
+        bool seenDone = false;
         int offset = 0;
+
         while (offset + LinuxGenlProtocol.NlmsgHeaderSize <= buffer.Length)
         {
             int nlmsgLen = MemoryMarshal.Read<int>(buffer.Slice(offset, 4));
             if (nlmsgLen < LinuxGenlProtocol.NlmsgHeaderSize || offset + nlmsgLen > buffer.Length)
             {
-                return -22;
+                interfaces.Clear();
+                return -22; // -EINVAL
             }
 
             ushort nlmsgType = MemoryMarshal.Read<ushort>(buffer.Slice(offset + 4, 2));
@@ -200,6 +205,7 @@ public static class LinuxNl80211Protocol
             if ((flags & LinuxGenlProtocol.NLM_F_DUMP_INTR) != 0)
             {
                 // Dump was interrupted in kernel; non-authoritative, requires retry
+                interfaces.Clear();
                 return -4; // -EINTR
             }
 
@@ -211,15 +217,25 @@ public static class LinuxNl80211Protocol
 
             if (nlmsgType == LinuxGenlProtocol.NLMSG_ERROR)
             {
-                if (nlmsgLen < LinuxGenlProtocol.NlmsgHeaderSize + 4) return -22;
+                if (nlmsgLen < LinuxGenlProtocol.NlmsgHeaderSize + 4)
+                {
+                    interfaces.Clear();
+                    return -22;
+                }
                 int errorCode = MemoryMarshal.Read<int>(buffer.Slice(offset + LinuxGenlProtocol.NlmsgHeaderSize, 4));
-                if (errorCode < 0) return errorCode;
+                if (errorCode < 0)
+                {
+                    interfaces.Clear();
+                    return errorCode; // Negative errno
+                }
+                // Pure ACK (errorCode == 0): acknowledgment only, not end of dump
                 offset += LinuxGenlProtocol.NlmsgAlign(nlmsgLen);
                 continue;
             }
 
             if (nlmsgType == LinuxGenlProtocol.NLMSG_DONE)
             {
+                seenDone = true;
                 break;
             }
 
@@ -236,6 +252,13 @@ public static class LinuxNl80211Protocol
             offset += LinuxGenlProtocol.NlmsgAlign(nlmsgLen);
         }
 
+        if (isDump && !seenDone)
+        {
+            // Multipart dump ended without NLMSG_DONE; incomplete/non-authoritative snapshot
+            interfaces.Clear();
+            return -11; // -EAGAIN / incomplete
+        }
+
         return 0;
     }
 
@@ -245,7 +268,7 @@ public static class LinuxNl80211Protocol
 
         int ifindex = 0;
         string? ifname = null;
-        uint wiphy = 0;
+        uint? wiphy = null;
         string? wiphyName = null;
         byte[]? mac = null;
         int iftype = 0;
@@ -301,10 +324,12 @@ public static class LinuxNl80211Protocol
 
     /// <summary>
     /// Parses an NL80211_CMD_GET_WIPHY single or dump response.
+    /// Invariants 249, 252: Incomplete or interrupted dumps are rejected with negative error.
     /// </summary>
     public static int ParseWiphyResponse(
         ReadOnlySpan<byte> buffer,
         uint expectedSequence,
+        bool isDump,
         out List<LinuxNl80211WiphyInfo> wiphys)
     {
         wiphys = new List<LinuxNl80211WiphyInfo>();
@@ -314,12 +339,15 @@ public static class LinuxNl80211Protocol
             return -22;
         }
 
+        bool seenDone = false;
         int offset = 0;
+
         while (offset + LinuxGenlProtocol.NlmsgHeaderSize <= buffer.Length)
         {
             int nlmsgLen = MemoryMarshal.Read<int>(buffer.Slice(offset, 4));
             if (nlmsgLen < LinuxGenlProtocol.NlmsgHeaderSize || offset + nlmsgLen > buffer.Length)
             {
+                wiphys.Clear();
                 return -22;
             }
 
@@ -330,6 +358,7 @@ public static class LinuxNl80211Protocol
             if ((flags & LinuxGenlProtocol.NLM_F_DUMP_INTR) != 0)
             {
                 // Dump was interrupted in kernel; non-authoritative, requires retry
+                wiphys.Clear();
                 return -4; // -EINTR
             }
 
@@ -341,15 +370,24 @@ public static class LinuxNl80211Protocol
 
             if (nlmsgType == LinuxGenlProtocol.NLMSG_ERROR)
             {
-                if (nlmsgLen < LinuxGenlProtocol.NlmsgHeaderSize + 4) return -22;
+                if (nlmsgLen < LinuxGenlProtocol.NlmsgHeaderSize + 4)
+                {
+                    wiphys.Clear();
+                    return -22;
+                }
                 int errorCode = MemoryMarshal.Read<int>(buffer.Slice(offset + LinuxGenlProtocol.NlmsgHeaderSize, 4));
-                if (errorCode < 0) return errorCode;
+                if (errorCode < 0)
+                {
+                    wiphys.Clear();
+                    return errorCode;
+                }
                 offset += LinuxGenlProtocol.NlmsgAlign(nlmsgLen);
                 continue;
             }
 
             if (nlmsgType == LinuxGenlProtocol.NLMSG_DONE)
             {
+                seenDone = true;
                 break;
             }
 
@@ -368,6 +406,12 @@ public static class LinuxNl80211Protocol
             }
 
             offset += LinuxGenlProtocol.NlmsgAlign(nlmsgLen);
+        }
+
+        if (isDump && !seenDone)
+        {
+            wiphys.Clear();
+            return -11; // -EAGAIN / incomplete
         }
 
         return 0;
