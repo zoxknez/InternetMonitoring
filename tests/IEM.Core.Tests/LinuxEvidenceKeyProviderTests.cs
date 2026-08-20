@@ -299,6 +299,7 @@ public sealed class LinuxEvidenceKeyProviderTests
             FailKeysDirFsync = true // Directory fsync fails after publish
         };
         mock.AddEntry("/var/lib/internet-evidence-monitor", isDir: true, isSymlink: false, mode: 0x1C0, uid: 1000, gid: 1000);
+        mock.AddEntry("/var/lib/internet-evidence-monitor/keys", isDir: true, isSymlink: false, mode: 0x1C0, uid: 1000, gid: 1000);
 
         var policy = LinuxStorageOwnershipPolicy.CreateSystem(uid: 1000, gid: 1000);
         var provider = new LinuxEvidenceKeyProvider(LinuxSigningIdentityScope.SystemInstallation, "/var/lib/internet-evidence-monitor", mock, policy);
@@ -662,6 +663,7 @@ public sealed class LinuxEvidenceKeyProviderTests
                 statbuf = entry.Stat;
                 return 0;
             }
+            LastErrno = LinuxPosixStorageConstants.ENOENT;
             statbuf = default;
             return -1;
         }
@@ -673,6 +675,7 @@ public sealed class LinuxEvidenceKeyProviderTests
                 statbuf = entry.Stat;
                 return 0;
             }
+            LastErrno = LinuxPosixStorageConstants.EBADF;
             statbuf = default;
             return -1;
         }

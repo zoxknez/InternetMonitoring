@@ -859,6 +859,7 @@ public sealed class LinuxSessionModeProvisionerTests : IDisposable
                 statbuf = entry.Stat;
                 return 0;
             }
+            LastErrno = LinuxPosixStorageConstants.ENOENT;
             statbuf = default;
             return -1;
         }
@@ -870,6 +871,7 @@ public sealed class LinuxSessionModeProvisionerTests : IDisposable
                 statbuf = entry.Stat;
                 return 0;
             }
+            LastErrno = LinuxPosixStorageConstants.EBADF;
             statbuf = default;
             return -1;
         }

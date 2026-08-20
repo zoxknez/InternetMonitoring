@@ -26,12 +26,18 @@ public static class LinuxPosixStorageConstants
     public const uint RENAME_NOREPLACE = 0x01;
 
     // Standard Linux POSIX errnos
+    public const int ENOENT = 2;
     public const int EIO = 5;
+    public const int EBADF = 9;
+    public const int EACCES = 13;
     public const int EEXIST = 17;
+    public const int ENOTDIR = 20;
     public const int EINVAL = 22;
     public const int ENOSPC = 28;
     public const int EROFS = 30;
     public const int ENOSYS = 38;
+    public const int ELOOP = 40;
+    public const int ESTALE = 116;
 
     public const uint S_IFMT = 0xF000;
     public const uint S_IFDIR = 0x4000;

@@ -49,7 +49,7 @@ public sealed class LinuxEvidenceKeyProvider : IEvidenceKeyProvider
                 ? "POSIX:0700/0600:exact-ownership:openat2:system-daemon"
                 : "POSIX:0700/0600:exact-ownership:openat2:user-portable");
 
-        // 1. Open and verify StateRoot (Verify-only for both System and Portable, R1-F)
+        // 1. Open and verify StateRoot (Verify-only, StateRoot must exist)
         int rootFd = _posix.Open(normStateRoot, LinuxPosixStorageConstants.O_RDONLY | LinuxPosixStorageConstants.O_DIRECTORY | LinuxPosixStorageConstants.O_NOFOLLOW | LinuxPosixStorageConstants.O_CLOEXEC, 0);
         if (rootFd < 0)
         {
@@ -73,58 +73,34 @@ public sealed class LinuxEvidenceKeyProvider : IEvidenceKeyProvider
                 throw new SigningIdentityUnavailableException($"StateRoot '{normStateRoot}' {rootOwnerErr}");
             }
 
-            // 2. Open or create keys/ directory
-            bool keysExisted = _posix.FstatAt(rootFd, LinuxStoragePaths.KeysDirName, out var keysStat, LinuxPosixStorageConstants.AT_SYMLINK_NOFOLLOW) == 0;
-            if (!keysExisted)
+            // 2. Open or create keys/ directory using crash-safe LinuxDirectoryProvisioner
+            int keysFd;
+            try
             {
-                if (_posix.MkdirAt(rootFd, LinuxStoragePaths.KeysDirName, LinuxPosixStorageConstants.Mode0700) != 0)
-                {
-                    throw new SigningIdentityUnavailableException($"Failed to create keys directory under '{normStateRoot}'.");
-                }
+                keysFd = LinuxDirectoryProvisioner.ProvisionOrVerifyDirectory(
+                    _posix, rootFd, LinuxStoragePaths.KeysDirName, ownership, LinuxPosixStorageConstants.Mode0700);
             }
-
-            var keysHow = new OpenHow
+            catch (Exception ex)
             {
-                Flags = LinuxPosixStorageConstants.O_RDONLY | LinuxPosixStorageConstants.O_DIRECTORY | LinuxPosixStorageConstants.O_CLOEXEC,
-                Mode = 0,
-                Resolve = LinuxPosixStorageConstants.RESOLVE_BENEATH | LinuxPosixStorageConstants.RESOLVE_NO_SYMLINKS | LinuxPosixStorageConstants.RESOLVE_NO_XDEV | LinuxPosixStorageConstants.RESOLVE_NO_MAGICLINKS
-            };
-
-            int keysFd = _posix.OpenAt2(rootFd, LinuxStoragePaths.KeysDirName, ref keysHow);
-            if (keysFd < 0)
-            {
-                throw new SigningIdentityUnavailableException("Failed to open keys directory securely via openat2.");
+                throw new SigningIdentityUnavailableException($"Keys directory provisioning or verification failed: {ex.Message}", ex);
             }
 
             try
             {
-                if (_posix.Fstat(keysFd, out var kStat) != 0 || !kStat.IsDirectory)
-                {
-                    throw new SigningIdentityUnavailableException("Keys directory is not a valid directory descriptor.");
-                }
-
-                if ((kStat.PermissionBits & 0xFFF) != LinuxPosixStorageConstants.Mode0700)
-                {
-                    throw new SigningIdentityUnavailableException($"Keys directory permissions 0{Convert.ToString(kStat.PermissionBits, 8)} are invalid (must be 0700).");
-                }
-
-                if (!CheckOwnership(kStat, ownership, out var keysOwnerErr))
-                {
-                    throw new SigningIdentityUnavailableException($"Keys directory {keysOwnerErr}");
-                }
-
-                if (!keysExisted)
-                {
-                    _posix.Fchmod(keysFd, LinuxPosixStorageConstants.Mode0700);
-                }
-
-                // 3. Check if evidence-signing-v1.p8 exists
-                bool keyFileExisted = _posix.FstatAt(keysFd, LinuxStoragePaths.SigningKeyFileName, out _, LinuxPosixStorageConstants.AT_SYMLINK_NOFOLLOW) == 0;
-                if (keyFileExisted)
+                // 3. Check if evidence-signing-v1.p8 exists (authoritative check)
+                int statRes = _posix.FstatAt(keysFd, LinuxStoragePaths.SigningKeyFileName, out _, LinuxPosixStorageConstants.AT_SYMLINK_NOFOLLOW);
+                if (statRes == 0)
                 {
                     // Existing key: VERIFY-ONLY (NO SILENT ROTATION!)
                     var identity = OpenAndVerifyExistingKey(keysFd, ownership, protection);
                     return Task.FromResult<IEvidenceSigningIdentity>(identity);
+                }
+
+                int errno = _posix.GetLastErrno();
+                if (errno != LinuxPosixStorageConstants.ENOENT)
+                {
+                    throw new SigningIdentityUnavailableException(
+                        $"Authoritative lookup of '{LinuxStoragePaths.SigningKeyFileName}' failed with errno {errno} (not ENOENT).");
                 }
 
                 // 4. Key does not exist: Provision new ECDSA P-256 identity atomically
@@ -227,7 +203,7 @@ public sealed class LinuxEvidenceKeyProvider : IEvidenceKeyProvider
             {
                 if (!success)
                 {
-                    ecdsa.Dispose(); // R1-E: Dispose on EVERY validation failure
+                    ecdsa.Dispose();
                 }
             }
         }
@@ -248,106 +224,42 @@ public sealed class LinuxEvidenceKeyProvider : IEvidenceKeyProvider
     {
         var ecdsa = ECDsa.Create(ECCurve.NamedCurves.nistP256);
         byte[]? pkcs8 = null;
-        var tempName = $".tmp.key.{Guid.NewGuid():N}.p8";
 
         try
         {
             pkcs8 = ecdsa.ExportPkcs8PrivateKey();
 
-            var tempHow = new OpenHow
-            {
-                Flags = (ulong)(LinuxPosixStorageConstants.O_CREAT | LinuxPosixStorageConstants.O_EXCL | LinuxPosixStorageConstants.O_RDWR | LinuxPosixStorageConstants.O_CLOEXEC),
-                Mode = (ulong)LinuxPosixStorageConstants.Mode0600,
-                Resolve = LinuxPosixStorageConstants.RESOLVE_BENEATH | LinuxPosixStorageConstants.RESOLVE_NO_SYMLINKS | LinuxPosixStorageConstants.RESOLVE_NO_XDEV | LinuxPosixStorageConstants.RESOLVE_NO_MAGICLINKS
-            };
+            var pubResult = LinuxAtomicFilePublisher.PublishAtomically(
+                _posix,
+                keysFd,
+                LinuxStoragePaths.SigningKeyFileName,
+                pkcs8,
+                LinuxPosixStorageConstants.Mode0600,
+                ownership,
+                "key");
 
-            int tempFd = _posix.OpenAt2(keysFd, tempName, ref tempHow);
-            if (tempFd < 0)
+            if (pubResult.IsCollision)
             {
-                throw new InvalidOperationException("Failed to create temporary key file via openat2.");
+                ecdsa.Dispose();
+                return OpenAndVerifyExistingKey(keysFd, ownership, protection);
             }
 
-            try
+            if (pubResult.FinalFd >= 0)
             {
-                if (!WriteAll(tempFd, pkcs8))
-                {
-                    throw new InvalidOperationException("Failed to write full PKCS#8 key bytes to temporary file.");
-                }
-
-                // R1-B: Validate new temp key before publication
-                if (_posix.Fchmod(tempFd, LinuxPosixStorageConstants.Mode0600) != 0)
-                {
-                    throw new InvalidOperationException("Failed to set 0600 permissions on temporary key file.");
-                }
-
-                if (_posix.Fstat(tempFd, out var tempStat) != 0 || !tempStat.IsRegularFile)
-                {
-                    throw new InvalidOperationException("Temporary key file is not a valid regular file descriptor.");
-                }
-
-                if ((tempStat.PermissionBits & 0xFFF) != LinuxPosixStorageConstants.Mode0600)
-                {
-                    throw new InvalidOperationException(
-                        $"Temporary key file permissions 0{Convert.ToString(tempStat.PermissionBits, 8)} are invalid (must be exact 0600).");
-                }
-
-                if (!CheckOwnership(tempStat, ownership, out var tempOwnerErr))
-                {
-                    throw new InvalidOperationException($"Temporary key file {tempOwnerErr}");
-                }
-
-                if (tempStat.Size != pkcs8.Length)
-                {
-                    throw new InvalidOperationException(
-                        $"Temporary key file size {tempStat.Size} does not match expected length {pkcs8.Length}.");
-                }
-
-                if (_posix.Fsync(tempFd) != 0)
-                {
-                    throw new InvalidOperationException("Failed to fsync temporary key file.");
-                }
-            }
-            finally
-            {
-                _posix.Close(tempFd);
-            }
-
-            // Atomic publish with RENAME_NOREPLACE (R1-C: preserve errno truth)
-            int ren = _posix.RenameAt2(keysFd, tempName, keysFd, LinuxStoragePaths.SigningKeyFileName, LinuxPosixStorageConstants.RENAME_NOREPLACE);
-            if (ren != 0)
-            {
-                int errno = _posix.GetLastErrno();
-                _posix.UnlinkAt(keysFd, tempName, 0);
-
-                // If and ONLY if EEXIST, treat as valid publication race winner
-                if (errno == LinuxPosixStorageConstants.EEXIST)
-                {
-                    if (_posix.FstatAt(keysFd, LinuxStoragePaths.SigningKeyFileName, out _, LinuxPosixStorageConstants.AT_SYMLINK_NOFOLLOW) == 0)
-                    {
-                        ecdsa.Dispose();
-                        return OpenAndVerifyExistingKey(keysFd, ownership, protection);
-                    }
-                }
-
-                // Every other errno (EIO, ENOSPC, EROFS, EINVAL, ENOSYS) fails closed
-                throw new InvalidOperationException($"renameat2 failed to publish signing key (errno {errno}).");
-            }
-
-            // R1-A: Check parent-directory fsync result for durability
-            if (_posix.Fsync(keysFd) != 0)
-            {
-                throw new SigningIdentityUnavailableException(
-                    "Signing key was published but directory durability could not be established.");
+                _posix.Close(pubResult.FinalFd);
             }
 
             // Re-open and verify final published key to guarantee complete provenance
             ecdsa.Dispose();
             return OpenAndVerifyExistingKey(keysFd, ownership, protection);
         }
-        catch
+        catch (Exception ex) when (ex is not SigningIdentityUnavailableException)
         {
-            _posix.UnlinkAt(keysFd, tempName, 0);
             ecdsa.Dispose();
+            if (ex is InvalidOperationException && ex.Message.Contains("durability"))
+            {
+                throw new SigningIdentityUnavailableException(ex.Message, ex);
+            }
             throw;
         }
         finally
@@ -381,21 +293,6 @@ public sealed class LinuxEvidenceKeyProvider : IEvidenceKeyProvider
             var policy = LinuxStorageOwnershipPolicy.CreatePortable(_posix.GetEuid(), _posix.GetEgid());
             return (stateRoot, policy);
         }
-    }
-
-    private bool WriteAll(int fd, ReadOnlySpan<byte> data)
-    {
-        int total = 0;
-        while (total < data.Length)
-        {
-            int n = _posix.Write(fd, data.Slice(total));
-            if (n <= 0)
-            {
-                return false;
-            }
-            total += n;
-        }
-        return true;
     }
 
     private bool ReadExactly(int fd, Span<byte> buffer)
