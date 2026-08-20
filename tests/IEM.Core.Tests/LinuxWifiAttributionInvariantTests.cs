@@ -7,6 +7,7 @@ using IEM.Core.Classification;
 using IEM.Core.Model;
 using IEM.Core.Probes;
 using IEM.Linux.Network;
+using IEM.Linux.Time;
 using IEM.Linux.Wifi;
 using Xunit;
 
@@ -30,6 +31,17 @@ public sealed class LinuxWifiAttributionInvariantTests
         }
 
         public LinkSnapshot Inspect() => Snapshot;
+    }
+
+    private sealed class StubNativeClock : ILinuxNativeClock
+    {
+        public long CurrentBootTimeSec { get; set; } = 1000;
+        public long CurrentBootTimeNsec { get; set; } = 0;
+
+        public void GetTime(int clkId, out LinuxTimeSpec ts)
+        {
+            ts = new LinuxTimeSpec { TvSec = CurrentBootTimeSec, TvNsec = CurrentBootTimeNsec };
+        }
     }
 
     private sealed class StubRfkillReader : ILinuxRfkillReader
@@ -123,14 +135,15 @@ public sealed class LinuxWifiAttributionInvariantTests
         var inner = new StubLinkInspector(LinkStatus.Down, LinkMedium.Wireless);
         var socket = new MockNl80211Socket();
         var rfkill = new StubRfkillReader { HardBlocked = false, SoftBlocked = false };
+        var clock = new StubNativeClock { CurrentBootTimeSec = 1000 };
         var tracker = new LinuxWifiScanCompletionTracker();
-        tracker.RecordScanEvent(3, 0x1000UL, LinuxWifiScanEventStatus.Completed);
+        tracker.RecordScanEvent(3, 0x1000UL, LinuxWifiScanEventStatus.Completed, 1000_000_000_000UL);
 
         // Associated BSS present in remembered state, but in scan dump only OtherNet is fresh
         socket.BssDump.Add(CreateBss("OtherNet", seenMsAgo: 5000));
         socket.BssDumpStatus = LinuxNl80211DumpStatus.Complete;
 
-        using var radio = new LinuxNl80211Radio(socket, rfkill, boundInterfaceId: "wlan0", scanCompletionTracker: tracker);
+        using var radio = new LinuxNl80211Radio(socket, rfkill, boundInterfaceId: "wlan0", ownsSocket: null, scanCompletionTracker: tracker, clock: clock);
         var visible = radio.IsSsidVisible("HomeMesh");
         Assert.False(visible); // CompletedScan provenance permits false
 

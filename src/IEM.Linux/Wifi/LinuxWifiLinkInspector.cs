@@ -22,6 +22,7 @@ public sealed class LinuxWifiLinkInspector : ILinkInspector, IAsyncDisposable, I
     private readonly ILinkInspector _inner;
     private readonly LinuxNl80211Radio _radio;
     private readonly WirelessDetailReader _wireless;
+    private readonly ILinuxNl80211EventObserver? _eventObserver;
     private readonly bool _ownsRadio;
 
     /// <param name="inner">The inner link inspector (e.g. <see cref="SystemLinkInspector"/>).</param>
@@ -29,17 +30,21 @@ public sealed class LinuxWifiLinkInspector : ILinkInspector, IAsyncDisposable, I
     /// <param name="socket">Optional nl80211 Netlink socket for testing or custom lifecycle.</param>
     /// <param name="rfkillReader">Optional rfkill reader for radio state determination.</param>
     /// <param name="clock">Optional monotonic clock for remembered SSID lifetime evaluation.</param>
+    /// <param name="ownsSocket">Whether this instance owns the socket lifecycle.</param>
+    /// <param name="eventObserver">Optional nl80211 event observer.</param>
     public LinuxWifiLinkInspector(
         ILinkInspector inner,
         string? boundInterfaceId = null,
         ILinuxNl80211Socket? socket = null,
         ILinuxRfkillReader? rfkillReader = null,
         IClock? clock = null,
-        bool? ownsSocket = null)
+        bool? ownsSocket = null,
+        ILinuxNl80211EventObserver? eventObserver = null)
     {
         _inner = inner ?? throw new ArgumentNullException(nameof(inner));
         _radio = new LinuxNl80211Radio(socket, rfkillReader, boundInterfaceId, ownsSocket);
         _wireless = new WirelessDetailReader(_radio, clock);
+        _eventObserver = eventObserver;
         _ownsRadio = true;
     }
 
@@ -50,15 +55,18 @@ public sealed class LinuxWifiLinkInspector : ILinkInspector, IAsyncDisposable, I
         ILinkInspector inner,
         LinuxNl80211Radio radio,
         IClock? clock = null,
-        bool ownsRadio = false)
+        bool ownsRadio = false,
+        ILinuxNl80211EventObserver? eventObserver = null)
     {
         _inner = inner ?? throw new ArgumentNullException(nameof(inner));
         _radio = radio ?? throw new ArgumentNullException(nameof(radio));
         _wireless = new WirelessDetailReader(_radio, clock);
+        _eventObserver = eventObserver;
         _ownsRadio = ownsRadio;
     }
 
     public LinuxNl80211Radio Radio => _radio;
+    public ILinuxNl80211EventObserver? EventObserver => _eventObserver;
 
     public LinkSnapshot Inspect()
     {
@@ -89,6 +97,7 @@ public sealed class LinuxWifiLinkInspector : ILinkInspector, IAsyncDisposable, I
     {
         if (_ownsRadio)
         {
+            _eventObserver?.Dispose();
             _radio.Dispose();
         }
     }
@@ -97,6 +106,10 @@ public sealed class LinuxWifiLinkInspector : ILinkInspector, IAsyncDisposable, I
     {
         if (_ownsRadio)
         {
+            if (_eventObserver != null)
+            {
+                await _eventObserver.DisposeAsync().ConfigureAwait(false);
+            }
             await _radio.DisposeAsync().ConfigureAwait(false);
         }
     }

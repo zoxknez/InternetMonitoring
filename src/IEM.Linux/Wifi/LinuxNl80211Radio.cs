@@ -3,6 +3,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using IEM.Core.Probes;
+using IEM.Linux.Time;
 
 namespace IEM.Linux.Wifi;
 
@@ -21,6 +22,7 @@ public sealed class LinuxNl80211Radio : IWirelessRadio, IDisposable, IAsyncDispo
     private readonly ILinuxNl80211Socket _socket;
     private readonly ILinuxRfkillReader _rfkillReader;
     private readonly ILinuxWifiScanCompletionTracker _scanCompletionTracker;
+    private readonly ILinuxNativeClock? _clock;
     private readonly string? _boundInterfaceId;
     private readonly bool _ownsSocket;
     private volatile string? _lastQueriedInterfaceId;
@@ -33,12 +35,24 @@ public sealed class LinuxNl80211Radio : IWirelessRadio, IDisposable, IAsyncDispo
         string? boundInterfaceId = null,
         bool? ownsSocket = null,
         ILinuxWifiScanCompletionTracker? scanCompletionTracker = null)
+        : this(socket, rfkillReader, boundInterfaceId, ownsSocket, scanCompletionTracker, null)
+    {
+    }
+
+    internal LinuxNl80211Radio(
+        ILinuxNl80211Socket? socket,
+        ILinuxRfkillReader? rfkillReader,
+        string? boundInterfaceId,
+        bool? ownsSocket,
+        ILinuxWifiScanCompletionTracker? scanCompletionTracker,
+        ILinuxNativeClock? clock)
     {
         _ownsSocket = ownsSocket ?? (socket == null);
         _socket = socket ?? LinuxNl80211Socket.Create();
         _rfkillReader = rfkillReader ?? LinuxRfkillReader.Instance;
         _scanCompletionTracker = scanCompletionTracker ?? new LinuxWifiScanCompletionTracker();
         _boundInterfaceId = boundInterfaceId;
+        _clock = clock;
     }
 
     public string? BoundInterfaceId => _boundInterfaceId;
@@ -1048,7 +1062,7 @@ public sealed class LinuxNl80211Radio : IWirelessRadio, IDisposable, IAsyncDispo
         }
 
         var bssDump = await _socket.DumpBssAsync(family.FamilyId, targetIf.IfIndex, targetIf.Wdev.Value, cancellationToken).ConfigureAwait(false);
-        var currentBootTimeNs = LinuxWifiScanCache.TryGetCurrentBootTimeNs();
+        var currentBootTimeNs = LinuxWifiScanCache.TryGetCurrentBootTimeNs(_clock);
         var snapshot = LinuxWifiScanCache.EvaluateScanDump(bssDump, targetIf.IfIndex, targetIf.Wdev, _scanCompletionTracker, currentBootTimeNs);
 
         return LinuxWifiScanCache.EvaluateSsidVisibility(snapshot, ssid, currentBootTimeNs);

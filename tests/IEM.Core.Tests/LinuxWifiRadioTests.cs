@@ -5,6 +5,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using IEM.Linux.Time;
 using IEM.Linux.Wifi;
 using Xunit;
 
@@ -12,6 +13,16 @@ namespace IEM.Core.Tests;
 
 public class LinuxWifiRadioTests
 {
+    private sealed class StubNativeClock : ILinuxNativeClock
+    {
+        public long CurrentBootTimeSec { get; set; } = 1000;
+        public long CurrentBootTimeNsec { get; set; } = 0;
+
+        public void GetTime(int clkId, out LinuxTimeSpec ts)
+        {
+            ts = new LinuxTimeSpec { TvSec = CurrentBootTimeSec, TvNsec = CurrentBootTimeNsec };
+        }
+    }
     [Fact]
     public void GenlProtocol_Builds_And_Parses_GetFamilyRequest()
     {
@@ -4077,10 +4088,11 @@ public class LinuxWifiRadioTests
         var bss = new LinuxNl80211BssInfo(3, new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x55 }, "00:11:22:33:44:55", System.Text.Encoding.UTF8.GetBytes("OtherNet"), "OtherNet", 5180, LinuxNl80211Protocol.NL80211_BSS_STATUS_ASSOCIATED, -6000, 85, 5000, null, null, null, null, null, 0x1000UL, 1);
         socket.SetBssDump(new List<LinuxNl80211BssInfo> { bss }, LinuxNl80211DumpStatus.Complete);
 
+        var clock = new StubNativeClock { CurrentBootTimeSec = 1000 };
         var tracker = new LinuxWifiScanCompletionTracker();
-        tracker.RecordScanEvent(3, 0x1000UL, LinuxWifiScanEventStatus.Completed);
+        tracker.RecordScanEvent(3, 0x1000UL, LinuxWifiScanEventStatus.Completed, 1000_000_000_000UL);
 
-        using var radio = new LinuxNl80211Radio(socket, scanCompletionTracker: tracker);
+        using var radio = new LinuxNl80211Radio(socket, rfkillReader: null, boundInterfaceId: null, ownsSocket: null, scanCompletionTracker: tracker, clock: clock);
         var visible = await radio.IsSsidVisibleAsync("wlan0", "HomeMesh");
 
         Assert.False(visible); // CompletedScan provenance permits false

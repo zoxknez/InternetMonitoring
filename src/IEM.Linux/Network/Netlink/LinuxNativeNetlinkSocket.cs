@@ -173,6 +173,46 @@ public sealed partial class LinuxNativeNetlinkSocket : IDisposable
         }
     }
 
+    public const int SOL_NETLINK = 270;
+    public const int NETLINK_ADD_MEMBERSHIP = 1;
+    public const int NETLINK_DROP_MEMBERSHIP = 2;
+
+    public void JoinMulticastGroup(uint groupId)
+    {
+        lock (_lock)
+        {
+            EnsureOpen();
+            unsafe
+            {
+                int group = (int)groupId;
+                int res = NativeMethods.setsockopt(_fd, SOL_NETLINK, NETLINK_ADD_MEMBERSHIP, &group, sizeof(int));
+                if (res < 0)
+                {
+                    int err = Marshal.GetLastPInvokeError();
+                    throw new IOException($"Failed to join Netlink multicast group {groupId}: errno {err}");
+                }
+            }
+        }
+    }
+
+    public void LeaveMulticastGroup(uint groupId)
+    {
+        lock (_lock)
+        {
+            EnsureOpen();
+            unsafe
+            {
+                int group = (int)groupId;
+                int res = NativeMethods.setsockopt(_fd, SOL_NETLINK, NETLINK_DROP_MEMBERSHIP, &group, sizeof(int));
+                if (res < 0)
+                {
+                    int err = Marshal.GetLastPInvokeError();
+                    throw new IOException($"Failed to leave Netlink multicast group {groupId}: errno {err}");
+                }
+            }
+        }
+    }
+
     public void Close()
     {
         lock (_lock)
@@ -211,6 +251,9 @@ public sealed partial class LinuxNativeNetlinkSocket : IDisposable
 
         [LibraryImport("libc", SetLastError = true)]
         public static unsafe partial int poll(ref PollFd fds, uint nfds, int timeout);
+
+        [LibraryImport("libc", SetLastError = true)]
+        public static unsafe partial int setsockopt(int sockfd, int level, int optname, void* optval, uint optlen);
 
         [LibraryImport("libc", SetLastError = true, StringMarshalling = StringMarshalling.Utf8)]
         public static unsafe partial int open(string pathname, int flags);

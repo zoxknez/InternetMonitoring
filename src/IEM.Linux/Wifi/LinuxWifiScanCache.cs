@@ -6,14 +6,14 @@ using IEM.Linux.Time;
 
 namespace IEM.Linux.Wifi;
 
-internal enum LinuxWifiScanCompleteness
+public enum LinuxWifiScanCompleteness
 {
     Complete,
     Partial,
     Unknown
 }
 
-internal enum LinuxWifiScanSource
+public enum LinuxWifiScanSource
 {
     KernelBssCache
 }
@@ -34,7 +34,7 @@ public enum LinuxWifiScanEventStatus
 public sealed record LinuxWifiScanCompletionRecord(
     int IfIndex,
     ulong? Wdev,
-    ulong CompletedAtBootTimeNs,
+    ulong? ObservedAtBootTimeNs,
     LinuxWifiScanEventStatus Status);
 
 public interface ILinuxWifiScanCompletionTracker
@@ -50,11 +50,24 @@ public sealed class LinuxWifiScanCompletionTracker : ILinuxWifiScanCompletionTra
 
     public void RecordScanEvent(int ifIndex, ulong? wdev, LinuxWifiScanEventStatus status, ulong? bootTimeNs = null)
     {
-        var bootNs = bootTimeNs ?? LinuxWifiScanCache.TryGetCurrentBootTimeNs() ?? 0UL;
-        var key = (ifIndex, wdev ?? 0UL);
+        var bootNs = bootTimeNs ?? LinuxWifiScanCache.TryGetCurrentBootTimeNs();
         lock (_lock)
         {
-            _records[key] = new LinuxWifiScanCompletionRecord(ifIndex, wdev, bootNs, status);
+            if (status == LinuxWifiScanEventStatus.Aborted && !wdev.HasValue)
+            {
+                // Invalidate all records for this ifindex on generic abort
+                var matchingKeys = _records.Keys.Where(k => k.IfIndex == ifIndex).ToList();
+                foreach (var k in matchingKeys)
+                {
+                    _records[k] = new LinuxWifiScanCompletionRecord(ifIndex, k.Wdev == 0UL ? null : k.Wdev, bootNs, LinuxWifiScanEventStatus.Aborted);
+                }
+                _records[(ifIndex, 0UL)] = new LinuxWifiScanCompletionRecord(ifIndex, null, bootNs, LinuxWifiScanEventStatus.Aborted);
+            }
+            else
+            {
+                var key = (ifIndex, wdev ?? 0UL);
+                _records[key] = new LinuxWifiScanCompletionRecord(ifIndex, wdev, bootNs, status);
+            }
         }
     }
 
@@ -67,16 +80,13 @@ public sealed class LinuxWifiScanCompletionTracker : ILinuxWifiScanCompletionTra
             {
                 return record;
             }
-            if (wdev.HasValue && _records.TryGetValue((ifIndex, 0UL), out var fallback))
-            {
-                return fallback;
-            }
+            // Strict scoping: never fallback from known WDEV to 0UL for negative-proof completion
             return null;
         }
     }
 }
 
-internal sealed record LinuxWifiScanSnapshot(
+public sealed record LinuxWifiScanSnapshot(
     LinuxWifiScanSource Source,
     LinuxWifiScanCompleteness Completeness,
     LinuxWifiScanEvidenceBasis EvidenceBasis,
@@ -89,13 +99,13 @@ internal sealed record LinuxWifiScanSnapshot(
 /// and SSID visibility tri-state truth.
 /// Invariants 250, 251, 252, 258.
 /// </summary>
-internal static class LinuxWifiScanCache
+public static class LinuxWifiScanCache
 {
     /// <summary>
     /// Maximum age of a scan cache snapshot before it is considered stale (3 minutes).
     /// Matches Windows WlanScanCache parity.
     /// </summary>
-    internal static readonly TimeSpan MaximumAge = TimeSpan.FromMinutes(3);
+    public static readonly TimeSpan MaximumAge = TimeSpan.FromMinutes(3);
 
     /// <summary>
     /// Computes the age of a specific BSS observation.
@@ -140,7 +150,8 @@ internal static class LinuxWifiScanCache
     /// Evaluates a raw Netlink BSS dump into a structured scan snapshot with proven completeness,
     /// scan-completion provenance, and freshness.
     /// Invariant 250: NLMSG_DONE transport completeness alone does NOT prove RF scan completeness.
-    /// RF scan completeness requires affirmative scan-completion provenance (e.g. NL80211_CMD_NEW_SCAN_RESULTS).
+    /// RF scan completeness requires affirmative scan-completion provenance (e.g. NL80211_CMD_NEW_SCAN_RESULTS)
+    /// with known, proven freshness and exact adapter/WDEV identity match.
     /// </summary>
     public static LinuxWifiScanSnapshot EvaluateScanDump(
         LinuxNl80211DumpResult<LinuxNl80211BssInfo> dumpResult,
@@ -173,27 +184,24 @@ internal static class LinuxWifiScanCache
         else if (transportComplete && ifIndex.HasValue && completionTracker != null)
         {
             var scanRecord = completionTracker.GetLastScanCompletion(ifIndex.Value, wdev);
-            if (scanRecord != null && scanRecord.Status == LinuxWifiScanEventStatus.Completed)
+            if (scanRecord != null &&
+                scanRecord.Status == LinuxWifiScanEventStatus.Completed &&
+                scanRecord.ObservedAtBootTimeNs.HasValue &&
+                currentBootTimeNs.HasValue &&
+                currentBootTimeNs.Value >= scanRecord.ObservedAtBootTimeNs.Value)
             {
-                // Verify scan completion event freshness
-                bool scanEventFresh = true;
-                if (currentBootTimeNs.HasValue && scanRecord.CompletedAtBootTimeNs > 0)
-                {
-                    if (currentBootTimeNs.Value >= scanRecord.CompletedAtBootTimeNs)
-                    {
-                        var scanAgeMs = (currentBootTimeNs.Value - scanRecord.CompletedAtBootTimeNs) / 1_000_000.0;
-                        scanEventFresh = scanAgeMs <= MaximumAge.TotalMilliseconds;
-                    }
-                    else
-                    {
-                        scanEventFresh = false; // Scan timestamp in future relative to query clock
-                    }
-                }
+                // Strict check: if target adapter has known WDEV, the completion record must match WDEV exactly
+                bool wdevMatch = (!wdev.HasValue && !scanRecord.Wdev.HasValue) ||
+                                 (wdev.HasValue && scanRecord.Wdev.HasValue && wdev.Value == scanRecord.Wdev.Value);
 
-                if (scanEventFresh)
+                if (wdevMatch)
                 {
-                    completeness = LinuxWifiScanCompleteness.Complete;
-                    evidenceBasis = LinuxWifiScanEvidenceBasis.CompletedScan;
+                    var scanAgeMs = (currentBootTimeNs.Value - scanRecord.ObservedAtBootTimeNs.Value) / 1_000_000.0;
+                    if (scanAgeMs <= MaximumAge.TotalMilliseconds)
+                    {
+                        completeness = LinuxWifiScanCompleteness.Complete;
+                        evidenceBasis = LinuxWifiScanEvidenceBasis.CompletedScan;
+                    }
                 }
             }
         }
