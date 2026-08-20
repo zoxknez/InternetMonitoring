@@ -20,17 +20,20 @@ public sealed class LinuxNl80211Radio : IWirelessRadio, IDisposable, IAsyncDispo
 {
     private readonly ILinuxNl80211Socket _socket;
     private readonly ILinuxRfkillReader _rfkillReader;
+    private readonly string? _boundInterfaceId;
     private readonly bool _ownsSocket;
     private GenlFamilyInfo? _cachedFamily;
     private readonly SemaphoreSlim _lock = new(1, 1);
 
     public LinuxNl80211Radio(
         ILinuxNl80211Socket? socket = null,
-        ILinuxRfkillReader? rfkillReader = null)
+        ILinuxRfkillReader? rfkillReader = null,
+        string? boundInterfaceId = null)
     {
         _ownsSocket = socket == null;
         _socket = socket ?? LinuxNl80211Socket.Create();
         _rfkillReader = rfkillReader ?? LinuxRfkillReader.Instance;
+        _boundInterfaceId = boundInterfaceId;
     }
 
     /// <summary>
@@ -604,9 +607,148 @@ public sealed class LinuxNl80211Radio : IWirelessRadio, IDisposable, IAsyncDispo
     }
 
     /// <summary>
-    /// Access point details (Phase 3.1-7B-4). Returns null in 7B-1.
+    /// Converts a frequency in MHz to its standard 802.11 channel number.
+    /// Strict evidence-grade raster check: returns null if the frequency does not fall precisely on a valid channel raster.
     /// </summary>
-    public WirelessAccessPoint? ReadAccessPoint(string ssid, string bssid) => null;
+    public static int? FrequencyMhzToChannel(uint frequencyMhz)
+    {
+        // 2.4 GHz Band: 2412..2472 on 5 MHz grid -> channels 1..13
+        if (frequencyMhz >= 2412 && frequencyMhz <= 2472 && (frequencyMhz - 2412) % 5 == 0)
+        {
+            return (int)((frequencyMhz - 2407) / 5);
+        }
+        // 2.4 GHz Band: 2484 MHz -> channel 14
+        if (frequencyMhz == 2484)
+        {
+            return 14;
+        }
+        // 4.9 GHz Band (Public Safety): 4910..4980 on 5 MHz grid -> channels 182..196
+        if (frequencyMhz >= 4910 && frequencyMhz <= 4980 && (frequencyMhz - 4910) % 5 == 0)
+        {
+            return (int)((frequencyMhz - 4000) / 5);
+        }
+        // 5 GHz Band: 5000..<5925 on 5 MHz grid -> e.g. 5180 -> 36
+        if (frequencyMhz >= 5000 && frequencyMhz < 5925 && (frequencyMhz - 5000) % 5 == 0)
+        {
+            int ch = (int)((frequencyMhz - 5000) / 5);
+            return ch > 0 ? ch : null;
+        }
+        // 6 GHz Band: 5935 MHz -> channel 2
+        if (frequencyMhz == 5935)
+        {
+            return 2;
+        }
+        // 6 GHz Band: 5955..7115 on 5 MHz grid -> channels 1..233
+        if (frequencyMhz >= 5955 && frequencyMhz <= 7115 && (frequencyMhz - 5955) % 5 == 0)
+        {
+            return (int)((frequencyMhz - 5950) / 5);
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// The access point with this exact BSSID from the bound monitored adapter's cached scan.
+    /// Invariant 258: Adapter-scoped projection of one complete cached GET_SCAN snapshot.
+    /// Null when no bound interface is set, BSS is missing from scan, dump was incomplete, or BSSID/SSID mismatch.
+    /// </summary>
+    public WirelessAccessPoint? ReadAccessPoint(string ssid, string bssid)
+    {
+        if (string.IsNullOrWhiteSpace(_boundInterfaceId))
+        {
+            return null;
+        }
+
+        try
+        {
+            return ReadAccessPointAsync(_boundInterfaceId, ssid, bssid).GetAwaiter().GetResult();
+        }
+#pragma warning disable CA1031
+        catch (Exception)
+#pragma warning restore CA1031
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Asynchronously queries cached BSS scan results on the specified interface for an exact BSSID match.
+    /// Invariants:
+    /// - Strict raw byte BSSID matching (presentation string is not identity authority).
+    /// - Strict display SSID guard (must match requested SSID).
+    /// - Incomplete dumps return null (never partial knowledge).
+    /// - Never invokes active scanning (TRIGGER_SCAN) or station queries (GET_STATION).
+    /// </summary>
+    public async Task<WirelessAccessPoint?> ReadAccessPointAsync(
+        string interfaceId,
+        string ssid,
+        string bssid,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(interfaceId) ||
+            string.IsNullOrWhiteSpace(ssid) ||
+            string.IsNullOrWhiteSpace(bssid))
+        {
+            return null;
+        }
+
+        if (!LinuxNl80211Protocol.TryParseMacAddress(bssid, out var requestedMacBytes) || requestedMacBytes == null)
+        {
+            return null;
+        }
+
+        var family = await EnsureFamilyAsync(cancellationToken).ConfigureAwait(false);
+        if (family == null)
+        {
+            return null;
+        }
+
+        int? requestedIfIndex = int.TryParse(interfaceId, out var parsedIndex) ? parsedIndex : null;
+
+        var ifDump = await _socket.DumpInterfacesAsync(family.FamilyId, requestedIfIndex, cancellationToken).ConfigureAwait(false);
+        if (!ifDump.IsComplete || ifDump.Items.Count == 0)
+        {
+            ifDump = await _socket.DumpInterfacesAsync(family.FamilyId, null, cancellationToken).ConfigureAwait(false);
+        }
+
+        if (!ifDump.IsComplete || ifDump.Items.Count == 0)
+        {
+            return null;
+        }
+
+        var targetIf = ifDump.Items.FirstOrDefault(i =>
+            (requestedIfIndex.HasValue && i.IfIndex == requestedIfIndex.Value) ||
+            i.IfName.Equals(interfaceId, StringComparison.OrdinalIgnoreCase));
+
+        if (targetIf == null ||
+            !targetIf.WiphyIndex.HasValue ||
+            !targetIf.Wdev.HasValue ||
+            targetIf.IfType != LinuxNl80211Protocol.NL80211_IFTYPE_STATION)
+        {
+            return null;
+        }
+
+        var bssDump = await _socket.DumpBssAsync(family.FamilyId, targetIf.IfIndex, targetIf.Wdev.Value, cancellationToken).ConfigureAwait(false);
+        if (!bssDump.IsComplete)
+        {
+            return null;
+        }
+
+        foreach (var bss in bssDump.Items)
+        {
+            if (bss.Bssid != null &&
+                bss.Bssid.AsSpan().SequenceEqual(requestedMacBytes) &&
+                string.Equals(bss.DisplaySsid, ssid, StringComparison.Ordinal))
+            {
+                int? channel = bss.FrequencyMhz.HasValue ? FrequencyMhzToChannel(bss.FrequencyMhz.Value) : null;
+                int? rssi = bss.SignalDbm; // SignalMbm / 100 if SignalMbm is present, null if only SignalUnspec
+
+                return new WirelessAccessPoint(bss.BssidString, channel, rssi);
+            }
+        }
+
+        return null;
+    }
 
     /// <summary>
     /// Scan visibility check (Phase 3.1-7C). Returns null in 7B-1.

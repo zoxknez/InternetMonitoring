@@ -1698,4 +1698,34 @@ public static class LinuxNl80211Protocol
 
         return true;
     }
+
+    public static string FormatMacAddress(byte[] mac)
+    {
+        if (mac == null || mac.Length != 6) return string.Empty;
+        return $"{mac[0]:X2}:{mac[1]:X2}:{mac[2]:X2}:{mac[3]:X2}:{mac[4]:X2}:{mac[5]:X2}";
+    }
+
+    public static bool TryParseMacAddress(string? macString, out byte[]? macBytes)
+    {
+        macBytes = null;
+        if (string.IsNullOrWhiteSpace(macString)) return false;
+
+        var separator = macString.Contains(':') ? ':' : (macString.Contains('-') ? '-' : '\0');
+        if (separator == '\0') return false;
+
+        var parts = macString.Split(separator);
+        if (parts.Length != 6) return false;
+
+        var bytes = new byte[6];
+        for (int i = 0; i < 6; i++)
+        {
+            if (parts[i].Length != 2 || !byte.TryParse(parts[i], System.Globalization.NumberStyles.HexNumber, null, out bytes[i]))
+            {
+                return false;
+            }
+        }
+
+        macBytes = bytes;
+        return true;
+    }
 }

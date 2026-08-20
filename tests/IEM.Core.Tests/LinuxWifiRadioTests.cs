@@ -3162,6 +3162,313 @@ public class LinuxWifiRadioTests
 
     #endregion
 
+    #region Phase 3.1-7B-4: Access Point Evidence Tests
+
+    [Fact]
+    public void Nl80211Radio_ReadAccessPoint_Exact_Ssid_And_Bssid_Returns_AccessPoint()
+    {
+        var socket = new MockLinuxNl80211Socket();
+        socket.AddFamily("nl80211", 28);
+        socket.AddInterface(new LinuxNl80211InterfaceInfo(3, "wlan0", 0, "phy0", null, LinuxNl80211Protocol.NL80211_IFTYPE_STATION, null, null, Wdev: 0x1000UL));
+
+        byte[] bssid = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x55 };
+        var bss = new LinuxNl80211BssInfo(3, bssid, "00:11:22:33:44:55", null, "HomeWiFi", 5180, LinuxNl80211Protocol.NL80211_BSS_STATUS_ASSOCIATED, -6500, null, null, null, null, null, null, null, 0x1000UL, 100u);
+        socket.AddBss(3, bss);
+
+        using var radio = new LinuxNl80211Radio(socket, boundInterfaceId: "wlan0");
+        var ap = radio.ReadAccessPoint("HomeWiFi", "00:11:22:33:44:55");
+
+        Assert.NotNull(ap);
+        Assert.Equal("00:11:22:33:44:55", ap.Bssid);
+        Assert.Equal(36, ap.Channel);
+        Assert.Equal(-65, ap.Rssi);
+    }
+
+    [Fact]
+    public void Nl80211Radio_ReadAccessPoint_Same_Ssid_Stronger_Different_Bssid_Returns_Requested_Bssid()
+    {
+        var socket = new MockLinuxNl80211Socket();
+        socket.AddFamily("nl80211", 28);
+        socket.AddInterface(new LinuxNl80211InterfaceInfo(3, "wlan0", 0, "phy0", null, LinuxNl80211Protocol.NL80211_IFTYPE_STATION, null, null, Wdev: 0x1000UL));
+
+        byte[] bssidA = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x01 };
+        byte[] bssidB = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x02 };
+
+        var bssA = new LinuxNl80211BssInfo(3, bssidA, "00:11:22:33:44:01", null, "MeshWiFi", 5180, LinuxNl80211Protocol.NL80211_BSS_STATUS_ASSOCIATED, -6500, null, null, null, null, null, null, null, 0x1000UL, 100u);
+        var bssB = new LinuxNl80211BssInfo(3, bssidB, "00:11:22:33:44:02", null, "MeshWiFi", 5180, null, -3500, null, null, null, null, null, null, null, 0x1000UL, 100u);
+
+        socket.AddBss(3, bssA);
+        socket.AddBss(3, bssB);
+
+        using var radio = new LinuxNl80211Radio(socket, boundInterfaceId: "wlan0");
+        var ap = radio.ReadAccessPoint("MeshWiFi", "00:11:22:33:44:01");
+
+        Assert.NotNull(ap);
+        Assert.Equal("00:11:22:33:44:01", ap.Bssid);
+        Assert.Equal(-65, ap.Rssi); // Strictly requested BSSID, never loudest AP B (-35 dBm)
+    }
+
+    [Fact]
+    public void Nl80211Radio_ReadAccessPoint_Exact_Bssid_Different_Ssid_Returns_Null()
+    {
+        var socket = new MockLinuxNl80211Socket();
+        socket.AddFamily("nl80211", 28);
+        socket.AddInterface(new LinuxNl80211InterfaceInfo(3, "wlan0", 0, "phy0", null, LinuxNl80211Protocol.NL80211_IFTYPE_STATION, null, null, Wdev: 0x1000UL));
+
+        byte[] bssid = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x55 };
+        var bss = new LinuxNl80211BssInfo(3, bssid, "00:11:22:33:44:55", null, "OtherWiFi", 5180, null, -6500, null, null, null, null, null, null, null, 0x1000UL, 100u);
+        socket.AddBss(3, bss);
+
+        using var radio = new LinuxNl80211Radio(socket, boundInterfaceId: "wlan0");
+        var ap = radio.ReadAccessPoint("MyWiFi", "00:11:22:33:44:55");
+
+        Assert.Null(ap);
+    }
+
+    [Fact]
+    public void Nl80211Radio_ReadAccessPoint_Bssid_Absent_From_Complete_Cached_Dump_Returns_Null()
+    {
+        var socket = new MockLinuxNl80211Socket();
+        socket.AddFamily("nl80211", 28);
+        socket.AddInterface(new LinuxNl80211InterfaceInfo(3, "wlan0", 0, "phy0", null, LinuxNl80211Protocol.NL80211_IFTYPE_STATION, null, null, Wdev: 0x1000UL));
+
+        byte[] bssid = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x01 };
+        var bss = new LinuxNl80211BssInfo(3, bssid, "00:11:22:33:44:01", null, "MyWiFi", 5180, null, -6500, null, null, null, null, null, null, null, 0x1000UL, 100u);
+        socket.AddBss(3, bss);
+
+        using var radio = new LinuxNl80211Radio(socket, boundInterfaceId: "wlan0");
+        var ap = radio.ReadAccessPoint("MyWiFi", "00:11:22:33:44:99");
+
+        Assert.Null(ap);
+    }
+
+    [Fact]
+    public void Nl80211Radio_ReadAccessPoint_Incomplete_Dump_Returns_Null()
+    {
+        var socket = new MockLinuxNl80211Socket();
+        socket.AddFamily("nl80211", 28);
+        socket.AddInterface(new LinuxNl80211InterfaceInfo(3, "wlan0", 0, "phy0", null, LinuxNl80211Protocol.NL80211_IFTYPE_STATION, null, null, Wdev: 0x1000UL));
+
+        byte[] bssid = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x55 };
+        var bss = new LinuxNl80211BssInfo(3, bssid, "00:11:22:33:44:55", null, "HomeWiFi", 5180, LinuxNl80211Protocol.NL80211_BSS_STATUS_ASSOCIATED, -6500, null, null, null, null, null, null, null, 0x1000UL, 100u);
+        socket.QueueBssDump(new List<LinuxNl80211BssInfo> { bss }, LinuxNl80211DumpStatus.Incomplete, -11);
+
+        using var radio = new LinuxNl80211Radio(socket, boundInterfaceId: "wlan0");
+        var ap = radio.ReadAccessPoint("HomeWiFi", "00:11:22:33:44:55");
+
+        Assert.Null(ap);
+    }
+
+    [Fact]
+    public void Nl80211Radio_ReadAccessPoint_Malformed_Dump_Returns_Null()
+    {
+        var socket = new MockLinuxNl80211Socket();
+        socket.AddFamily("nl80211", 28);
+        socket.AddInterface(new LinuxNl80211InterfaceInfo(3, "wlan0", 0, "phy0", null, LinuxNl80211Protocol.NL80211_IFTYPE_STATION, null, null, Wdev: 0x1000UL));
+
+        socket.QueueBssDump(new List<LinuxNl80211BssInfo>(), LinuxNl80211DumpStatus.Malformed, -22);
+
+        using var radio = new LinuxNl80211Radio(socket, boundInterfaceId: "wlan0");
+        var ap = radio.ReadAccessPoint("HomeWiFi", "00:11:22:33:44:55");
+
+        Assert.Null(ap);
+    }
+
+    [Fact]
+    public void Nl80211Radio_ReadAccessPoint_MultiAdapter_Never_Borrows_Other_Adapter()
+    {
+        var socket = new MockLinuxNl80211Socket();
+        socket.AddFamily("nl80211", 28);
+        socket.AddInterface(new LinuxNl80211InterfaceInfo(3, "wlan0", 0, "phy0", null, LinuxNl80211Protocol.NL80211_IFTYPE_STATION, null, null, Wdev: 0x1000UL));
+        socket.AddInterface(new LinuxNl80211InterfaceInfo(4, "wlan1", 1, "phy1", null, LinuxNl80211Protocol.NL80211_IFTYPE_STATION, null, null, Wdev: 0x2000UL));
+
+        byte[] bssid2 = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x02 };
+        var bss2 = new LinuxNl80211BssInfo(4, bssid2, "00:11:22:33:44:02", null, "OtherWiFi", 5180, null, -6000, null, null, null, null, null, null, null, 0x2000UL, 100u);
+        socket.AddBss(4, bss2);
+
+        using var radio = new LinuxNl80211Radio(socket, boundInterfaceId: "wlan0");
+        var ap = radio.ReadAccessPoint("OtherWiFi", "00:11:22:33:44:02");
+
+        Assert.Null(ap);
+        Assert.Equal(3, socket.LastDumpBssIfIndex);
+        Assert.Equal(0x1000UL, socket.LastDumpBssWdev);
+    }
+
+    [Fact]
+    public void Nl80211Radio_ReadAccessPoint_Missing_Deterministic_Adapter_Scope_Returns_Null()
+    {
+        var socket = new MockLinuxNl80211Socket();
+        socket.AddFamily("nl80211", 28);
+        socket.AddInterface(new LinuxNl80211InterfaceInfo(3, "wlan0", 0, "phy0", null, LinuxNl80211Protocol.NL80211_IFTYPE_STATION, null, null, Wdev: 0x1000UL));
+
+        byte[] bssid = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x55 };
+        var bss = new LinuxNl80211BssInfo(3, bssid, "00:11:22:33:44:55", null, "HomeWiFi", 5180, LinuxNl80211Protocol.NL80211_BSS_STATUS_ASSOCIATED, -6500, null, null, null, null, null, null, null, 0x1000UL, 100u);
+        socket.AddBss(3, bss);
+
+        // Construct radio with null boundInterfaceId
+        using var radio = new LinuxNl80211Radio(socket, boundInterfaceId: null);
+        var ap = radio.ReadAccessPoint("HomeWiFi", "00:11:22:33:44:55");
+
+        Assert.Null(ap);
+        Assert.Equal(0, socket.DumpInterfacesCallCount);
+        Assert.Equal(0, socket.DumpBssCallCount);
+    }
+
+    [Fact]
+    public void Nl80211Radio_ReadAccessPoint_SignalMbm_Preserves_Real_Dbm()
+    {
+        var socket = new MockLinuxNl80211Socket();
+        socket.AddFamily("nl80211", 28);
+        socket.AddInterface(new LinuxNl80211InterfaceInfo(3, "wlan0", 0, "phy0", null, LinuxNl80211Protocol.NL80211_IFTYPE_STATION, null, null, Wdev: 0x1000UL));
+
+        byte[] bssid = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x55 };
+        var bss = new LinuxNl80211BssInfo(3, bssid, "00:11:22:33:44:55", null, "HomeWiFi", 5180, null, -6750, null, null, null, null, null, null, null, 0x1000UL, 100u);
+        socket.AddBss(3, bss);
+
+        using var radio = new LinuxNl80211Radio(socket, boundInterfaceId: "wlan0");
+        var ap = radio.ReadAccessPoint("HomeWiFi", "00:11:22:33:44:55");
+
+        Assert.NotNull(ap);
+        Assert.Equal(-67, ap.Rssi);
+    }
+
+    [Fact]
+    public void Nl80211Radio_ReadAccessPoint_SignalUnspec_Only_Yields_Rssi_Null()
+    {
+        var socket = new MockLinuxNl80211Socket();
+        socket.AddFamily("nl80211", 28);
+        socket.AddInterface(new LinuxNl80211InterfaceInfo(3, "wlan0", 0, "phy0", null, LinuxNl80211Protocol.NL80211_IFTYPE_STATION, null, null, Wdev: 0x1000UL));
+
+        byte[] bssid = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x55 };
+        // SignalMbm = null, SignalQuality = 80 (unspecified)
+        var bss = new LinuxNl80211BssInfo(3, bssid, "00:11:22:33:44:55", null, "HomeWiFi", 5180, null, null, 80, null, null, null, null, null, null, 0x1000UL, 100u);
+        socket.AddBss(3, bss);
+
+        using var radio = new LinuxNl80211Radio(socket, boundInterfaceId: "wlan0");
+        var ap = radio.ReadAccessPoint("HomeWiFi", "00:11:22:33:44:55");
+
+        Assert.NotNull(ap);
+        Assert.Null(ap.Rssi); // Never fabricate dBm from unspecified quality
+    }
+
+    [Theory]
+    [InlineData(2412u, 1)]
+    [InlineData(2437u, 6)]
+    [InlineData(2462u, 11)]
+    [InlineData(2472u, 13)]
+    [InlineData(2484u, 14)]
+    public void Nl80211Radio_FrequencyMhzToChannel_24Ghz_Maps_Correctly(uint freq, int expectedChannel)
+    {
+        Assert.Equal(expectedChannel, LinuxNl80211Radio.FrequencyMhzToChannel(freq));
+    }
+
+    [Theory]
+    [InlineData(5180u, 36)]
+    [InlineData(5240u, 48)]
+    [InlineData(5500u, 100)]
+    [InlineData(5745u, 149)]
+    public void Nl80211Radio_FrequencyMhzToChannel_5Ghz_Maps_Correctly(uint freq, int expectedChannel)
+    {
+        Assert.Equal(expectedChannel, LinuxNl80211Radio.FrequencyMhzToChannel(freq));
+    }
+
+    [Theory]
+    [InlineData(5935u, 2)]
+    [InlineData(5955u, 1)]
+    [InlineData(5975u, 5)]
+    [InlineData(7115u, 233)]
+    public void Nl80211Radio_FrequencyMhzToChannel_6Ghz_Maps_Correctly(uint freq, int expectedChannel)
+    {
+        Assert.Equal(expectedChannel, LinuxNl80211Radio.FrequencyMhzToChannel(freq));
+    }
+
+    [Theory]
+    [InlineData(0u)]
+    [InlineData(9999u)]
+    [InlineData(3000u)]
+    public void Nl80211Radio_FrequencyMhzToChannel_Unknown_Frequencies_Return_Null(uint freq)
+    {
+        Assert.Null(LinuxNl80211Radio.FrequencyMhzToChannel(freq));
+    }
+
+    [Fact]
+    public void Nl80211Radio_ReadAccessPoint_Never_Triggers_Active_Scan()
+    {
+        var socket = new MockLinuxNl80211Socket();
+        socket.AddFamily("nl80211", 28);
+        socket.AddInterface(new LinuxNl80211InterfaceInfo(3, "wlan0", 0, "phy0", null, LinuxNl80211Protocol.NL80211_IFTYPE_STATION, null, null, Wdev: 0x1000UL));
+
+        using var radio = new LinuxNl80211Radio(socket, boundInterfaceId: "wlan0");
+        radio.ReadAccessPoint("MyWiFi", "00:11:22:33:44:55");
+
+        Assert.Equal(1, socket.DumpBssCallCount); // Uses GET_SCAN cached dump only
+    }
+
+    [Fact]
+    public void Nl80211Radio_ReadAccessPoint_Never_Calls_GetStation()
+    {
+        var socket = new MockLinuxNl80211Socket();
+        socket.AddFamily("nl80211", 28);
+        socket.AddInterface(new LinuxNl80211InterfaceInfo(3, "wlan0", 0, "phy0", null, LinuxNl80211Protocol.NL80211_IFTYPE_STATION, null, null, Wdev: 0x1000UL));
+
+        byte[] bssid = new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x55 };
+        var bss = new LinuxNl80211BssInfo(3, bssid, "00:11:22:33:44:55", null, "HomeWiFi", 5180, LinuxNl80211Protocol.NL80211_BSS_STATUS_ASSOCIATED, -6500, null, null, null, null, null, null, null, 0x1000UL, 100u);
+        socket.AddBss(3, bss);
+
+        using var radio = new LinuxNl80211Radio(socket, boundInterfaceId: "wlan0");
+        radio.ReadAccessPoint("HomeWiFi", "00:11:22:33:44:55");
+
+        Assert.Equal(0, socket.GetStationCallCount); // Station telemetry is never invoked by AP lookup
+    }
+
+    [Theory]
+    [InlineData(4910u, 182)]
+    [InlineData(4980u, 196)]
+    public void Nl80211Radio_FrequencyMhzToChannel_49Ghz_PublicSafety_Maps_Correctly(uint freq, int expectedChannel)
+    {
+        Assert.Equal(expectedChannel, LinuxNl80211Radio.FrequencyMhzToChannel(freq));
+    }
+
+    [Theory]
+    [InlineData(2413u)]
+    [InlineData(5181u)]
+    [InlineData(5956u)]
+    [InlineData(4911u)]
+    public void Nl80211Radio_FrequencyMhzToChannel_OffGrid_Frequencies_Return_Null(uint freq)
+    {
+        Assert.Null(LinuxNl80211Radio.FrequencyMhzToChannel(freq));
+    }
+
+    [Fact]
+    public void Nl80211Radio_ReadAccessPoint_Invalid_Requested_Bssid_Returns_Null_Without_Bss_Dump()
+    {
+        var socket = new MockLinuxNl80211Socket();
+        socket.AddFamily("nl80211", 28);
+        socket.AddInterface(new LinuxNl80211InterfaceInfo(3, "wlan0", 0, "phy0", null, LinuxNl80211Protocol.NL80211_IFTYPE_STATION, null, null, Wdev: 0x1000UL));
+
+        using var radio = new LinuxNl80211Radio(socket, boundInterfaceId: "wlan0");
+        var ap = radio.ReadAccessPoint("HomeWiFi", "not_a_valid_mac");
+
+        Assert.Null(ap);
+        Assert.Equal(0, socket.DumpBssCallCount);
+    }
+
+    [Fact]
+    public void Nl80211Radio_ReadAccessPoint_Missing_Bound_Interface_Does_Not_Invoke_Sockets()
+    {
+        var socket = new MockLinuxNl80211Socket();
+        socket.AddFamily("nl80211", 28);
+
+        using var radio = new LinuxNl80211Radio(socket, boundInterfaceId: "");
+        var ap = radio.ReadAccessPoint("HomeWiFi", "00:11:22:33:44:55");
+
+        Assert.Null(ap);
+        Assert.Equal(0, socket.DumpInterfacesCallCount);
+        Assert.Equal(0, socket.DumpBssCallCount);
+    }
+
+    #endregion
+
     private static byte[] BuildMockBssRecord(
         uint seq,
         ushort familyId,
@@ -3698,6 +4005,9 @@ public class LinuxWifiRadioTests
 
         public int GetStationCallCount { get; private set; }
         public int DumpBssCallCount { get; private set; }
+        public int DumpInterfacesCallCount => _dumpInterfacesCallCount;
+        public int? LastDumpBssIfIndex { get; private set; }
+        public ulong? LastDumpBssWdev { get; private set; }
         public byte[]? LastRequestedPeerMac { get; private set; }
 
         public LinuxNl80211DumpStatus InterfaceDumpStatus { get; set; } = LinuxNl80211DumpStatus.Complete;
@@ -3812,6 +4122,8 @@ public class LinuxWifiRadioTests
         public Task<LinuxNl80211DumpResult<LinuxNl80211BssInfo>> DumpBssAsync(ushort nl80211FamilyId, int ifindex, ulong expectedWdev, CancellationToken cancellationToken = default)
         {
             DumpBssCallCount++;
+            LastDumpBssIfIndex = ifindex;
+            LastDumpBssWdev = expectedWdev;
             if (_bssDumpQueue.Count > 0)
             {
                 return Task.FromResult(_bssDumpQueue.Dequeue());
