@@ -1,4 +1,3 @@
-using Microsoft.Win32.SafeHandles;
 using System.Text.Json;
 using IEM.Storage.Layout;
 
@@ -59,17 +58,9 @@ public sealed class LinuxSessionModeProvisioner : IStorageProtectionProvider
                 normSessionRoot = normSessionRoot.Substring(2);
             }
 
-            try
-            {
-                // Ensure StateRoot directory exists on disk
-                Directory.CreateDirectory(normStateRoot);
-            }
-            catch
-            {
-                // In simulated or test environment
-            }
-
-            // 1. Open StateRoot FD
+            // 1. R2-C: Open StateRoot FD - StateRoot in system mode is VERIFY-ONLY.
+            // It MUST already exist, be a directory, have mode 0700 and correct ownership.
+            // NO Directory.CreateDirectory(StateRoot) and NO Fchmod(StateRoot).
             var rootFd = _posix.Open(normStateRoot, LinuxPosixStorageConstants.O_RDONLY | LinuxPosixStorageConstants.O_DIRECTORY | LinuxPosixStorageConstants.O_NOFOLLOW | LinuxPosixStorageConstants.O_CLOEXEC, 0);
             if (rootFd < 0)
             {
@@ -78,14 +69,13 @@ public sealed class LinuxSessionModeProvisioner : IStorageProtectionProvider
                     layout.StoragePolicyVersion, layout.StoragePolicyHash,
                     StorageProtectionState.NotEstablished,
                     RootBoundaryValid: false, ReparsePointCheck: false,
-                    DiagnosticMessage: $"Nije moguće otvoriti autoritativni koren '{normStateRoot}'.");
+                    DiagnosticMessage: $"Autoritativni StateRoot '{normStateRoot}' ne postoji ili se ne može otvoriti.");
             }
 
             var openFds = new List<int> { rootFd };
 
             try
             {
-                // Ensure trusted root is exactly 0700
                 if (_posix.Fstat(rootFd, out var rootStat) != 0 || !rootStat.IsDirectory)
                 {
                     return new StorageProtectionObservation(
@@ -93,13 +83,40 @@ public sealed class LinuxSessionModeProvisioner : IStorageProtectionProvider
                         layout.StoragePolicyVersion, layout.StoragePolicyHash,
                         StorageProtectionState.NotEstablished,
                         RootBoundaryValid: false, ReparsePointCheck: false,
-                        DiagnosticMessage: $"Autoritativni koren '{normStateRoot}' nije validan direktorijum.");
+                        DiagnosticMessage: $"Autoritativni StateRoot '{normStateRoot}' nije validan direktorijum.");
                 }
 
-                // If root exists but was just created or owned, ensure mode 0700
-                if ((rootStat.PermissionBits & LinuxPosixStorageConstants.Mode0700) != LinuxPosixStorageConstants.Mode0700)
+                // Verify exact mode 0700 and ownership on StateRoot (ZERO repair!)
+                if ((rootStat.PermissionBits & 0x1FF) != LinuxPosixStorageConstants.Mode0700)
                 {
-                    _posix.Fchmod(rootFd, LinuxPosixStorageConstants.Mode0700);
+                    return new StorageProtectionObservation(
+                        obsId, layout.SessionId, now, PlatformName, layout.LayoutVersion,
+                        layout.StoragePolicyVersion, layout.StoragePolicyHash,
+                        StorageProtectionState.NotEstablished,
+                        RootBoundaryValid: false, ReparsePointCheck: false,
+                        DiagnosticMessage: $"StateRoot '{normStateRoot}' ima neispravne permisije 0{Convert.ToString(rootStat.PermissionBits, 8)} (zahteva se 0700, tiha popravka je zabranjena).");
+                }
+
+                if (_ownershipPolicy.EnforceExactOwnership)
+                {
+                    if (_ownershipPolicy.ExpectedUid.HasValue && rootStat.Uid != _ownershipPolicy.ExpectedUid.Value)
+                    {
+                        return new StorageProtectionObservation(
+                            obsId, layout.SessionId, now, PlatformName, layout.LayoutVersion,
+                            layout.StoragePolicyVersion, layout.StoragePolicyHash,
+                            StorageProtectionState.NotEstablished,
+                            RootBoundaryValid: false, ReparsePointCheck: false,
+                            DiagnosticMessage: $"StateRoot '{normStateRoot}' ima neispravnog vlasnika UID {rootStat.Uid} (očekivano {_ownershipPolicy.ExpectedUid.Value}).");
+                    }
+                    if (_ownershipPolicy.ExpectedGid.HasValue && rootStat.Gid != _ownershipPolicy.ExpectedGid.Value)
+                    {
+                        return new StorageProtectionObservation(
+                            obsId, layout.SessionId, now, PlatformName, layout.LayoutVersion,
+                            layout.StoragePolicyVersion, layout.StoragePolicyHash,
+                            StorageProtectionState.NotEstablished,
+                            RootBoundaryValid: false, ReparsePointCheck: false,
+                            DiagnosticMessage: $"StateRoot '{normStateRoot}' ima neispravnu grupu GID {rootStat.Gid} (očekivano {_ownershipPolicy.ExpectedGid.Value}).");
+                    }
                 }
 
                 // Relative path from StateRoot to sessionRoot
@@ -118,13 +135,22 @@ public sealed class LinuxSessionModeProvisioner : IStorageProtectionProvider
 
                 var currentFd = rootFd;
 
-                // Step-by-step FD-relative mkdirat and openat2
+                // 2. R2-B: Step-by-step FD-relative traversal with NO-REPAIR of existing objects
                 foreach (var seg in sessionSegments)
                 {
-                    if (_posix.FstatAt(currentFd, seg, out var stat, LinuxPosixStorageConstants.AT_SYMLINK_NOFOLLOW) != 0)
+                    bool existed = _posix.FstatAt(currentFd, seg, out var segStat, LinuxPosixStorageConstants.AT_SYMLINK_NOFOLLOW) == 0;
+                    if (!existed)
                     {
-                        // Create segment with mode 0700
-                        _posix.MkdirAt(currentFd, seg, LinuxPosixStorageConstants.Mode0700);
+                        // Object is newly created -> MkdirAt(0700) and Fchmod(0700) is allowed
+                        if (_posix.MkdirAt(currentFd, seg, LinuxPosixStorageConstants.Mode0700) != 0)
+                        {
+                            return new StorageProtectionObservation(
+                                obsId, layout.SessionId, now, PlatformName, layout.LayoutVersion,
+                                layout.StoragePolicyVersion, layout.StoragePolicyHash,
+                                StorageProtectionState.NotEstablished,
+                                RootBoundaryValid: false, ReparsePointCheck: false,
+                                DiagnosticMessage: $"mkdirat nije uspeo za segment '{seg}'.");
+                        }
                     }
 
                     var openHow = new OpenHow
@@ -142,23 +168,60 @@ public sealed class LinuxSessionModeProvisioner : IStorageProtectionProvider
                             layout.StoragePolicyVersion, layout.StoragePolicyHash,
                             StorageProtectionState.NotEstablished,
                             RootBoundaryValid: false, ReparsePointCheck: false,
-                            DiagnosticMessage: $"Nije moguće bezbedno kreirati ili otvoriti segment sesije '{seg}'.");
+                            DiagnosticMessage: $"Nije moguće bezbedno otvoriti segment sesije '{seg}' kroz openat2.");
                     }
 
                     openFds.Add(nextFd);
-                    _posix.Fchmod(nextFd, LinuxPosixStorageConstants.Mode0700);
+
+                    if (_posix.Fstat(nextFd, out var fdStat) != 0 || !fdStat.IsDirectory)
+                    {
+                        return new StorageProtectionObservation(
+                            obsId, layout.SessionId, now, PlatformName, layout.LayoutVersion,
+                            layout.StoragePolicyVersion, layout.StoragePolicyHash,
+                            StorageProtectionState.NotEstablished,
+                            RootBoundaryValid: false, ReparsePointCheck: false,
+                            DiagnosticMessage: $"Segment '{seg}' nije validan direktorijum.");
+                    }
+
+                    if (existed)
+                    {
+                        // Invariant 80: Existing object MUST strictly have mode 0700 and correct owner. NEVER chmod/chown!
+                        if ((fdStat.PermissionBits & 0x1FF) != LinuxPosixStorageConstants.Mode0700)
+                        {
+                            return new StorageProtectionObservation(
+                                obsId, layout.SessionId, now, PlatformName, layout.LayoutVersion,
+                                layout.StoragePolicyVersion, layout.StoragePolicyHash,
+                                StorageProtectionState.NotEstablished,
+                                RootBoundaryValid: false, ReparsePointCheck: false,
+                                DiagnosticMessage: $"Postojeći segment '{seg}' ima neispravne permisije 0{Convert.ToString(fdStat.PermissionBits, 8)} (zahteva se 0700, tiha popravka je zabranjena).");
+                        }
+                    }
+                    else
+                    {
+                        _posix.Fchmod(nextFd, LinuxPosixStorageConstants.Mode0700);
+                    }
+
                     currentFd = nextFd;
                 }
 
                 var sessionFd = currentFd;
 
-                // 2. Create semantic subdirectories (Raw, Evidence, Derived, Exports) with mode 0700
+                // 3. R2-B: Semantic subdirectories (Raw, Evidence, Derived, Exports) with NO-REPAIR of existing
                 var areaNames = new[] { "Raw", "Evidence", "Derived", "Exports" };
                 foreach (var area in areaNames)
                 {
-                    if (_posix.FstatAt(sessionFd, area, out _, LinuxPosixStorageConstants.AT_SYMLINK_NOFOLLOW) != 0)
+                    bool areaExisted = _posix.FstatAt(sessionFd, area, out var areaStat, LinuxPosixStorageConstants.AT_SYMLINK_NOFOLLOW) == 0;
+                    if (!areaExisted)
                     {
-                        _posix.MkdirAt(sessionFd, area, LinuxPosixStorageConstants.Mode0700);
+                        if (_posix.MkdirAt(sessionFd, area, LinuxPosixStorageConstants.Mode0700) != 0)
+                        {
+                            return new StorageProtectionObservation(
+                                obsId, layout.SessionId, now, PlatformName, layout.LayoutVersion,
+                                layout.StoragePolicyVersion, layout.StoragePolicyHash,
+                                StorageProtectionState.NotEstablished,
+                                RootBoundaryValid: false, ReparsePointCheck: false,
+                                DiagnosticMessage: $"mkdirat nije uspeo za podzonu '{area}'.");
+                        }
                     }
 
                     var areaHow = new OpenHow
@@ -169,37 +232,91 @@ public sealed class LinuxSessionModeProvisioner : IStorageProtectionProvider
                     };
 
                     int areaFd = _posix.OpenAt2(sessionFd, area, ref areaHow);
-                    if (areaFd >= 0)
+                    if (areaFd < 0)
                     {
-                        _posix.Fchmod(areaFd, LinuxPosixStorageConstants.Mode0700);
+                        return new StorageProtectionObservation(
+                            obsId, layout.SessionId, now, PlatformName, layout.LayoutVersion,
+                            layout.StoragePolicyVersion, layout.StoragePolicyHash,
+                            StorageProtectionState.NotEstablished,
+                            RootBoundaryValid: false, ReparsePointCheck: false,
+                            DiagnosticMessage: $"Nije moguće bezbedno otvoriti podzonu '{area}' kroz openat2.");
+                    }
+
+                    try
+                    {
+                        if (_posix.Fstat(areaFd, out var fdStat) != 0 || !fdStat.IsDirectory)
+                        {
+                            return new StorageProtectionObservation(
+                                obsId, layout.SessionId, now, PlatformName, layout.LayoutVersion,
+                                layout.StoragePolicyVersion, layout.StoragePolicyHash,
+                                StorageProtectionState.NotEstablished,
+                                RootBoundaryValid: false, ReparsePointCheck: false,
+                                DiagnosticMessage: $"Podzona '{area}' nije validan direktorijum.");
+                        }
+
+                        if (areaExisted)
+                        {
+                            // Invariant 80: Existing area directory MUST be strictly 0700 (NO chmod!)
+                            if ((fdStat.PermissionBits & 0x1FF) != LinuxPosixStorageConstants.Mode0700)
+                            {
+                                return new StorageProtectionObservation(
+                                    obsId, layout.SessionId, now, PlatformName, layout.LayoutVersion,
+                                    layout.StoragePolicyVersion, layout.StoragePolicyHash,
+                                    StorageProtectionState.NotEstablished,
+                                    RootBoundaryValid: false, ReparsePointCheck: false,
+                                    DiagnosticMessage: $"Postojeća podzona '{area}' ima neispravne permisije 0{Convert.ToString(fdStat.PermissionBits, 8)} (zahteva se 0700, tiha popravka je zabranjena).");
+                            }
+                        }
+                        else
+                        {
+                            _posix.Fchmod(areaFd, LinuxPosixStorageConstants.Mode0700);
+                        }
+                    }
+                    finally
+                    {
                         _posix.Close(areaFd);
                     }
                 }
 
-                // 3. Write layout.json atomically with mode 0600
-                var layoutPath = Path.Combine(sessionRoot, SessionLayoutDescriptor.FileName);
+                // 4. R2-D & R2-E: Write layout.json FD-relatively with O_CREAT | O_EXCL (refuse overwrite if exists!)
+                var layoutBytes = layout.ToCanonicalBytes();
                 var layoutHow = new OpenHow
                 {
-                    Flags = (ulong)(LinuxPosixStorageConstants.O_CREAT | LinuxPosixStorageConstants.O_WRONLY | LinuxPosixStorageConstants.O_CLOEXEC),
+                    Flags = (ulong)(LinuxPosixStorageConstants.O_CREAT | LinuxPosixStorageConstants.O_EXCL | LinuxPosixStorageConstants.O_WRONLY | LinuxPosixStorageConstants.O_CLOEXEC),
                     Mode = (ulong)LinuxPosixStorageConstants.Mode0600,
                     Resolve = LinuxPosixStorageConstants.RESOLVE_BENEATH | LinuxPosixStorageConstants.RESOLVE_NO_SYMLINKS | LinuxPosixStorageConstants.RESOLVE_NO_XDEV | LinuxPosixStorageConstants.RESOLVE_NO_MAGICLINKS
                 };
+
                 int layoutFd = _posix.OpenAt2(sessionFd, SessionLayoutDescriptor.FileName, ref layoutHow);
-                if (layoutFd >= 0)
+                if (layoutFd < 0)
                 {
-                    _posix.Fchmod(layoutFd, LinuxPosixStorageConstants.Mode0600);
-                    _posix.Close(layoutFd);
+                    // File already exists or openat2 refused creation -> Invariant 80: refuse silent overwrite!
+                    return new StorageProtectionObservation(
+                        obsId, layout.SessionId, now, PlatformName, layout.LayoutVersion,
+                        layout.StoragePolicyVersion, layout.StoragePolicyHash,
+                        StorageProtectionState.NotEstablished,
+                        RootBoundaryValid: false, ReparsePointCheck: false,
+                        DiagnosticMessage: $"Nije moguće kreirati '{SessionLayoutDescriptor.FileName}' kroz openat2 (fajl već postoji ili je kreiranje odbijeno).");
                 }
 
                 try
                 {
-                    var layoutTmp = layoutPath + ".tmp";
-                    await File.WriteAllBytesAsync(layoutTmp, layout.ToCanonicalBytes(), ct).ConfigureAwait(false);
-                    File.Move(layoutTmp, layoutPath, overwrite: true);
+                    int written = _posix.Write(layoutFd, layoutBytes);
+                    if (written != layoutBytes.Length)
+                    {
+                        return new StorageProtectionObservation(
+                            obsId, layout.SessionId, now, PlatformName, layout.LayoutVersion,
+                            layout.StoragePolicyVersion, layout.StoragePolicyHash,
+                            StorageProtectionState.NotEstablished,
+                            RootBoundaryValid: false, ReparsePointCheck: false,
+                            DiagnosticMessage: $"Upisivanje u '{SessionLayoutDescriptor.FileName}' nije uspelo ({written}/{layoutBytes.Length} bajtova).");
+                    }
+
+                    _posix.Fsync(layoutFd);
                 }
-                catch
+                finally
                 {
-                    // If running pure in-memory posix simulation where host path doesn't exist
+                    _posix.Close(layoutFd);
                 }
             }
             finally
@@ -210,7 +327,7 @@ public sealed class LinuxSessionModeProvisioner : IStorageProtectionProvider
                 }
             }
 
-            // 4. Run full verification from StateRoot to assert Established state
+            // 5. Run full verification from StateRoot to assert Established state
             return await VerifyStorageProtectionAsync(sessionRoot, layout, ct).ConfigureAwait(false);
         }
         catch (Exception ex)
@@ -294,8 +411,81 @@ public sealed class LinuxSessionModeProvisioner : IStorageProtectionProvider
                 DiagnosticMessage: layoutCheck.ViolationMessage ?? $"Deskriptor '{SessionLayoutDescriptor.FileName}' je nebezbedan.");
         }
 
-        // 4. Validate layout.json content and SessionId match if file exists on disk
-        if (File.Exists(layoutPath))
+        // 4. R2-E: Open and read layout.json from the SAME FD (eliminated TOCTOU gap!)
+        int sessionFd = _posix.Open(normSessionRoot, LinuxPosixStorageConstants.O_RDONLY | LinuxPosixStorageConstants.O_DIRECTORY | LinuxPosixStorageConstants.O_NOFOLLOW | LinuxPosixStorageConstants.O_CLOEXEC, 0);
+        if (sessionFd >= 0)
+        {
+            try
+            {
+                var layoutHow = new OpenHow
+                {
+                    Flags = LinuxPosixStorageConstants.O_RDONLY | LinuxPosixStorageConstants.O_CLOEXEC,
+                    Mode = 0,
+                    Resolve = LinuxPosixStorageConstants.RESOLVE_BENEATH | LinuxPosixStorageConstants.RESOLVE_NO_SYMLINKS | LinuxPosixStorageConstants.RESOLVE_NO_XDEV | LinuxPosixStorageConstants.RESOLVE_NO_MAGICLINKS
+                };
+
+                int layoutFd = _posix.OpenAt2(sessionFd, SessionLayoutDescriptor.FileName, ref layoutHow);
+                if (layoutFd < 0)
+                {
+                    return new StorageProtectionObservation(
+                        obsId, layout.SessionId, now, PlatformName, layout.LayoutVersion,
+                        layout.StoragePolicyVersion, layout.StoragePolicyHash,
+                        StorageProtectionState.NotEstablished,
+                        RootBoundaryValid: true, ReparsePointCheck: false,
+                        DiagnosticMessage: $"Nije moguće bezbedno otvoriti '{SessionLayoutDescriptor.FileName}' kroz openat2.");
+                }
+
+                try
+                {
+                    if (_posix.Fstat(layoutFd, out var fdStat) != 0 || !fdStat.IsRegularFile)
+                    {
+                        return new StorageProtectionObservation(
+                            obsId, layout.SessionId, now, PlatformName, layout.LayoutVersion,
+                            layout.StoragePolicyVersion, layout.StoragePolicyHash,
+                            StorageProtectionState.NotEstablished,
+                            RootBoundaryValid: true, ReparsePointCheck: false,
+                            DiagnosticMessage: $"Deskriptor '{SessionLayoutDescriptor.FileName}' nije validan regularni fajl.");
+                    }
+
+                    if (fdStat.Size > 65536)
+                    {
+                        return new StorageProtectionObservation(
+                            obsId, layout.SessionId, now, PlatformName, layout.LayoutVersion,
+                            layout.StoragePolicyVersion, layout.StoragePolicyHash,
+                            StorageProtectionState.NotEstablished,
+                            RootBoundaryValid: true, ReparsePointCheck: false,
+                            DiagnosticMessage: $"Deskriptor '{SessionLayoutDescriptor.FileName}' premašuje maksimalnu dozvoljenu veličinu.");
+                    }
+
+                    var buffer = new byte[(int)fdStat.Size];
+                    int read = _posix.Read(layoutFd, buffer);
+                    if (read == buffer.Length && buffer.Length > 0)
+                    {
+                        var loaded = SessionLayoutDescriptor.FromCanonicalBytes(buffer);
+                        if (loaded == null || loaded.SessionId != layout.SessionId)
+                        {
+                            return new StorageProtectionObservation(
+                                obsId, layout.SessionId, now, PlatformName, layout.LayoutVersion,
+                                layout.StoragePolicyVersion, layout.StoragePolicyHash,
+                                StorageProtectionState.NotEstablished,
+                                RootBoundaryValid: true, ReparsePointCheck: false,
+                                DiagnosticMessage: loaded == null
+                                    ? $"Deskriptor '{SessionLayoutDescriptor.FileName}' nije validan JSON."
+                                    : $"Deskriptor sadrži neslaganje SessionId: '{loaded.SessionId}' umesto očekivanog '{layout.SessionId}'.");
+                        }
+                    }
+                }
+                finally
+                {
+                    _posix.Close(layoutFd);
+                }
+            }
+            finally
+            {
+                _posix.Close(sessionFd);
+            }
+        }
+        else if (File.Exists(layoutPath))
         {
             try
             {

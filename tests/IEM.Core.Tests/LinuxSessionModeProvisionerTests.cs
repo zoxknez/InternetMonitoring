@@ -1,4 +1,6 @@
 using System.Net;
+using System.Runtime.InteropServices;
+using System.Text;
 using IEM.Core.Hosting;
 using IEM.Core.Model;
 using IEM.Core.Probes;
@@ -9,8 +11,6 @@ using IEM.Storage.Evidence;
 using IEM.Storage.Layout;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
 using Xunit;
 
 namespace IEM.Core.Tests;
@@ -41,6 +41,13 @@ public sealed class LinuxSessionModeProvisionerTests : IDisposable
         {
             // Best effort cleanup
         }
+    }
+
+    // R2-A: struct stat size must match Linux glibc x86_64 ABI exactly (144 bytes)
+    [Fact]
+    public void PosixStat_Matches_Glibc_X64_ABI()
+    {
+        Assert.Equal(144, Marshal.SizeOf<PosixStat>());
     }
 
     // 1. Safe canonical tree: exact 0700 and 0600 yield Established
@@ -290,6 +297,188 @@ public sealed class LinuxSessionModeProvisionerTests : IDisposable
         Assert.True(verObs.ProtectionState == StorageProtectionState.Established, $"Verify failed: {verObs.DiagnosticMessage}");
     }
 
+    // R2-B: Invariant 80: Existing session directory with 0755 mode FAILS closed and is NEVER fchmod repaired
+    [Fact]
+    public async Task Provision_Existing_Session_With_0755_Returns_NotEstablished_And_Never_Fchmods()
+    {
+        var mock = new MockPosixStorageApi();
+        mock.AddEntry("/var/lib/internet-evidence-monitor", isDir: true, isSymlink: false, mode: 0x1C0, uid: 1000, gid: 1000);
+        mock.AddEntry("/var/lib/internet-evidence-monitor/sessions", isDir: true, isSymlink: false, mode: 0x1C0, uid: 1000, gid: 1000);
+        mock.AddEntry("/var/lib/internet-evidence-monitor/sessions/Sesija_20260820_0755", isDir: true, isSymlink: false, mode: 0x1ED, uid: 1000, gid: 1000); // 0755 drift!
+
+        var policy = LinuxStorageOwnershipPolicy.CreateSystem(uid: 1000, gid: 1000);
+        var guard = new LinuxSymlinkGuard(mock, policy);
+        var provisioner = new LinuxSessionModeProvisioner(
+            stateRoot: "/var/lib/internet-evidence-monitor",
+            symlinkGuard: guard,
+            posix: mock,
+            ownershipPolicy: policy);
+
+        var sessionDir = "/var/lib/internet-evidence-monitor/sessions/Sesija_20260820_0755";
+        var layout = SessionLayoutDescriptor.CreateStandard("20260820_0755");
+
+        var provObs = await provisioner.ProvisionSessionBoundariesAsync(sessionDir, layout);
+        Assert.Equal(StorageProtectionState.NotEstablished, provObs.ProtectionState);
+        Assert.Contains("0755", provObs.DiagnosticMessage);
+        Assert.Equal(0, mock.FchmodCallCount); // ZERO repair!
+    }
+
+    // R2-B: Invariant 80: Existing Raw area with 0750 mode FAILS closed and is NEVER repaired
+    [Fact]
+    public async Task Provision_Existing_Raw_With_0750_Returns_NotEstablished_And_Never_Repairs()
+    {
+        var mock = new MockPosixStorageApi();
+        mock.AddEntry("/var/lib/internet-evidence-monitor", isDir: true, isSymlink: false, mode: 0x1C0, uid: 1000, gid: 1000);
+        mock.AddEntry("/var/lib/internet-evidence-monitor/sessions", isDir: true, isSymlink: false, mode: 0x1C0, uid: 1000, gid: 1000);
+        mock.AddEntry("/var/lib/internet-evidence-monitor/sessions/Sesija_20260820_0750", isDir: true, isSymlink: false, mode: 0x1C0, uid: 1000, gid: 1000);
+        mock.AddEntry("/var/lib/internet-evidence-monitor/sessions/Sesija_20260820_0750/Raw", isDir: true, isSymlink: false, mode: 0x1E8, uid: 1000, gid: 1000); // 0750 drift!
+
+        var policy = LinuxStorageOwnershipPolicy.CreateSystem(uid: 1000, gid: 1000);
+        var guard = new LinuxSymlinkGuard(mock, policy);
+        var provisioner = new LinuxSessionModeProvisioner(
+            stateRoot: "/var/lib/internet-evidence-monitor",
+            symlinkGuard: guard,
+            posix: mock,
+            ownershipPolicy: policy);
+
+        var sessionDir = "/var/lib/internet-evidence-monitor/sessions/Sesija_20260820_0750";
+        var layout = SessionLayoutDescriptor.CreateStandard("20260820_0750");
+
+        var provObs = await provisioner.ProvisionSessionBoundariesAsync(sessionDir, layout);
+        Assert.Equal(StorageProtectionState.NotEstablished, provObs.ProtectionState);
+        Assert.Contains("0750", provObs.DiagnosticMessage);
+        Assert.Equal(0, mock.FchmodCallCount); // ZERO repair!
+    }
+
+    // R2-D: Invariant 80: Existing layout.json with 0644 mode is NOT overwritten and refuses provisioning with O_EXCL
+    [Fact]
+    public async Task Provision_Existing_Layout_Refuses_Overwrite_With_O_EXCL()
+    {
+        var mock = new MockPosixStorageApi();
+        mock.AddEntry("/var/lib/internet-evidence-monitor", isDir: true, isSymlink: false, mode: 0x1C0, uid: 1000, gid: 1000);
+        mock.AddEntry("/var/lib/internet-evidence-monitor/sessions", isDir: true, isSymlink: false, mode: 0x1C0, uid: 1000, gid: 1000);
+        mock.AddEntry("/var/lib/internet-evidence-monitor/sessions/Sesija_20260820_excl", isDir: true, isSymlink: false, mode: 0x1C0, uid: 1000, gid: 1000);
+        mock.AddEntry("/var/lib/internet-evidence-monitor/sessions/Sesija_20260820_excl/layout.json", isDir: false, isSymlink: false, mode: 0x1A4, uid: 1000, gid: 1000); // 0644 existing file!
+
+        var policy = LinuxStorageOwnershipPolicy.CreateSystem(uid: 1000, gid: 1000);
+        var guard = new LinuxSymlinkGuard(mock, policy);
+        var provisioner = new LinuxSessionModeProvisioner(
+            stateRoot: "/var/lib/internet-evidence-monitor",
+            symlinkGuard: guard,
+            posix: mock,
+            ownershipPolicy: policy);
+
+        var sessionDir = "/var/lib/internet-evidence-monitor/sessions/Sesija_20260820_excl";
+        var layout = SessionLayoutDescriptor.CreateStandard("20260820_excl");
+
+        var provObs = await provisioner.ProvisionSessionBoundariesAsync(sessionDir, layout);
+        Assert.Equal(StorageProtectionState.NotEstablished, provObs.ProtectionState);
+        Assert.Contains("openat2", provObs.DiagnosticMessage);
+    }
+
+    // R2-B: Invariant 80: Wrong ownership is never fchown repaired
+    [Fact]
+    public async Task Existing_Wrong_Uid_Gid_Returns_NotEstablished_And_Never_Fchowns()
+    {
+        var mock = new MockPosixStorageApi();
+        mock.AddEntry("/var/lib/internet-evidence-monitor", isDir: true, isSymlink: false, mode: 0x1C0, uid: 1000, gid: 1000);
+        mock.AddEntry("/var/lib/internet-evidence-monitor/sessions", isDir: true, isSymlink: false, mode: 0x1C0, uid: 1000, gid: 1000);
+        mock.AddEntry("/var/lib/internet-evidence-monitor/sessions/Sesija_20260820_uid", isDir: true, isSymlink: false, mode: 0x1C0, uid: 0, gid: 0); // Root owned drift!
+
+        var policy = LinuxStorageOwnershipPolicy.CreateSystem(uid: 1000, gid: 1000);
+        var guard = new LinuxSymlinkGuard(mock, policy);
+        var provisioner = new LinuxSessionModeProvisioner(
+            stateRoot: "/var/lib/internet-evidence-monitor",
+            symlinkGuard: guard,
+            posix: mock,
+            ownershipPolicy: policy);
+
+        var sessionDir = "/var/lib/internet-evidence-monitor/sessions/Sesija_20260820_uid";
+        var layout = SessionLayoutDescriptor.CreateStandard("20260820_uid");
+
+        var provObs = await provisioner.ProvisionSessionBoundariesAsync(sessionDir, layout);
+        Assert.Equal(StorageProtectionState.NotEstablished, provObs.ProtectionState);
+        Assert.Equal(0, mock.FchownCallCount); // ZERO repair!
+    }
+
+    // R2-C: StateRoot in system mode with 0755 returns NotEstablished and remains 0755
+    [Fact]
+    public async Task StateRoot_With_0755_Returns_NotEstablished_And_Remains_0755()
+    {
+        var mock = new MockPosixStorageApi();
+        mock.AddEntry("/var/lib/internet-evidence-monitor", isDir: true, isSymlink: false, mode: 0x1ED, uid: 1000, gid: 1000); // 0755 on StateRoot!
+
+        var policy = LinuxStorageOwnershipPolicy.CreateSystem(uid: 1000, gid: 1000);
+        var guard = new LinuxSymlinkGuard(mock, policy);
+        var provisioner = new LinuxSessionModeProvisioner(
+            stateRoot: "/var/lib/internet-evidence-monitor",
+            symlinkGuard: guard,
+            posix: mock,
+            ownershipPolicy: policy);
+
+        var sessionDir = "/var/lib/internet-evidence-monitor/sessions/Sesija_20260820_stateroot";
+        var layout = SessionLayoutDescriptor.CreateStandard("20260820_stateroot");
+
+        var provObs = await provisioner.ProvisionSessionBoundariesAsync(sessionDir, layout);
+        Assert.Equal(StorageProtectionState.NotEstablished, provObs.ProtectionState);
+        Assert.Contains("0755", provObs.DiagnosticMessage);
+        Assert.Equal(0, mock.FchmodCallCount);
+    }
+
+    // R2-C: StateRoot missing in system mode returns NotEstablished without trying to create it
+    [Fact]
+    public async Task StateRoot_Missing_In_System_Mode_Returns_NotEstablished()
+    {
+        var mock = new MockPosixStorageApi(); // StateRoot not added!
+
+        var policy = LinuxStorageOwnershipPolicy.CreateSystem(uid: 1000, gid: 1000);
+        var guard = new LinuxSymlinkGuard(mock, policy);
+        var provisioner = new LinuxSessionModeProvisioner(
+            stateRoot: "/var/lib/internet-evidence-monitor",
+            symlinkGuard: guard,
+            posix: mock,
+            ownershipPolicy: policy);
+
+        var sessionDir = "/var/lib/internet-evidence-monitor/sessions/Sesija_20260820_missing";
+        var layout = SessionLayoutDescriptor.CreateStandard("20260820_missing");
+
+        var provObs = await provisioner.ProvisionSessionBoundariesAsync(sessionDir, layout);
+        Assert.Equal(StorageProtectionState.NotEstablished, provObs.ProtectionState);
+        Assert.Contains("ne postoji", provObs.DiagnosticMessage);
+    }
+
+    // R2-E: Verify reads layout from validated FD without pathname TOCTOU
+    [Fact]
+    public async Task Verify_Reads_Layout_From_Validated_FD_Without_Path_TOCTOU()
+    {
+        var mock = new MockPosixStorageApi();
+        mock.AddEntry("/var/lib/internet-evidence-monitor", isDir: true, isSymlink: false, mode: 0x1C0, uid: 1000, gid: 1000);
+        mock.AddEntry("/var/lib/internet-evidence-monitor/sessions", isDir: true, isSymlink: false, mode: 0x1C0, uid: 1000, gid: 1000);
+        mock.AddEntry("/var/lib/internet-evidence-monitor/sessions/Sesija_20260820_fd", isDir: true, isSymlink: false, mode: 0x1C0, uid: 1000, gid: 1000);
+        mock.AddEntry("/var/lib/internet-evidence-monitor/sessions/Sesija_20260820_fd/Raw", isDir: true, isSymlink: false, mode: 0x1C0, uid: 1000, gid: 1000);
+        mock.AddEntry("/var/lib/internet-evidence-monitor/sessions/Sesija_20260820_fd/Evidence", isDir: true, isSymlink: false, mode: 0x1C0, uid: 1000, gid: 1000);
+        mock.AddEntry("/var/lib/internet-evidence-monitor/sessions/Sesija_20260820_fd/Derived", isDir: true, isSymlink: false, mode: 0x1C0, uid: 1000, gid: 1000);
+        mock.AddEntry("/var/lib/internet-evidence-monitor/sessions/Sesija_20260820_fd/Exports", isDir: true, isSymlink: false, mode: 0x1C0, uid: 1000, gid: 1000);
+
+        var layout = SessionLayoutDescriptor.CreateStandard("20260820_fd");
+        var layoutBytes = layout.ToCanonicalBytes();
+        mock.AddEntry("/var/lib/internet-evidence-monitor/sessions/Sesija_20260820_fd/layout.json", isDir: false, isSymlink: false, mode: 0x180, uid: 1000, gid: 1000, content: layoutBytes);
+
+        var policy = LinuxStorageOwnershipPolicy.CreateSystem(uid: 1000, gid: 1000);
+        var guard = new LinuxSymlinkGuard(mock, policy);
+        var provisioner = new LinuxSessionModeProvisioner(
+            stateRoot: "/var/lib/internet-evidence-monitor",
+            symlinkGuard: guard,
+            posix: mock,
+            ownershipPolicy: policy);
+
+        var sessionDir = "/var/lib/internet-evidence-monitor/sessions/Sesija_20260820_fd";
+        var verObs = await provisioner.VerifyStorageProtectionAsync(sessionDir, layout);
+        Assert.Equal(StorageProtectionState.Established, verObs.ProtectionState);
+        Assert.True(verObs.RootBoundaryValid);
+        Assert.True(verObs.ReparsePointCheck);
+    }
+
     private sealed class FailingStorageProtectionProvider : IStorageProtectionProvider
     {
         public string PlatformName => "Failing";
@@ -313,25 +502,39 @@ public sealed class LinuxSessionModeProvisionerTests : IDisposable
 
     private sealed class MockPosixStorageApi : ILinuxPosixStorageApi
     {
-        private readonly Dictionary<string, PosixStat> _entries = new(StringComparer.Ordinal);
+        private sealed class FileEntry
+        {
+            public PosixStat Stat;
+            public byte[] Content = Array.Empty<byte>();
+        }
+
+        private readonly Dictionary<string, FileEntry> _entries = new(StringComparer.Ordinal);
         private int _fdCounter = 100;
         private readonly Dictionary<int, string> _openFds = new();
 
         public bool FailOpenAt2 { get; set; }
         public int OpenAtCallCount { get; private set; }
+        public int FchmodCallCount { get; private set; }
+        public int FchownCallCount { get; private set; }
 
-        public void AddEntry(string path, bool isDir, bool isSymlink, int mode, uint uid, uint gid)
+        public void AddEntry(string path, bool isDir, bool isSymlink, int mode, uint uid, uint gid, byte[]? content = null)
         {
             uint fullMode = (uint)mode;
             if (isSymlink) fullMode |= LinuxPosixStorageConstants.S_IFLNK;
             else if (isDir) fullMode |= LinuxPosixStorageConstants.S_IFDIR;
             else fullMode |= LinuxPosixStorageConstants.S_IFREG;
 
-            _entries[path.TrimEnd('/')] = new PosixStat
+            var bytes = content ?? Array.Empty<byte>();
+            _entries[path.TrimEnd('/')] = new FileEntry
             {
-                Mode = fullMode,
-                Uid = uid,
-                Gid = gid
+                Stat = new PosixStat
+                {
+                    Mode = fullMode,
+                    Uid = uid,
+                    Gid = gid,
+                    Size = bytes.Length
+                },
+                Content = bytes
             };
         }
 
@@ -367,7 +570,17 @@ public sealed class LinuxSessionModeProvisionerTests : IDisposable
             if (!_openFds.TryGetValue(dirfd, out var baseDir)) return -1;
             var fullPath = $"{baseDir}/{pathname}".TrimEnd('/');
 
-            if (!_entries.ContainsKey(fullPath) && (how.Flags & (ulong)LinuxPosixStorageConstants.O_CREAT) != 0)
+            bool exists = _entries.ContainsKey(fullPath);
+            bool isOcreat = (how.Flags & (ulong)LinuxPosixStorageConstants.O_CREAT) != 0;
+            bool isOexcl = (how.Flags & (ulong)LinuxPosixStorageConstants.O_EXCL) != 0;
+
+            if (exists && isOcreat && isOexcl)
+            {
+                // O_CREAT | O_EXCL on existing file returns -1 (EEXIST)
+                return -1;
+            }
+
+            if (!exists && isOcreat)
             {
                 AddEntry(fullPath, isDir: false, isSymlink: false, mode: (int)how.Mode, uid: 1000, gid: 1000);
             }
@@ -398,17 +611,20 @@ public sealed class LinuxSessionModeProvisionerTests : IDisposable
                 return -1;
             }
 
-            if (_entries.TryGetValue(fullPath, out statbuf))
+            if (_entries.TryGetValue(fullPath, out var entry))
             {
+                statbuf = entry.Stat;
                 return 0;
             }
+            statbuf = default;
             return -1;
         }
 
         public int Fstat(int fd, out PosixStat statbuf)
         {
-            if (_openFds.TryGetValue(fd, out var path) && _entries.TryGetValue(path, out statbuf))
+            if (_openFds.TryGetValue(fd, out var path) && _entries.TryGetValue(path, out var entry))
             {
+                statbuf = entry.Stat;
                 return 0;
             }
             statbuf = default;
@@ -428,26 +644,58 @@ public sealed class LinuxSessionModeProvisionerTests : IDisposable
 
         public int Fchmod(int fd, int mode)
         {
-            if (_openFds.TryGetValue(fd, out var path) && _entries.TryGetValue(path, out var stat))
+            FchmodCallCount++;
+            if (_openFds.TryGetValue(fd, out var path) && _entries.TryGetValue(path, out var entry))
             {
-                uint cleanMode = (stat.Mode & ~0x1FFu) | (uint)(mode & 0x1FF);
-                _entries[path] = new PosixStat
-                {
-                    Mode = cleanMode,
-                    Uid = stat.Uid,
-                    Gid = stat.Gid
-                };
+                uint cleanMode = (entry.Stat.Mode & ~0x1FFu) | (uint)(mode & 0x1FF);
+                entry.Stat.Mode = cleanMode;
                 return 0;
             }
             return -1;
         }
 
-        public int Fchown(int fd, uint uid, uint gid) => 0;
+        public int Fchown(int fd, uint uid, uint gid)
+        {
+            FchownCallCount++;
+            if (_openFds.TryGetValue(fd, out var path) && _entries.TryGetValue(path, out var entry))
+            {
+                entry.Stat.Uid = uid;
+                entry.Stat.Gid = gid;
+                return 0;
+            }
+            return -1;
+        }
+
+        public int Write(int fd, ReadOnlySpan<byte> buffer)
+        {
+            if (_openFds.TryGetValue(fd, out var path) && _entries.TryGetValue(path, out var entry))
+            {
+                entry.Content = buffer.ToArray();
+                entry.Stat.Size = entry.Content.Length;
+                return entry.Content.Length;
+            }
+            return -1;
+        }
+
+        public int Read(int fd, Span<byte> buffer)
+        {
+            if (_openFds.TryGetValue(fd, out var path) && _entries.TryGetValue(path, out var entry))
+            {
+                int toCopy = Math.Min(buffer.Length, entry.Content.Length);
+                entry.Content.AsSpan(0, toCopy).CopyTo(buffer);
+                return toCopy;
+            }
+            return -1;
+        }
+
+        public int Fsync(int fd) => 0;
+
         public int Close(int fd)
         {
             _openFds.Remove(fd);
             return 0;
         }
+
         public uint GetEuid() => 1000;
         public uint GetEgid() => 1000;
     }

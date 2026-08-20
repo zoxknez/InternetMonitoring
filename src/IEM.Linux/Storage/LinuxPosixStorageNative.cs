@@ -31,6 +31,9 @@ public static class LinuxPosixStorageConstants
     public const int Mode0600 = 0x180; // rw------- (384 decimal, 0600 octal)
 }
 
+/// <summary>
+/// Managed layout matching Linux glibc x86_64 struct stat (exactly 144 bytes).
+/// </summary>
 [StructLayout(LayoutKind.Sequential)]
 public struct PosixStat
 {
@@ -51,6 +54,9 @@ public struct PosixStat
     public long MtimNsec;
     public long CtimSec;
     public long CtimNsec;
+    public long Reserved0;
+    public long Reserved1;
+    public long Reserved2;
 
     public bool IsDirectory => (Mode & LinuxPosixStorageConstants.S_IFMT) == LinuxPosixStorageConstants.S_IFDIR;
     public bool IsRegularFile => (Mode & LinuxPosixStorageConstants.S_IFMT) == LinuxPosixStorageConstants.S_IFREG;
@@ -76,6 +82,9 @@ public interface ILinuxPosixStorageApi
     int MkdirAt(int dirfd, string pathname, int mode);
     int Fchmod(int fd, int mode);
     int Fchown(int fd, uint uid, uint gid);
+    int Write(int fd, ReadOnlySpan<byte> buffer);
+    int Read(int fd, Span<byte> buffer);
+    int Fsync(int fd);
     int Close(int fd);
     uint GetEuid();
     uint GetEgid();
@@ -106,6 +115,15 @@ public sealed class LinuxNativePosixStorageApi : ILinuxPosixStorageApi
 
     [DllImport(LibC, EntryPoint = "fchown", SetLastError = true)]
     private static extern int NativeFchown(int fd, uint uid, uint gid);
+
+    [DllImport(LibC, EntryPoint = "write", SetLastError = true)]
+    private static extern unsafe nint NativeWrite(int fd, byte* buf, nuint count);
+
+    [DllImport(LibC, EntryPoint = "read", SetLastError = true)]
+    private static extern unsafe nint NativeRead(int fd, byte* buf, nuint count);
+
+    [DllImport(LibC, EntryPoint = "fsync", SetLastError = true)]
+    private static extern int NativeFsync(int fd);
 
     [DllImport(LibC, EntryPoint = "close", SetLastError = true)]
     private static extern int NativeClose(int fd);
@@ -156,6 +174,27 @@ public sealed class LinuxNativePosixStorageApi : ILinuxPosixStorageApi
 
     public int Fchown(int fd, uint uid, uint gid) =>
         OperatingSystem.IsLinux() ? NativeFchown(fd, uid, gid) : -1;
+
+    public unsafe int Write(int fd, ReadOnlySpan<byte> buffer)
+    {
+        if (!OperatingSystem.IsLinux() || buffer.IsEmpty) return 0;
+        fixed (byte* ptr = buffer)
+        {
+            return (int)NativeWrite(fd, ptr, (nuint)buffer.Length);
+        }
+    }
+
+    public unsafe int Read(int fd, Span<byte> buffer)
+    {
+        if (!OperatingSystem.IsLinux() || buffer.IsEmpty) return 0;
+        fixed (byte* ptr = buffer)
+        {
+            return (int)NativeRead(fd, ptr, (nuint)buffer.Length);
+        }
+    }
+
+    public int Fsync(int fd) =>
+        OperatingSystem.IsLinux() ? NativeFsync(fd) : -1;
 
     public int Close(int fd) =>
         OperatingSystem.IsLinux() ? NativeClose(fd) : -1;
