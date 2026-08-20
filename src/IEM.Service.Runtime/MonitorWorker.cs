@@ -26,7 +26,7 @@ public sealed class MonitorWorker(
     IPowerEventSource powerEvents,
     IPlatformStorageLayout storageLayout,
     IHostApplicationLifetime lifetime,
-    IStorageProtectionProvider? storageProtection = null) : BackgroundService
+    IStorageProtectionProvider storageProtection) : BackgroundService
 {
     private readonly MonitorSettings _settings = settings.Value;
 
@@ -128,29 +128,22 @@ public sealed class MonitorWorker(
         }
 
         // Invariant 81: Storage boundary must be Established before creating probes or recorder
-        if (storageProtection != null)
+        var layoutDesc = SessionLayoutDescriptor.CreateStandard(plan.SessionId);
+        if (plan.Resume is null)
         {
-            var layoutDesc = SessionLayoutDescriptor.CreateStandard(plan.SessionId);
-            if (plan.Resume is null)
+            var provObs = await storageProtection.ProvisionSessionBoundariesAsync(plan.Paths.Directory, layoutDesc, stoppingToken).ConfigureAwait(false);
+            if (provObs.ProtectionState != StorageProtectionState.Established)
             {
-                var provObs = await storageProtection.ProvisionSessionBoundariesAsync(plan.Paths.Directory, layoutDesc, stoppingToken).ConfigureAwait(false);
-                if (provObs.ProtectionState != StorageProtectionState.Established)
-                {
-                    logger.LogCritical("Sigurnosna granica sesije nije uspostavljena (Provision): {Error}", provObs.DiagnosticMessage);
-                    throw new InvalidOperationException($"Storage boundary provision failed: {provObs.DiagnosticMessage}");
-                }
-            }
-
-            var verObs = await storageProtection.VerifyStorageProtectionAsync(plan.Paths.Directory, layoutDesc, stoppingToken).ConfigureAwait(false);
-            if (verObs.ProtectionState != StorageProtectionState.Established)
-            {
-                logger.LogCritical("Sigurnosna granica sesije nije verifikovana (Verify): {Error}", verObs.DiagnosticMessage);
-                throw new InvalidOperationException($"Storage boundary verification failed: {verObs.DiagnosticMessage}");
+                logger.LogCritical("Sigurnosna granica sesije nije uspostavljena (Provision): {Error}", provObs.DiagnosticMessage);
+                throw new InvalidOperationException($"Storage boundary provision failed: {provObs.DiagnosticMessage}");
             }
         }
-        else
+
+        var verObs = await storageProtection.VerifyStorageProtectionAsync(plan.Paths.Directory, layoutDesc, stoppingToken).ConfigureAwait(false);
+        if (verObs.ProtectionState != StorageProtectionState.Established)
         {
-            Directory.CreateDirectory(plan.Paths.Directory);
+            logger.LogCritical("Sigurnosna granica sesije nije verifikovana (Verify): {Error}", verObs.DiagnosticMessage);
+            throw new InvalidOperationException($"Storage boundary verification failed: {verObs.DiagnosticMessage}");
         }
 
         MeasurementMarker.Clear(outputRoot);
@@ -282,7 +275,6 @@ public sealed class MonitorWorker(
             switch (analysis.Decision)
             {
                 case ResumeDecision.Resumable:
-                    if (storageProtection != null)
                     {
                         var layoutDesc = SessionLayoutDescriptor.CreateStandard(analysis.Start!.SessionId);
                         var verObs = await storageProtection.VerifyStorageProtectionAsync(analysis.Paths!.Directory, layoutDesc, ct).ConfigureAwait(false);
@@ -304,7 +296,6 @@ public sealed class MonitorWorker(
                         Start: null);
 
                 case ResumeDecision.Expired:
-                    if (storageProtection != null)
                     {
                         var layoutDesc = SessionLayoutDescriptor.CreateStandard(analysis.Start!.SessionId);
                         var verObs = await storageProtection.VerifyStorageProtectionAsync(analysis.Paths!.Directory, layoutDesc, ct).ConfigureAwait(false);

@@ -30,6 +30,18 @@ builder.Services.AddSingleton<LinuxLogindPowerSource>();
 builder.Services.AddSingleton<IPowerEventSource>(sp => sp.GetRequiredService<LinuxLogindPowerSource>());
 builder.Services.AddHostedService(sp => sp.GetRequiredService<LinuxLogindPowerSource>());
 builder.Services.AddSingleton<IPlatformStorageLayout>(IEM.Linux.Storage.LinuxStorageLayout.Instance);
+builder.Services.AddSingleton<IEM.Linux.Storage.ILinuxPosixStorageApi, IEM.Linux.Storage.LinuxNativePosixStorageApi>();
+builder.Services.AddSingleton(sp =>
+{
+    var posix = sp.GetRequiredService<IEM.Linux.Storage.ILinuxPosixStorageApi>();
+    var uid = posix.GetEuid();
+    var gid = posix.GetEgid();
+    if (uid == 0)
+    {
+        throw new InvalidOperationException("Linux system service must not establish evidence storage as root.");
+    }
+    return IEM.Linux.Storage.LinuxStorageOwnershipPolicy.CreateSystem(uid, gid);
+});
 builder.Services.AddSingleton<ISymlinkSafetyGuard, IEM.Linux.Storage.LinuxSymlinkGuard>();
 builder.Services.AddSingleton<IStorageProtectionProvider, IEM.Linux.Storage.LinuxSessionModeProvisioner>();
 

@@ -8,6 +8,7 @@ namespace IEM.Linux.Storage;
 /// 77. PRIVILEGED_EVIDENCE_WRITES_NEVER_FOLLOW_UNTRUSTED_REPARSE_POINTS
 /// 80. STORAGE_PROTECTION_DRIFT_IS_NEVER_SILENTLY_ERASED_BY_REPAIR
 /// 81. EVIDENCE_SESSION_NEVER_STARTS_WITH_UNESTABLISHED_STORAGE_BOUNDARY
+/// 82. FILESYSTEM_SECURITY_MECHANISM_IS_PLATFORM_PROVENANCE_NOT_EVIDENCE_SEMANTICS
 /// </summary>
 public sealed class LinuxSymlinkGuard : ISymlinkSafetyGuard
 {
@@ -29,25 +30,28 @@ public sealed class LinuxSymlinkGuard : ISymlinkSafetyGuard
             return new SymlinkSafetyResult(false, StorageProtectionState.NotEstablished, "Putanja je prazna ili nevalidna.");
         }
 
-        // Normalize slashes
+        // Normalize slashes and strip Windows drive prefix if present during cross-platform testing
         var normRoot = trustedRoot.Replace('\\', '/').TrimEnd('/');
         var normTarget = targetPath.Replace('\\', '/').TrimEnd('/');
+
+        if (normRoot.Length >= 2 && normRoot[1] == ':' && char.IsLetter(normRoot[0]))
+        {
+            normRoot = normRoot.Substring(2);
+        }
+        if (normTarget.Length >= 2 && normTarget[1] == ':' && char.IsLetter(normTarget[0]))
+        {
+            normTarget = normTarget.Substring(2);
+        }
 
         if (normTarget.Contains("..") || normTarget.Contains('\0'))
         {
             return new SymlinkSafetyResult(false, StorageProtectionState.NotEstablished, "Putanja sadrži nedozvoljene karaktere ili '..' traversal.");
         }
 
-        if (!normTarget.StartsWith(normRoot, StringComparison.Ordinal))
+        // Strict prefix validation (prevent prefix collision such as /a/b vs /a/bad)
+        if (normTarget != normRoot && !normTarget.StartsWith(normRoot + "/", StringComparison.Ordinal))
         {
             return new SymlinkSafetyResult(false, StorageProtectionState.NotEstablished, $"Ciljna putanja '{targetPath}' se nalazi van dozvoljenog korena '{trustedRoot}'.");
-        }
-
-        // On non-Linux (e.g. running in simulation or unit tests on Windows without mock posix),
-        // verify lexical separation and directory existence if available.
-        if (!OperatingSystem.IsLinux() && _posix is LinuxNativePosixStorageApi)
-        {
-            return ValidateLexicalNonLinux(normRoot, normTarget);
         }
 
         return ValidatePosixFdRelative(normRoot, normTarget);
@@ -64,10 +68,10 @@ public sealed class LinuxSymlinkGuard : ISymlinkSafetyGuard
             {
                 if (rootStat.IsSymlink)
                 {
-                    return new SymlinkSafetyResult(false, StorageProtectionState.NotEstablished, $"Koren sesije '{normRoot}' je symlink.");
+                    return new SymlinkSafetyResult(false, StorageProtectionState.NotEstablished, $"Koren '{normRoot}' je symlink.");
                 }
             }
-            return new SymlinkSafetyResult(false, StorageProtectionState.NotEstablished, $"Nije moguće otvoriti koren sesije '{normRoot}'.");
+            return new SymlinkSafetyResult(false, StorageProtectionState.NotEstablished, $"Nije moguće otvoriti koren '{normRoot}'.");
         }
 
         var openFds = new List<int> { rootFd };
@@ -99,14 +103,6 @@ public sealed class LinuxSymlinkGuard : ISymlinkSafetyGuard
                 var segment = segments[i];
                 bool isLast = (i == segments.Length - 1);
 
-                // Use openat2 if available for kernel-level RESOLVE_BENEATH | RESOLVE_NO_SYMLINKS | RESOLVE_NO_XDEV
-                var openHow = new OpenHow
-                {
-                    Flags = (ulong)(LinuxPosixStorageConstants.O_RDONLY | LinuxPosixStorageConstants.O_CLOEXEC | (isLast ? 0 : LinuxPosixStorageConstants.O_DIRECTORY)),
-                    Mode = 0,
-                    Resolve = LinuxPosixStorageConstants.RESOLVE_BENEATH | LinuxPosixStorageConstants.RESOLVE_NO_SYMLINKS | LinuxPosixStorageConstants.RESOLVE_NO_XDEV | LinuxPosixStorageConstants.RESOLVE_NO_MAGICLINKS
-                };
-
                 // Stat segment relative to currentFd without following symlinks
                 if (_posix.FstatAt(currentFd, segment, out var segStat, LinuxPosixStorageConstants.AT_SYMLINK_NOFOLLOW) != 0)
                 {
@@ -124,26 +120,37 @@ public sealed class LinuxSymlinkGuard : ISymlinkSafetyGuard
                     return new SymlinkSafetyResult(false, StorageProtectionState.NotEstablished, $"Međusegment '{segment}' nije direktorijum.");
                 }
 
-                if (!ValidateOwnershipAndMode(segStat, isDir, out var segDiag))
+                // Strict openat2 validation on EVERY component (including final leaf component)
+                // Enforces kernel RESOLVE_BENEATH | RESOLVE_NO_SYMLINKS | RESOLVE_NO_XDEV | RESOLVE_NO_MAGICLINKS
+                var openHow = new OpenHow
+                {
+                    Flags = (ulong)(LinuxPosixStorageConstants.O_RDONLY | LinuxPosixStorageConstants.O_CLOEXEC | (isDir ? LinuxPosixStorageConstants.O_DIRECTORY : 0)),
+                    Mode = 0,
+                    Resolve = LinuxPosixStorageConstants.RESOLVE_BENEATH | LinuxPosixStorageConstants.RESOLVE_NO_SYMLINKS | LinuxPosixStorageConstants.RESOLVE_NO_XDEV | LinuxPosixStorageConstants.RESOLVE_NO_MAGICLINKS
+                };
+
+                int nextFd = _posix.OpenAt2(currentFd, segment, ref openHow);
+                if (nextFd < 0)
+                {
+                    // R1-E: Never fallback to OpenAt! Any failure (ENOSYS, EXDEV, ELOOP, etc.) must fail-closed.
+                    return new SymlinkSafetyResult(false, StorageProtectionState.NotEstablished, $"Nije moguće bezbedno otvoriti segment '{segment}' kroz openat2 (rezolucija odbijena ili nepodržana).");
+                }
+
+                openFds.Add(nextFd);
+
+                // Stat opened FD to verify mode and ownership on the exact opened kernel descriptor
+                if (_posix.Fstat(nextFd, out var fdStat) != 0)
+                {
+                    return new SymlinkSafetyResult(false, StorageProtectionState.NotEstablished, $"fstat nije uspeo na otvorenom deskriptoru za segment '{segment}'.");
+                }
+
+                if (!ValidateOwnershipAndMode(fdStat, isDir, out var segDiag))
                 {
                     return new SymlinkSafetyResult(false, StorageProtectionState.NotEstablished, $"Segment '{segment}': {segDiag}");
                 }
 
                 if (!isLast)
                 {
-                    int nextFd = _posix.OpenAt2(currentFd, segment, ref openHow);
-                    if (nextFd < 0)
-                    {
-                        // Fallback to standard openat with O_NOFOLLOW | O_DIRECTORY
-                        nextFd = _posix.OpenAt(currentFd, segment, LinuxPosixStorageConstants.O_RDONLY | LinuxPosixStorageConstants.O_DIRECTORY | LinuxPosixStorageConstants.O_NOFOLLOW | LinuxPosixStorageConstants.O_CLOEXEC, 0);
-                    }
-
-                    if (nextFd < 0)
-                    {
-                        return new SymlinkSafetyResult(false, StorageProtectionState.NotEstablished, $"Nije moguće bezbedno otvoriti segment '{segment}'.");
-                    }
-
-                    openFds.Add(nextFd);
                     currentFd = nextFd;
                 }
             }
@@ -163,7 +170,7 @@ public sealed class LinuxSymlinkGuard : ISymlinkSafetyGuard
     {
         diagnostic = null;
 
-        // Check ownership if required
+        // 1. Exact UID/GID ownership validation
         if (_ownershipPolicy.EnforceExactOwnership)
         {
             if (_ownershipPolicy.ExpectedUid.HasValue && stat.Uid != _ownershipPolicy.ExpectedUid.Value)
@@ -179,24 +186,25 @@ public sealed class LinuxSymlinkGuard : ISymlinkSafetyGuard
             }
         }
 
-        // Check permission bits: directories must not have group-write or other-write/read (e.g. 0700 or 0750)
-        // Strictly fail on world writable (0002) or other-readable (0004/0007) in strict mode
+        // 2. R1-C: Exact mode truth (directories == 0700, layout.json/files == 0600)
         var perm = stat.PermissionBits;
-        if ((perm & 0x002) != 0) // World-writable
+        if (isDirectory)
         {
-            diagnostic = $"Nedozvoljene permisije (world-writable 0{perm:X3}).";
-            return false;
+            if (perm != LinuxPosixStorageConstants.Mode0700) // 0x1C0 (0700 octal)
+            {
+                diagnostic = $"Nedozvoljene permisije direktorijuma 0{Convert.ToString(perm, 8)} (zahteva se striktno 0700).";
+                return false;
+            }
+        }
+        else
+        {
+            if (perm != LinuxPosixStorageConstants.Mode0600) // 0x180 (0600 octal)
+            {
+                diagnostic = $"Nedozvoljene permisije fajla 0{Convert.ToString(perm, 8)} (zahteva se striktno 0600).";
+                return false;
+            }
         }
 
         return true;
-    }
-
-    private static SymlinkSafetyResult ValidateLexicalNonLinux(string normRoot, string normTarget)
-    {
-        if (Directory.Exists(normTarget) || File.Exists(normTarget))
-        {
-            return new SymlinkSafetyResult(true, StorageProtectionState.Established);
-        }
-        return new SymlinkSafetyResult(false, StorageProtectionState.NotEstablished, $"Putanja '{normTarget}' ne postoji.");
     }
 }

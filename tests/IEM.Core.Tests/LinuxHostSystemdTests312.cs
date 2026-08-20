@@ -336,6 +336,7 @@ public sealed class LinuxHostSystemdTests312
         services.AddSingleton<IPlatformProbeFactory>(failingProbeFactory);
         services.AddSingleton<IPowerEventSource>(LinuxPowerEventSourceStub.Instance);
         services.AddSingleton<IPlatformStorageLayout>(storageLayout);
+        services.AddSingleton<IStorageProtectionProvider>(new DummyStorageProtectionProvider());
         services.AddSingleton<MonitorWorker>();
 
         var provider = services.BuildServiceProvider();
@@ -475,5 +476,14 @@ public sealed class LinuxHostSystemdTests312
             throw new InvalidOperationException("Simulated fatal probe hardware failure.");
         public IRouteResolver CreateRouteResolver() => NullRouteResolver.Instance;
         public IBoundIcmp CreateBoundIcmp() => throw new NotImplementedException();
+    }
+
+    private sealed class DummyStorageProtectionProvider : IStorageProtectionProvider
+    {
+        public string PlatformName => "Dummy";
+        public Task<StorageProtectionObservation> ProvisionSessionBoundariesAsync(string sessionRoot, SessionLayoutDescriptor layout, CancellationToken ct = default) =>
+            Task.FromResult(new StorageProtectionObservation("obs-1", layout.SessionId, DateTimeOffset.UtcNow, PlatformName, layout.LayoutVersion, layout.StoragePolicyVersion, layout.StoragePolicyHash, StorageProtectionState.Established, true, true));
+        public Task<StorageProtectionObservation> VerifyStorageProtectionAsync(string sessionRoot, SessionLayoutDescriptor layout, CancellationToken ct = default) =>
+            Task.FromResult(new StorageProtectionObservation("obs-2", layout.SessionId, DateTimeOffset.UtcNow, PlatformName, layout.LayoutVersion, layout.StoragePolicyVersion, layout.StoragePolicyHash, StorageProtectionState.Established, true, true));
     }
 }
