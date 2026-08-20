@@ -911,6 +911,36 @@ public sealed class LinuxSessionModeProvisionerTests : IDisposable
             return -1;
         }
 
+        public int RenameAt2(int olddirfd, string oldpath, int newdirfd, string newpath, uint flags)
+        {
+            if (!_openFds.TryGetValue(olddirfd, out var oldBase) || !_openFds.TryGetValue(newdirfd, out var newBase))
+                return -1;
+
+            var oldFull = $"{oldBase}/{oldpath}".TrimEnd('/');
+            var newFull = $"{newBase}/{newpath}".TrimEnd('/');
+
+            if (!_entries.TryGetValue(oldFull, out var oldEntry)) return -1;
+
+            if (_entries.ContainsKey(newFull))
+            {
+                if ((flags & LinuxPosixStorageConstants.RENAME_NOREPLACE) != 0)
+                {
+                    return -1; // EEXIST
+                }
+            }
+
+            _entries.Remove(oldFull);
+            _entries[newFull] = oldEntry;
+            return 0;
+        }
+
+        public int UnlinkAt(int dirfd, string pathname, int flags)
+        {
+            if (!_openFds.TryGetValue(dirfd, out var baseDir)) return -1;
+            var full = $"{baseDir}/{pathname}".TrimEnd('/');
+            return _entries.Remove(full) ? 0 : -1;
+        }
+
         public int Write(int fd, ReadOnlySpan<byte> buffer)
         {
             WriteCallCount++;

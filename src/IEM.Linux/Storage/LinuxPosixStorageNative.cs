@@ -16,11 +16,14 @@ public static class LinuxPosixStorageConstants
 
     public const int AT_FDCWD = -100;
     public const int AT_SYMLINK_NOFOLLOW = 0x0100;
+    public const int AT_REMOVEDIR = 0x0200;
 
     public const ulong RESOLVE_NO_XDEV = 0x01;
     public const ulong RESOLVE_NO_MAGICLINKS = 0x02;
     public const ulong RESOLVE_NO_SYMLINKS = 0x04;
     public const ulong RESOLVE_BENEATH = 0x08;
+
+    public const uint RENAME_NOREPLACE = 0x01;
 
     public const uint S_IFMT = 0xF000;
     public const uint S_IFDIR = 0x4000;
@@ -82,6 +85,8 @@ public interface ILinuxPosixStorageApi
     int MkdirAt(int dirfd, string pathname, int mode);
     int Fchmod(int fd, int mode);
     int Fchown(int fd, uint uid, uint gid);
+    int RenameAt2(int olddirfd, string oldpath, int newdirfd, string newpath, uint flags);
+    int UnlinkAt(int dirfd, string pathname, int flags);
     int Write(int fd, ReadOnlySpan<byte> buffer);
     int Read(int fd, Span<byte> buffer);
     int Fsync(int fd);
@@ -94,6 +99,7 @@ public sealed class LinuxNativePosixStorageApi : ILinuxPosixStorageApi
 {
     private const string LibC = "libc";
     private const long SYS_openat2 = 437; // Linux x86_64 / aarch64 openat2 syscall
+    private const long SYS_renameat2 = 316; // Linux x86_64 renameat2 syscall
 
     [DllImport(LibC, EntryPoint = "open", SetLastError = true)]
     private static extern int NativeOpen(string path, int flags, int mode);
@@ -116,6 +122,9 @@ public sealed class LinuxNativePosixStorageApi : ILinuxPosixStorageApi
     [DllImport(LibC, EntryPoint = "fchown", SetLastError = true)]
     private static extern int NativeFchown(int fd, uint uid, uint gid);
 
+    [DllImport(LibC, EntryPoint = "unlinkat", SetLastError = true)]
+    private static extern int NativeUnlinkAt(int dirfd, string pathname, int flags);
+
     [DllImport(LibC, EntryPoint = "write", SetLastError = true)]
     private static extern unsafe nint NativeWrite(int fd, byte* buf, nuint count);
 
@@ -136,6 +145,9 @@ public sealed class LinuxNativePosixStorageApi : ILinuxPosixStorageApi
 
     [DllImport(LibC, EntryPoint = "syscall", SetLastError = true)]
     private static extern int NativeSyscallOpenAt2(long number, int dirfd, string pathname, ref OpenHow how, nuint size);
+
+    [DllImport(LibC, EntryPoint = "syscall", SetLastError = true)]
+    private static extern int NativeSyscallRenameAt2(long number, int olddirfd, string oldpath, int newdirfd, string newpath, uint flags);
 
     public int Open(string path, int flags, int mode) =>
         OperatingSystem.IsLinux() ? NativeOpen(path, flags, mode) : -1;
@@ -174,6 +186,12 @@ public sealed class LinuxNativePosixStorageApi : ILinuxPosixStorageApi
 
     public int Fchown(int fd, uint uid, uint gid) =>
         OperatingSystem.IsLinux() ? NativeFchown(fd, uid, gid) : -1;
+
+    public int RenameAt2(int olddirfd, string oldpath, int newdirfd, string newpath, uint flags) =>
+        OperatingSystem.IsLinux() ? NativeSyscallRenameAt2(SYS_renameat2, olddirfd, oldpath, newdirfd, newpath, flags) : -1;
+
+    public int UnlinkAt(int dirfd, string pathname, int flags) =>
+        OperatingSystem.IsLinux() ? NativeUnlinkAt(dirfd, pathname, flags) : -1;
 
     public unsafe int Write(int fd, ReadOnlySpan<byte> buffer)
     {
