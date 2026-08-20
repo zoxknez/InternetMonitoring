@@ -1611,7 +1611,7 @@ Ako nl80211 nije dostupan: `LinuxLinkInspection.Create` vraća samo `SystemLinkI
 | NM se razilazi sa BSSID | `NmAssociationConflict` |
 | remembered SSID u upotrebi | već implicitno u readeru; adapter ne laže da je associated |
 
-## 7.14 Invarijante 249–254 (draft, ovaj sloj)
+## 7.14 Invarijante 249–254 — LOCKED
 
 ## 249
 

@@ -162,6 +162,7 @@ public sealed class LinuxWifiLinkInspectorTests
         Assert.Equal(36, snapshot.Wireless.Channel);
         Assert.Equal(-65, snapshot.Wireless.MeasuredRssiDbm);
         Assert.True(snapshot.Wireless.RadioOn);
+        Assert.True(snapshot.Wireless.SsidVisibleInScan);
     }
 
     [Fact]

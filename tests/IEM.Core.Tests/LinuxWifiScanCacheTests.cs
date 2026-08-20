@@ -199,4 +199,82 @@ public sealed class LinuxWifiScanCacheTests
         Assert.Null(LinuxWifiScanCache.EvaluateSsidVisibility(snap, "   "));
         Assert.Null(LinuxWifiScanCache.EvaluateSsidVisibility(snap, null!));
     }
+
+    [Fact]
+    public void EvaluateSsidVisibility_Hidden_ZeroLength_Ssid_DoesNotMatch_RegularSsid()
+    {
+        // Hidden BSS with empty SSID
+        var hiddenBss = new LinuxNl80211BssInfo(
+            3,
+            new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x99 },
+            "00:11:22:33:44:99",
+            Array.Empty<byte>(),
+            "",
+            5180,
+            0,
+            -7000,
+            70,
+            1000,
+            null, null, null, null, null, 0x1000UL, 1);
+
+        var dump = new LinuxNl80211DumpResult<LinuxNl80211BssInfo>(new[] { hiddenBss }, LinuxNl80211DumpStatus.Complete);
+        var snap = LinuxWifiScanCache.EvaluateScanDump(dump);
+
+        // Asking for "MyWiFi" should return false (proven absence from complete fresh dump containing only hidden BSS)
+        Assert.False(LinuxWifiScanCache.EvaluateSsidVisibility(snap, "MyWiFi"));
+    }
+
+    [Fact]
+    public void EvaluateSsidVisibility_Duplicate_Same_Ssid_Multiple_Bssids_Mesh()
+    {
+        // Mesh network with multiple APs broadcasting same SSID
+        var ap1 = CreateBss(ssid: "MeshHome", seenMsAgo: 1000, bssid: "00:11:22:33:44:01", freq: 2412);
+        var ap2 = CreateBss(ssid: "MeshHome", seenMsAgo: 2000, bssid: "00:11:22:33:44:02", freq: 5180);
+        var ap3 = CreateBss(ssid: "MeshHome", seenMsAgo: 3000, bssid: "00:11:22:33:44:03", freq: 5975);
+
+        var dump = new LinuxNl80211DumpResult<LinuxNl80211BssInfo>(new[] { ap1, ap2, ap3 }, LinuxNl80211DumpStatus.Complete);
+        var snap = LinuxWifiScanCache.EvaluateScanDump(dump);
+
+        Assert.True(LinuxWifiScanCache.EvaluateSsidVisibility(snap, "MeshHome"));
+    }
+
+    [Fact]
+    public void EvaluateSsidVisibility_Mixed_Fresh_And_Stale_Same_Ssid_Returns_True_If_Any_Fresh()
+    {
+        // AP1 on 2.4GHz is stale (4 min old), but AP2 on 5GHz is fresh (10s old)
+        var apStale = CreateBss(ssid: "OfficeMesh", seenMsAgo: 240000, bssid: "00:11:22:33:44:01", freq: 2412);
+        var apFresh = CreateBss(ssid: "OfficeMesh", seenMsAgo: 10000, bssid: "00:11:22:33:44:02", freq: 5180);
+
+        var dump = new LinuxNl80211DumpResult<LinuxNl80211BssInfo>(new[] { apStale, apFresh }, LinuxNl80211DumpStatus.Complete);
+        var snap = LinuxWifiScanCache.EvaluateScanDump(dump);
+
+        Assert.True(LinuxWifiScanCache.EvaluateSsidVisibility(snap, "OfficeMesh"));
+    }
+
+    [Fact]
+    public void EvaluateSsidVisibility_Malformed_NonUtf8_Ssid_DoesNotThrow_And_Matches_DisplaySsid()
+    {
+        // Raw bytes contain invalid UTF-8 (e.g. 0xFF, 0xFE), DisplaySsid is fallback replacement
+        byte[] rawMalformed = new byte[] { 0xFF, 0xFE, 0x41, 0x42 };
+        string display = System.Text.Encoding.UTF8.GetString(rawMalformed); // contains \uFFFD
+
+        var bss = new LinuxNl80211BssInfo(
+            3,
+            new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x88 },
+            "00:11:22:33:44:88",
+            rawMalformed,
+            display,
+            5180,
+            0,
+            -6000,
+            85,
+            1000,
+            null, null, null, null, null, 0x1000UL, 1);
+
+        var dump = new LinuxNl80211DumpResult<LinuxNl80211BssInfo>(new[] { bss }, LinuxNl80211DumpStatus.Complete);
+        var snap = LinuxWifiScanCache.EvaluateScanDump(dump);
+
+        Assert.True(LinuxWifiScanCache.EvaluateSsidVisibility(snap, display));
+        Assert.False(LinuxWifiScanCache.EvaluateSsidVisibility(snap, "NormalSsid"));
+    }
 }

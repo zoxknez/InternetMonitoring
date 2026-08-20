@@ -4049,6 +4049,146 @@ public class LinuxWifiRadioTests
 
     #endregion
 
+    #region Phase 3.1-7C: Scan Visibility & Freshness Tests
+
+    [Fact]
+    public async Task Nl80211Radio_IsSsidVisibleAsync_Fresh_Complete_Present_Returns_True()
+    {
+        var socket = new MockLinuxNl80211Socket();
+        socket.AddFamily("nl80211", 28);
+        socket.AddInterface(new LinuxNl80211InterfaceInfo(3, "wlan0", 0, "phy0", null, LinuxNl80211Protocol.NL80211_IFTYPE_STATION, null, null, Wdev: 0x1000UL));
+
+        var bss = new LinuxNl80211BssInfo(3, new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x55 }, "00:11:22:33:44:55", System.Text.Encoding.UTF8.GetBytes("HomeMesh"), "HomeMesh", 5180, LinuxNl80211Protocol.NL80211_BSS_STATUS_ASSOCIATED, -6000, 85, 5000, null, null, null, null, null, 0x1000UL, 1);
+        socket.SetBssDump(new List<LinuxNl80211BssInfo> { bss }, LinuxNl80211DumpStatus.Complete);
+
+        using var radio = new LinuxNl80211Radio(socket);
+        var visible = await radio.IsSsidVisibleAsync("wlan0", "homemesh"); // Case-insensitive parity
+
+        Assert.True(visible);
+    }
+
+    [Fact]
+    public async Task Nl80211Radio_IsSsidVisibleAsync_Fresh_Complete_Absent_Returns_False()
+    {
+        var socket = new MockLinuxNl80211Socket();
+        socket.AddFamily("nl80211", 28);
+        socket.AddInterface(new LinuxNl80211InterfaceInfo(3, "wlan0", 0, "phy0", null, LinuxNl80211Protocol.NL80211_IFTYPE_STATION, null, null, Wdev: 0x1000UL));
+
+        var bss = new LinuxNl80211BssInfo(3, new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x55 }, "00:11:22:33:44:55", System.Text.Encoding.UTF8.GetBytes("OtherNet"), "OtherNet", 5180, LinuxNl80211Protocol.NL80211_BSS_STATUS_ASSOCIATED, -6000, 85, 5000, null, null, null, null, null, 0x1000UL, 1);
+        socket.SetBssDump(new List<LinuxNl80211BssInfo> { bss }, LinuxNl80211DumpStatus.Complete);
+
+        using var radio = new LinuxNl80211Radio(socket);
+        var visible = await radio.IsSsidVisibleAsync("wlan0", "HomeMesh");
+
+        Assert.False(visible);
+    }
+
+    [Fact]
+    public async Task Nl80211Radio_IsSsidVisibleAsync_Stale_Present_Returns_Null()
+    {
+        var socket = new MockLinuxNl80211Socket();
+        socket.AddFamily("nl80211", 28);
+        socket.AddInterface(new LinuxNl80211InterfaceInfo(3, "wlan0", 0, "phy0", null, LinuxNl80211Protocol.NL80211_IFTYPE_STATION, null, null, Wdev: 0x1000UL));
+
+        // Stale entry (> 3 min)
+        var bss = new LinuxNl80211BssInfo(3, new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x55 }, "00:11:22:33:44:55", System.Text.Encoding.UTF8.GetBytes("HomeMesh"), "HomeMesh", 5180, LinuxNl80211Protocol.NL80211_BSS_STATUS_ASSOCIATED, -6000, 85, 240000, null, null, null, null, null, 0x1000UL, 1);
+        socket.SetBssDump(new List<LinuxNl80211BssInfo> { bss }, LinuxNl80211DumpStatus.Complete);
+
+        using var radio = new LinuxNl80211Radio(socket);
+        var visible = await radio.IsSsidVisibleAsync("wlan0", "HomeMesh");
+
+        Assert.Null(visible); // Stale matching SSID is indeterminate (null), NEVER false
+    }
+
+    [Fact]
+    public async Task Nl80211Radio_IsSsidVisibleAsync_Empty_Dump_Returns_Null()
+    {
+        var socket = new MockLinuxNl80211Socket();
+        socket.AddFamily("nl80211", 28);
+        socket.AddInterface(new LinuxNl80211InterfaceInfo(3, "wlan0", 0, "phy0", null, LinuxNl80211Protocol.NL80211_IFTYPE_STATION, null, null, Wdev: 0x1000UL));
+
+        socket.SetBssDump(new List<LinuxNl80211BssInfo>(), LinuxNl80211DumpStatus.Complete);
+
+        using var radio = new LinuxNl80211Radio(socket);
+        var visible = await radio.IsSsidVisibleAsync("wlan0", "HomeMesh");
+
+        Assert.Null(visible);
+    }
+
+    [Fact]
+    public async Task Nl80211Radio_IsSsidVisibleAsync_Interrupted_Present_Returns_True()
+    {
+        var socket = new MockLinuxNl80211Socket();
+        socket.AddFamily("nl80211", 28);
+        socket.AddInterface(new LinuxNl80211InterfaceInfo(3, "wlan0", 0, "phy0", null, LinuxNl80211Protocol.NL80211_IFTYPE_STATION, null, null, Wdev: 0x1000UL));
+
+        var bss = new LinuxNl80211BssInfo(3, new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x55 }, "00:11:22:33:44:55", System.Text.Encoding.UTF8.GetBytes("HomeMesh"), "HomeMesh", 5180, LinuxNl80211Protocol.NL80211_BSS_STATUS_ASSOCIATED, -6000, 85, 2000, null, null, null, null, null, 0x1000UL, 1);
+        socket.SetBssDump(new List<LinuxNl80211BssInfo> { bss }, LinuxNl80211DumpStatus.Interrupted);
+
+        using var radio = new LinuxNl80211Radio(socket);
+        var visible = await radio.IsSsidVisibleAsync("wlan0", "HomeMesh");
+
+        Assert.True(visible);
+    }
+
+    [Fact]
+    public async Task Nl80211Radio_IsSsidVisibleAsync_Interrupted_Absent_Returns_Null()
+    {
+        var socket = new MockLinuxNl80211Socket();
+        socket.AddFamily("nl80211", 28);
+        socket.AddInterface(new LinuxNl80211InterfaceInfo(3, "wlan0", 0, "phy0", null, LinuxNl80211Protocol.NL80211_IFTYPE_STATION, null, null, Wdev: 0x1000UL));
+
+        var bss = new LinuxNl80211BssInfo(3, new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x55 }, "00:11:22:33:44:55", System.Text.Encoding.UTF8.GetBytes("OtherNet"), "OtherNet", 5180, LinuxNl80211Protocol.NL80211_BSS_STATUS_ASSOCIATED, -6000, 85, 2000, null, null, null, null, null, 0x1000UL, 1);
+        socket.SetBssDump(new List<LinuxNl80211BssInfo> { bss }, LinuxNl80211DumpStatus.Interrupted);
+
+        using var radio = new LinuxNl80211Radio(socket);
+        var visible = await radio.IsSsidVisibleAsync("wlan0", "HomeMesh");
+
+        Assert.Null(visible);
+    }
+
+    [Fact]
+    public void Nl80211Radio_IsSsidVisible_Synchronous_Uses_Bound_Or_LastQueried_Interface()
+    {
+        var socket = new MockLinuxNl80211Socket();
+        socket.AddFamily("nl80211", 28);
+        socket.AddInterface(new LinuxNl80211InterfaceInfo(3, "wlan0", 0, "phy0", null, LinuxNl80211Protocol.NL80211_IFTYPE_STATION, null, null, Wdev: 0x1000UL));
+
+        var bss = new LinuxNl80211BssInfo(3, new byte[] { 0x00, 0x11, 0x22, 0x33, 0x44, 0x55 }, "00:11:22:33:44:55", System.Text.Encoding.UTF8.GetBytes("HomeMesh"), "HomeMesh", 5180, LinuxNl80211Protocol.NL80211_BSS_STATUS_ASSOCIATED, -6000, 85, 2000, null, null, null, null, null, 0x1000UL, 1);
+        socket.SetBssDump(new List<LinuxNl80211BssInfo> { bss }, LinuxNl80211DumpStatus.Complete);
+
+        // 1. Bound interface
+        using (var boundRadio = new LinuxNl80211Radio(socket, boundInterfaceId: "wlan0"))
+        {
+            var visible = boundRadio.IsSsidVisible("HomeMesh");
+            Assert.True(visible);
+        }
+
+        // 2. Unbound radio without prior queries -> null
+        using (var unboundRadio = new LinuxNl80211Radio(socket))
+        {
+            var visible = unboundRadio.IsSsidVisible("HomeMesh");
+            Assert.Null(visible);
+
+            // After querying association on wlan0, last-queried fallback activates
+            unboundRadio.ReadAssociation("wlan0");
+            var visibleAfterQuery = unboundRadio.IsSsidVisible("HomeMesh");
+            Assert.True(visibleAfterQuery);
+        }
+    }
+
+    [Fact]
+    public void Nl80211Radio_RequestUrgentScan_Is_NoOp()
+    {
+        var socket = new MockLinuxNl80211Socket();
+        using var radio = new LinuxNl80211Radio(socket, boundInterfaceId: "wlan0");
+
+        // Must not throw and must have no active scan side-effects
+        radio.RequestUrgentScan();
+    }
+
+    #endregion
+
     private static byte[] BuildMockBssRecord(
         uint seq,
         ushort familyId,
@@ -4609,6 +4749,19 @@ public class LinuxWifiRadioTests
                 _bssRecords[ifindex] = list;
             }
             list.Add(bss);
+        }
+
+        public void SetBssDump(List<LinuxNl80211BssInfo> items, LinuxNl80211DumpStatus status = LinuxNl80211DumpStatus.Complete)
+        {
+            _bssRecords.Clear();
+            if (items != null)
+            {
+                foreach (var bss in items)
+                {
+                    AddBss(bss.IfIndex, bss);
+                }
+            }
+            BssDumpStatus = status;
         }
 
         public void AddStation(int ifindex, ulong wdev, byte[] mac, LinuxNl80211StationInfo sta)

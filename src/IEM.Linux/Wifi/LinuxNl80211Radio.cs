@@ -967,12 +967,92 @@ public sealed class LinuxNl80211Radio : IWirelessRadio, IDisposable, IAsyncDispo
     }
 
     /// <summary>
-    /// Scan visibility check (Phase 3.1-7C). Returns null in 7B-1.
+    /// Checks whether the specified SSID is currently visible in the adapter's cached scan results.
+    /// Invariants 250, 258:
+    /// - true:  Positive evidence of at least one fresh matching BSS in cached scan.
+    /// - false: Proven absence from a complete, fresh scan dump on the bound adapter.
+    /// - null:  Stale scan, incomplete dump, empty dump without scan-done evidence, or unbound adapter.
     /// </summary>
-    public bool? IsSsidVisible(string ssid) => null;
+    public bool? IsSsidVisible(string ssid)
+    {
+        if (string.IsNullOrWhiteSpace(ssid))
+        {
+            return null;
+        }
+
+        var targetInterface = _boundInterfaceId ?? _lastQueriedInterfaceId;
+        if (string.IsNullOrWhiteSpace(targetInterface))
+        {
+            return null;
+        }
+
+        try
+        {
+            return IsSsidVisibleAsync(targetInterface, ssid).GetAwaiter().GetResult();
+        }
+#pragma warning disable CA1031
+        catch (Exception)
+#pragma warning restore CA1031
+        {
+            return null;
+        }
+    }
 
     /// <summary>
-    /// Optional urgent scan trigger (Phase 3.1-7C). No-op in 7B-1.
+    /// Asynchronously queries cached scan results on the specified interface to evaluate SSID visibility.
+    /// Strict adapter-scoping: never queries other interfaces or unions global scan results.
+    /// Invariants 250, 251, 252, 258.
+    /// </summary>
+    public async Task<bool?> IsSsidVisibleAsync(
+        string interfaceId,
+        string ssid,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(interfaceId) || string.IsNullOrWhiteSpace(ssid))
+        {
+            return null;
+        }
+
+        var family = await EnsureFamilyAsync(cancellationToken).ConfigureAwait(false);
+        if (family == null)
+        {
+            return null;
+        }
+
+        int? requestedIfIndex = int.TryParse(interfaceId, out var parsedIndex) ? parsedIndex : null;
+
+        var ifDump = await _socket.DumpInterfacesAsync(family.FamilyId, requestedIfIndex, cancellationToken).ConfigureAwait(false);
+        if (!ifDump.IsComplete || ifDump.Items.Count == 0)
+        {
+            ifDump = await _socket.DumpInterfacesAsync(family.FamilyId, null, cancellationToken).ConfigureAwait(false);
+        }
+
+        if (!ifDump.IsComplete || ifDump.Items.Count == 0)
+        {
+            return null;
+        }
+
+        var targetIf = ifDump.Items.FirstOrDefault(i =>
+            (requestedIfIndex.HasValue && i.IfIndex == requestedIfIndex.Value) ||
+            i.IfName.Equals(interfaceId, StringComparison.OrdinalIgnoreCase));
+
+        if (targetIf == null ||
+            !targetIf.Wdev.HasValue ||
+            targetIf.IfType != LinuxNl80211Protocol.NL80211_IFTYPE_STATION)
+        {
+            return null;
+        }
+
+        var bssDump = await _socket.DumpBssAsync(family.FamilyId, targetIf.IfIndex, targetIf.Wdev.Value, cancellationToken).ConfigureAwait(false);
+        var currentBootTimeNs = LinuxWifiScanCache.TryGetCurrentBootTimeNs();
+        var snapshot = LinuxWifiScanCache.EvaluateScanDump(bssDump, currentBootTimeNs);
+
+        return LinuxWifiScanCache.EvaluateSsidVisibility(snapshot, ssid, currentBootTimeNs);
+    }
+
+    /// <summary>
+    /// Optional urgent scan trigger (Phase 3.1-7C).
+    /// Intentionally NO-OP in Linux 3.1 baseline (active scan is never required for evidence, Invariant 251).
     /// </summary>
     public void RequestUrgentScan()
     {

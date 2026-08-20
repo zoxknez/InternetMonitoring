@@ -93,6 +93,12 @@ internal sealed class CycleBuilder
 
     // ---- Link -------------------------------------------------------------
 
+    public CycleBuilder WithLink(LinkSnapshot link)
+    {
+        _link = link;
+        return this;
+    }
+
     public CycleBuilder AdapterDown()
     {
         _link = _link with { Status = LinkStatus.Down };
