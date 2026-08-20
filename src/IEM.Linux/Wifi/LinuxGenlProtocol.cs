@@ -118,11 +118,12 @@ public static class LinuxGenlProtocol
 
     /// <summary>
     /// Parses a Generic Netlink CTRL_CMD_GETFAMILY response buffer.
-    /// Returns 0 on success, or negative errno on NLMSG_ERROR.
+    /// Returns 0 on success, or negative errno on NLMSG_ERROR / parsing failure.
     /// </summary>
     public static int ParseGetFamilyResponse(
         ReadOnlySpan<byte> buffer,
         uint expectedSequence,
+        string? expectedFamilyName,
         out GenlFamilyInfo? familyInfo)
     {
         familyInfo = null;
@@ -145,8 +146,8 @@ public static class LinuxGenlProtocol
             ushort flags = MemoryMarshal.Read<ushort>(buffer.Slice(offset + 6, 2));
             uint seq = MemoryMarshal.Read<uint>(buffer.Slice(offset + 8, 4));
 
-            // Verify sequence
-            if (seq != expectedSequence && seq != 0)
+            // Strict sequence matching: must match expected request sequence (no seq == 0 exception)
+            if (seq != expectedSequence)
             {
                 offset += NlmsgAlign(nlmsgLen);
                 continue;
@@ -164,7 +165,7 @@ public static class LinuxGenlProtocol
                 {
                     return errorCode; // Negative errno
                 }
-                // ACK with error == 0
+                // ACK with error == 0: continue looking for response payload
                 offset += NlmsgAlign(nlmsgLen);
                 continue;
             }
@@ -174,19 +175,36 @@ public static class LinuxGenlProtocol
                 break;
             }
 
-            // Must be GENL family response
-            if (nlmsgType == GENL_ID_CTRL || nlmsgType >= 16)
+            // Must be GENL_ID_CTRL nlctrl response
+            if (nlmsgType == GENL_ID_CTRL)
             {
                 if (nlmsgLen < NlmsgHeaderSize + GenlHeaderSize)
                 {
                     return -22;
                 }
 
-                var genlPayload = buffer.Slice(offset + NlmsgHeaderSize + GenlHeaderSize, nlmsgLen - (NlmsgHeaderSize + GenlHeaderSize));
-                if (TryParseFamilyPayload(genlPayload, out var parsed))
+                byte genlCmd = buffer[offset + NlmsgHeaderSize];
+                if (genlCmd != CTRL_CMD_NEWFAMILY)
                 {
-                    familyInfo = parsed;
-                    return 0;
+                    offset += NlmsgAlign(nlmsgLen);
+                    continue;
+                }
+
+                var genlPayload = buffer.Slice(offset + NlmsgHeaderSize + GenlHeaderSize, nlmsgLen - (NlmsgHeaderSize + GenlHeaderSize));
+                if (TryParseFamilyPayload(genlPayload, out var parsed) && parsed != null)
+                {
+                    if (!string.IsNullOrEmpty(expectedFamilyName) &&
+                        !string.Equals(parsed.FamilyName, expectedFamilyName, StringComparison.OrdinalIgnoreCase))
+                    {
+                        offset += NlmsgAlign(nlmsgLen);
+                        continue;
+                    }
+
+                    if (parsed.FamilyId > 0)
+                    {
+                        familyInfo = parsed;
+                        return 0;
+                    }
                 }
             }
 
@@ -194,6 +212,17 @@ public static class LinuxGenlProtocol
         }
 
         return familyInfo != null ? 0 : -2; // ENOENT if not found
+    }
+
+    /// <summary>
+    /// Parses a Generic Netlink CTRL_CMD_GETFAMILY response buffer.
+    /// </summary>
+    public static int ParseGetFamilyResponse(
+        ReadOnlySpan<byte> buffer,
+        uint expectedSequence,
+        out GenlFamilyInfo? familyInfo)
+    {
+        return ParseGetFamilyResponse(buffer, expectedSequence, null, out familyInfo);
     }
 
     private static bool TryParseFamilyPayload(ReadOnlySpan<byte> payload, out GenlFamilyInfo? familyInfo)

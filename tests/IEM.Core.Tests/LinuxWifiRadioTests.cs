@@ -618,7 +618,7 @@ public class LinuxWifiRadioTests
         var famData = BuildMockGetFamilyResponse(seq, familyId: 28, familyName: "nl80211");
         var stream = CombineBuffers(ack, famData);
 
-        int ret = LinuxGenlProtocol.ParseGetFamilyResponse(stream, seq, out var famInfo);
+        int ret = LinuxGenlProtocol.ParseGetFamilyResponse(stream, seq, "nl80211", out var famInfo);
         Assert.Equal(0, ret);
         Assert.NotNull(famInfo);
         Assert.Equal((ushort)28, famInfo.FamilyId);
@@ -631,9 +631,108 @@ public class LinuxWifiRadioTests
         uint seq = 320;
         var ack = BuildMockNlmsgError(seq, errorCode: 0);
 
-        int ret = LinuxGenlProtocol.ParseGetFamilyResponse(ack, seq, out var famInfo);
+        int ret = LinuxGenlProtocol.ParseGetFamilyResponse(ack, seq, "nl80211", out var famInfo);
         Assert.NotEqual(0, ret);
         Assert.Null(famInfo);
+    }
+
+    [Fact]
+    public void GenlProtocol_GetFamily_Seq_Zero_Unsolicited_Ignored()
+    {
+        uint activeSeq = 321;
+        // Unsolicited notification with seq = 0
+        var unrequested = BuildMockGetFamilyResponse(seq: 0, familyId: 28, familyName: "nl80211");
+
+        int ret = LinuxGenlProtocol.ParseGetFamilyResponse(unrequested, activeSeq, "nl80211", out var famInfo);
+        Assert.NotEqual(0, ret);
+        Assert.Null(famInfo);
+    }
+
+    [Fact]
+    public void GenlProtocol_GetFamily_Stale_NonZero_Seq_Ignored()
+    {
+        uint staleSeq = 322;
+        uint activeSeq = 323;
+        var staleFam = BuildMockGetFamilyResponse(staleSeq, familyId: 28, familyName: "nl80211");
+
+        int ret = LinuxGenlProtocol.ParseGetFamilyResponse(staleFam, activeSeq, "nl80211", out var famInfo);
+        Assert.NotEqual(0, ret);
+        Assert.Null(famInfo);
+    }
+
+    [Fact]
+    public void GenlProtocol_GetFamily_Wrong_NlmsgType_Rejected()
+    {
+        uint seq = 324;
+        // Construct message with nlmsgType != GENL_ID_CTRL (e.g. nlmsgType = 28)
+        var wrongTypeMsg = BuildCustomGetFamilyResponse(seq, nlmsgType: 28, genlCmd: LinuxGenlProtocol.CTRL_CMD_NEWFAMILY, familyId: 28, familyName: "nl80211");
+
+        int ret = LinuxGenlProtocol.ParseGetFamilyResponse(wrongTypeMsg, seq, "nl80211", out var famInfo);
+        Assert.NotEqual(0, ret);
+        Assert.Null(famInfo);
+    }
+
+    [Fact]
+    public void GenlProtocol_GetFamily_Wrong_GenlCmd_Rejected()
+    {
+        uint seq = 325;
+        // Construct message with genlCmd != CTRL_CMD_NEWFAMILY (e.g. CTRL_CMD_DELFAMILY = 2)
+        var wrongCmdMsg = BuildCustomGetFamilyResponse(seq, nlmsgType: LinuxGenlProtocol.GENL_ID_CTRL, genlCmd: 2, familyId: 28, familyName: "nl80211");
+
+        int ret = LinuxGenlProtocol.ParseGetFamilyResponse(wrongCmdMsg, seq, "nl80211", out var famInfo);
+        Assert.NotEqual(0, ret);
+        Assert.Null(famInfo);
+    }
+
+    [Fact]
+    public void GenlProtocol_GetFamily_Wrong_FamilyName_Rejected()
+    {
+        uint seq = 326;
+        // Response contains "taskstats" instead of requested "nl80211"
+        var wrongNameMsg = BuildMockGetFamilyResponse(seq, familyId: 19, familyName: "taskstats");
+
+        int ret = LinuxGenlProtocol.ParseGetFamilyResponse(wrongNameMsg, seq, "nl80211", out var famInfo);
+        Assert.NotEqual(0, ret);
+        Assert.Null(famInfo);
+    }
+
+    private static byte[] BuildCustomGetFamilyResponse(uint seq, ushort nlmsgType, byte genlCmd, ushort familyId, string familyName)
+    {
+        var ms = new MemoryStream();
+        using var bw = new BinaryWriter(ms);
+
+        byte[] nameBytes = Encoding.UTF8.GetBytes(familyName);
+        int nameAttrLen = LinuxGenlProtocol.NlaAlign(LinuxGenlProtocol.NlaHeaderSize + nameBytes.Length + 1);
+        int idAttrLen = LinuxGenlProtocol.NlaAlign(LinuxGenlProtocol.NlaHeaderSize + 2);
+
+        int totalLen = LinuxGenlProtocol.NlmsgHeaderSize + LinuxGenlProtocol.GenlHeaderSize + nameAttrLen + idAttrLen;
+
+        // nlmsghdr
+        bw.Write(totalLen);
+        bw.Write(nlmsgType);
+        bw.Write((ushort)0); // flags
+        bw.Write(seq);
+        bw.Write((uint)0); // pid
+
+        // genlmsghdr
+        bw.Write(genlCmd);
+        bw.Write((byte)1); // version
+        bw.Write((ushort)0); // reserved
+
+        // CTRL_ATTR_FAMILY_ID
+        bw.Write((ushort)(LinuxGenlProtocol.NlaHeaderSize + 2));
+        bw.Write(LinuxGenlProtocol.CTRL_ATTR_FAMILY_ID);
+        bw.Write(familyId);
+        WritePadding(bw, LinuxGenlProtocol.NlaHeaderSize + 2);
+
+        // CTRL_ATTR_FAMILY_NAME
+        bw.Write((ushort)(LinuxGenlProtocol.NlaHeaderSize + nameBytes.Length + 1));
+        bw.Write(LinuxGenlProtocol.CTRL_ATTR_FAMILY_NAME);
+        bw.Write(nameBytes);
+        bw.Write((byte)0);
+        WritePadding(bw, LinuxGenlProtocol.NlaHeaderSize + nameBytes.Length + 1);
+
+        return ms.ToArray();
     }
 
     private static byte[] CombineBuffers(params byte[][] parts)

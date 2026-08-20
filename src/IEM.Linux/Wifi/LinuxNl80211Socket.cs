@@ -105,7 +105,7 @@ public sealed class LinuxNl80211Socket : ILinuxNl80211Socket
                 return null;
             }
 
-            var ret = LinuxGenlProtocol.ParseGetFamilyResponse(totalBytes, seq, out var familyInfo);
+            var ret = LinuxGenlProtocol.ParseGetFamilyResponse(totalBytes, seq, familyName, out var familyInfo);
             return ret == 0 ? familyInfo : null;
         }
         catch (Exception)
