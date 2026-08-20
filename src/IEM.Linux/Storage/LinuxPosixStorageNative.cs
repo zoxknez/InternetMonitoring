@@ -61,7 +61,7 @@ public struct PosixStat
     public bool IsDirectory => (Mode & LinuxPosixStorageConstants.S_IFMT) == LinuxPosixStorageConstants.S_IFDIR;
     public bool IsRegularFile => (Mode & LinuxPosixStorageConstants.S_IFMT) == LinuxPosixStorageConstants.S_IFREG;
     public bool IsSymlink => (Mode & LinuxPosixStorageConstants.S_IFMT) == LinuxPosixStorageConstants.S_IFLNK;
-    public int PermissionBits => (int)(Mode & 0x1FF); // 0777 octal
+    public int PermissionBits => (int)(Mode & 0xFFF); // 07777 octal (includes setuid, setgid, sticky)
 }
 
 [StructLayout(LayoutKind.Sequential)]

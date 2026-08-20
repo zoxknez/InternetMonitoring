@@ -13,6 +13,8 @@ namespace IEM.Linux.Storage;
 /// </summary>
 public sealed class LinuxSessionModeProvisioner : IStorageProtectionProvider
 {
+    public const int MaxLayoutDescriptorSizeBytes = 65536;
+
     public string PlatformName => "Linux";
 
     private readonly string _stateRoot;
@@ -40,25 +42,15 @@ public sealed class LinuxSessionModeProvisioner : IStorageProtectionProvider
         ArgumentException.ThrowIfNullOrWhiteSpace(sessionRoot);
         ArgumentNullException.ThrowIfNull(layout);
 
-        var resolver = new SessionPathResolver(sessionRoot, layout);
         var now = DateTimeOffset.UtcNow;
         var obsId = $"spo-lnx-{Guid.NewGuid():N}";
 
         try
         {
-            var normStateRoot = _stateRoot.Replace('\\', '/').TrimEnd('/');
-            var normSessionRoot = sessionRoot.Replace('\\', '/').TrimEnd('/');
+            var normStateRoot = NormalizePath(_stateRoot);
+            var normSessionRoot = NormalizePath(sessionRoot);
 
-            if (normStateRoot.Length >= 2 && normStateRoot[1] == ':' && char.IsLetter(normStateRoot[0]))
-            {
-                normStateRoot = normStateRoot.Substring(2);
-            }
-            if (normSessionRoot.Length >= 2 && normSessionRoot[1] == ':' && char.IsLetter(normSessionRoot[0]))
-            {
-                normSessionRoot = normSessionRoot.Substring(2);
-            }
-
-            // 1. R2-C: Open StateRoot FD - StateRoot in system mode is VERIFY-ONLY.
+            // 1. R2-C & R3-F: Open StateRoot FD - StateRoot in system mode is VERIFY-ONLY.
             // It MUST already exist, be a directory, have mode 0700 and correct ownership.
             // NO Directory.CreateDirectory(StateRoot) and NO Fchmod(StateRoot).
             var rootFd = _posix.Open(normStateRoot, LinuxPosixStorageConstants.O_RDONLY | LinuxPosixStorageConstants.O_DIRECTORY | LinuxPosixStorageConstants.O_NOFOLLOW | LinuxPosixStorageConstants.O_CLOEXEC, 0);
@@ -87,7 +79,7 @@ public sealed class LinuxSessionModeProvisioner : IStorageProtectionProvider
                 }
 
                 // Verify exact mode 0700 and ownership on StateRoot (ZERO repair!)
-                if ((rootStat.PermissionBits & 0x1FF) != LinuxPosixStorageConstants.Mode0700)
+                if ((rootStat.PermissionBits & 0xFFF) != LinuxPosixStorageConstants.Mode0700)
                 {
                     return new StorageProtectionObservation(
                         obsId, layout.SessionId, now, PlatformName, layout.LayoutVersion,
@@ -97,26 +89,14 @@ public sealed class LinuxSessionModeProvisioner : IStorageProtectionProvider
                         DiagnosticMessage: $"StateRoot '{normStateRoot}' ima neispravne permisije 0{Convert.ToString(rootStat.PermissionBits, 8)} (zahteva se 0700, tiha popravka je zabranjena).");
                 }
 
-                if (_ownershipPolicy.EnforceExactOwnership)
+                if (!CheckOwnership(rootStat, out var ownerError))
                 {
-                    if (_ownershipPolicy.ExpectedUid.HasValue && rootStat.Uid != _ownershipPolicy.ExpectedUid.Value)
-                    {
-                        return new StorageProtectionObservation(
-                            obsId, layout.SessionId, now, PlatformName, layout.LayoutVersion,
-                            layout.StoragePolicyVersion, layout.StoragePolicyHash,
-                            StorageProtectionState.NotEstablished,
-                            RootBoundaryValid: false, ReparsePointCheck: false,
-                            DiagnosticMessage: $"StateRoot '{normStateRoot}' ima neispravnog vlasnika UID {rootStat.Uid} (očekivano {_ownershipPolicy.ExpectedUid.Value}).");
-                    }
-                    if (_ownershipPolicy.ExpectedGid.HasValue && rootStat.Gid != _ownershipPolicy.ExpectedGid.Value)
-                    {
-                        return new StorageProtectionObservation(
-                            obsId, layout.SessionId, now, PlatformName, layout.LayoutVersion,
-                            layout.StoragePolicyVersion, layout.StoragePolicyHash,
-                            StorageProtectionState.NotEstablished,
-                            RootBoundaryValid: false, ReparsePointCheck: false,
-                            DiagnosticMessage: $"StateRoot '{normStateRoot}' ima neispravnu grupu GID {rootStat.Gid} (očekivano {_ownershipPolicy.ExpectedGid.Value}).");
-                    }
+                    return new StorageProtectionObservation(
+                        obsId, layout.SessionId, now, PlatformName, layout.LayoutVersion,
+                        layout.StoragePolicyVersion, layout.StoragePolicyHash,
+                        StorageProtectionState.NotEstablished,
+                        RootBoundaryValid: false, ReparsePointCheck: false,
+                        DiagnosticMessage: $"StateRoot '{normStateRoot}' {ownerError}");
                 }
 
                 // Relative path from StateRoot to sessionRoot
@@ -135,13 +115,13 @@ public sealed class LinuxSessionModeProvisioner : IStorageProtectionProvider
 
                 var currentFd = rootFd;
 
-                // 2. R2-B: Step-by-step FD-relative traversal with NO-REPAIR of existing objects
+                // 2. R2-B, R3-E, R3-F: Step-by-step FD-relative traversal with NO-REPAIR of existing objects
                 foreach (var seg in sessionSegments)
                 {
                     bool existed = _posix.FstatAt(currentFd, seg, out var segStat, LinuxPosixStorageConstants.AT_SYMLINK_NOFOLLOW) == 0;
                     if (!existed)
                     {
-                        // Object is newly created -> MkdirAt(0700) and Fchmod(0700) is allowed
+                        // Object is newly created -> MkdirAt(0700)
                         if (_posix.MkdirAt(currentFd, seg, LinuxPosixStorageConstants.Mode0700) != 0)
                         {
                             return new StorageProtectionObservation(
@@ -185,8 +165,8 @@ public sealed class LinuxSessionModeProvisioner : IStorageProtectionProvider
 
                     if (existed)
                     {
-                        // Invariant 80: Existing object MUST strictly have mode 0700 and correct owner. NEVER chmod/chown!
-                        if ((fdStat.PermissionBits & 0x1FF) != LinuxPosixStorageConstants.Mode0700)
+                        // Invariant 80 & R3-F: Existing object MUST strictly have mode 0700 and correct owner BEFORE descending!
+                        if ((fdStat.PermissionBits & 0xFFF) != LinuxPosixStorageConstants.Mode0700)
                         {
                             return new StorageProtectionObservation(
                                 obsId, layout.SessionId, now, PlatformName, layout.LayoutVersion,
@@ -195,10 +175,28 @@ public sealed class LinuxSessionModeProvisioner : IStorageProtectionProvider
                                 RootBoundaryValid: false, ReparsePointCheck: false,
                                 DiagnosticMessage: $"Postojeći segment '{seg}' ima neispravne permisije 0{Convert.ToString(fdStat.PermissionBits, 8)} (zahteva se 0700, tiha popravka je zabranjena).");
                         }
+
+                        if (!CheckOwnership(fdStat, out var segOwnerError))
+                        {
+                            return new StorageProtectionObservation(
+                                obsId, layout.SessionId, now, PlatformName, layout.LayoutVersion,
+                                layout.StoragePolicyVersion, layout.StoragePolicyHash,
+                                StorageProtectionState.NotEstablished,
+                                RootBoundaryValid: false, ReparsePointCheck: false,
+                                DiagnosticMessage: $"Postojeći segment '{seg}' {segOwnerError}");
+                        }
                     }
                     else
                     {
-                        _posix.Fchmod(nextFd, LinuxPosixStorageConstants.Mode0700);
+                        if (_posix.Fchmod(nextFd, LinuxPosixStorageConstants.Mode0700) != 0)
+                        {
+                            return new StorageProtectionObservation(
+                                obsId, layout.SessionId, now, PlatformName, layout.LayoutVersion,
+                                layout.StoragePolicyVersion, layout.StoragePolicyHash,
+                                StorageProtectionState.NotEstablished,
+                                RootBoundaryValid: false, ReparsePointCheck: false,
+                                DiagnosticMessage: $"fchmod 0700 nije uspeo za novokreirani segment '{seg}'.");
+                        }
                     }
 
                     currentFd = nextFd;
@@ -206,7 +204,7 @@ public sealed class LinuxSessionModeProvisioner : IStorageProtectionProvider
 
                 var sessionFd = currentFd;
 
-                // 3. R2-B: Semantic subdirectories (Raw, Evidence, Derived, Exports) with NO-REPAIR of existing
+                // 3. R2-B, R3-E, R3-F: Semantic subdirectories (Raw, Evidence, Derived, Exports) with NO-REPAIR of existing
                 var areaNames = new[] { "Raw", "Evidence", "Derived", "Exports" };
                 foreach (var area in areaNames)
                 {
@@ -256,8 +254,8 @@ public sealed class LinuxSessionModeProvisioner : IStorageProtectionProvider
 
                         if (areaExisted)
                         {
-                            // Invariant 80: Existing area directory MUST be strictly 0700 (NO chmod!)
-                            if ((fdStat.PermissionBits & 0x1FF) != LinuxPosixStorageConstants.Mode0700)
+                            // Invariant 80 & R3-F: Existing area directory MUST be strictly 0700 and correct owner (NO chmod!)
+                            if ((fdStat.PermissionBits & 0xFFF) != LinuxPosixStorageConstants.Mode0700)
                             {
                                 return new StorageProtectionObservation(
                                     obsId, layout.SessionId, now, PlatformName, layout.LayoutVersion,
@@ -266,10 +264,28 @@ public sealed class LinuxSessionModeProvisioner : IStorageProtectionProvider
                                     RootBoundaryValid: false, ReparsePointCheck: false,
                                     DiagnosticMessage: $"Postojeća podzona '{area}' ima neispravne permisije 0{Convert.ToString(fdStat.PermissionBits, 8)} (zahteva se 0700, tiha popravka je zabranjena).");
                             }
+
+                            if (!CheckOwnership(fdStat, out var areaOwnerError))
+                            {
+                                return new StorageProtectionObservation(
+                                    obsId, layout.SessionId, now, PlatformName, layout.LayoutVersion,
+                                    layout.StoragePolicyVersion, layout.StoragePolicyHash,
+                                    StorageProtectionState.NotEstablished,
+                                    RootBoundaryValid: false, ReparsePointCheck: false,
+                                    DiagnosticMessage: $"Postojeća podzona '{area}' {areaOwnerError}");
+                            }
                         }
                         else
                         {
-                            _posix.Fchmod(areaFd, LinuxPosixStorageConstants.Mode0700);
+                            if (_posix.Fchmod(areaFd, LinuxPosixStorageConstants.Mode0700) != 0)
+                            {
+                                return new StorageProtectionObservation(
+                                    obsId, layout.SessionId, now, PlatformName, layout.LayoutVersion,
+                                    layout.StoragePolicyVersion, layout.StoragePolicyHash,
+                                    StorageProtectionState.NotEstablished,
+                                    RootBoundaryValid: false, ReparsePointCheck: false,
+                                    DiagnosticMessage: $"fchmod 0700 nije uspeo za novokreiranu podzonu '{area}'.");
+                            }
                         }
                     }
                     finally
@@ -278,7 +294,7 @@ public sealed class LinuxSessionModeProvisioner : IStorageProtectionProvider
                     }
                 }
 
-                // 4. R2-D & R2-E: Write layout.json FD-relatively with O_CREAT | O_EXCL (refuse overwrite if exists!)
+                // 4. R2-D, R3-D, R3-E: Write layout.json FD-relatively with O_CREAT | O_EXCL (refuse overwrite if exists!)
                 var layoutBytes = layout.ToCanonicalBytes();
                 var layoutHow = new OpenHow
                 {
@@ -301,18 +317,25 @@ public sealed class LinuxSessionModeProvisioner : IStorageProtectionProvider
 
                 try
                 {
-                    int written = _posix.Write(layoutFd, layoutBytes);
-                    if (written != layoutBytes.Length)
+                    if (!WriteAll(layoutFd, layoutBytes))
                     {
                         return new StorageProtectionObservation(
                             obsId, layout.SessionId, now, PlatformName, layout.LayoutVersion,
                             layout.StoragePolicyVersion, layout.StoragePolicyHash,
                             StorageProtectionState.NotEstablished,
                             RootBoundaryValid: false, ReparsePointCheck: false,
-                            DiagnosticMessage: $"Upisivanje u '{SessionLayoutDescriptor.FileName}' nije uspelo ({written}/{layoutBytes.Length} bajtova).");
+                            DiagnosticMessage: $"Upisivanje u '{SessionLayoutDescriptor.FileName}' nije uspelo kroz WriteAll.");
                     }
 
-                    _posix.Fsync(layoutFd);
+                    if (_posix.Fsync(layoutFd) != 0)
+                    {
+                        return new StorageProtectionObservation(
+                            obsId, layout.SessionId, now, PlatformName, layout.LayoutVersion,
+                            layout.StoragePolicyVersion, layout.StoragePolicyHash,
+                            StorageProtectionState.NotEstablished,
+                            RootBoundaryValid: false, ReparsePointCheck: false,
+                            DiagnosticMessage: $"fsync nije uspeo za '{SessionLayoutDescriptor.FileName}'.");
+                    }
                 }
                 finally
                 {
@@ -341,7 +364,7 @@ public sealed class LinuxSessionModeProvisioner : IStorageProtectionProvider
         }
     }
 
-    public async Task<StorageProtectionObservation> VerifyStorageProtectionAsync(
+    public Task<StorageProtectionObservation> VerifyStorageProtectionAsync(
         string sessionRoot,
         SessionLayoutDescriptor layout,
         CancellationToken ct = default)
@@ -349,74 +372,195 @@ public sealed class LinuxSessionModeProvisioner : IStorageProtectionProvider
         ArgumentException.ThrowIfNullOrWhiteSpace(sessionRoot);
         ArgumentNullException.ThrowIfNull(layout);
 
-        var resolver = new SessionPathResolver(sessionRoot, layout);
         var now = DateTimeOffset.UtcNow;
         var obsId = $"spo-chk-lnx-{Guid.NewGuid():N}";
 
-        var normStateRoot = _stateRoot.Replace('\\', '/').TrimEnd('/');
-        var normSessionRoot = sessionRoot.Replace('\\', '/').TrimEnd('/');
-
-        if (normStateRoot.Length >= 2 && normStateRoot[1] == ':' && char.IsLetter(normStateRoot[0]))
+        try
         {
-            normStateRoot = normStateRoot.Substring(2);
-        }
-        if (normSessionRoot.Length >= 2 && normSessionRoot[1] == ':' && char.IsLetter(normSessionRoot[0]))
-        {
-            normSessionRoot = normSessionRoot.Substring(2);
-        }
+            var normStateRoot = NormalizePath(_stateRoot);
+            var normSessionRoot = NormalizePath(sessionRoot);
 
-        // 1. Validate sessionRoot from trusted StateRoot
-        var rootCheck = _symlinkGuard.ValidatePath(normStateRoot, normSessionRoot);
-        if (!rootCheck.IsSafe)
-        {
-            return new StorageProtectionObservation(
-                obsId, layout.SessionId, now, PlatformName, layout.LayoutVersion,
-                layout.StoragePolicyVersion, layout.StoragePolicyHash,
-                StorageProtectionState.NotEstablished,
-                RootBoundaryValid: false, ReparsePointCheck: false,
-                DiagnosticMessage: rootCheck.ViolationMessage ?? "Koren sesije je nebezbedan.");
-        }
-
-        // 2. Validate all semantic areas from trusted StateRoot
-        var rawDir = resolver.GetAreaFullPath(StorageAreaPolicy.RawArea);
-        var derivedDir = resolver.GetAreaFullPath(StorageAreaPolicy.DerivedArea);
-        var evidenceDir = resolver.GetAreaFullPath(StorageAreaPolicy.EvidenceArea);
-        var exportsDir = resolver.GetAreaFullPath(StorageAreaPolicy.ExportsArea);
-
-        var areas = new[] { ("Raw", rawDir), ("Derived", derivedDir), ("Evidence", evidenceDir), ("Exports", exportsDir) };
-        foreach (var (name, dir) in areas)
-        {
-            var areaCheck = _symlinkGuard.ValidatePath(normStateRoot, dir);
-            if (!areaCheck.IsSafe)
+            // 1. R3-B: Open trusted StateRoot FD
+            var rootFd = _posix.Open(normStateRoot, LinuxPosixStorageConstants.O_RDONLY | LinuxPosixStorageConstants.O_DIRECTORY | LinuxPosixStorageConstants.O_NOFOLLOW | LinuxPosixStorageConstants.O_CLOEXEC, 0);
+            if (rootFd < 0)
             {
-                return new StorageProtectionObservation(
+                return Task.FromResult(new StorageProtectionObservation(
                     obsId, layout.SessionId, now, PlatformName, layout.LayoutVersion,
                     layout.StoragePolicyVersion, layout.StoragePolicyHash,
                     StorageProtectionState.NotEstablished,
-                    RootBoundaryValid: true, ReparsePointCheck: false,
-                    DiagnosticMessage: areaCheck.ViolationMessage ?? $"Podzona sesije '{name}' je nebezbedna.");
+                    RootBoundaryValid: false, ReparsePointCheck: false,
+                    DiagnosticMessage: $"Autoritativni StateRoot '{normStateRoot}' ne postoji ili se ne može otvoriti. ZERO pathname fallback."));
             }
-        }
 
-        // 3. Validate layout.json from trusted StateRoot
-        var layoutPath = Path.Combine(sessionRoot, SessionLayoutDescriptor.FileName);
-        var layoutCheck = _symlinkGuard.ValidatePath(normStateRoot, layoutPath);
-        if (!layoutCheck.IsSafe)
-        {
-            return new StorageProtectionObservation(
-                obsId, layout.SessionId, now, PlatformName, layout.LayoutVersion,
-                layout.StoragePolicyVersion, layout.StoragePolicyHash,
-                StorageProtectionState.NotEstablished,
-                RootBoundaryValid: true, ReparsePointCheck: false,
-                DiagnosticMessage: layoutCheck.ViolationMessage ?? $"Deskriptor '{SessionLayoutDescriptor.FileName}' je nebezbedan.");
-        }
+            var openFds = new List<int> { rootFd };
 
-        // 4. R2-E: Open and read layout.json from the SAME FD (eliminated TOCTOU gap!)
-        int sessionFd = _posix.Open(normSessionRoot, LinuxPosixStorageConstants.O_RDONLY | LinuxPosixStorageConstants.O_DIRECTORY | LinuxPosixStorageConstants.O_NOFOLLOW | LinuxPosixStorageConstants.O_CLOEXEC, 0);
-        if (sessionFd >= 0)
-        {
             try
             {
+                if (_posix.Fstat(rootFd, out var rootStat) != 0 || !rootStat.IsDirectory)
+                {
+                    return Task.FromResult(new StorageProtectionObservation(
+                        obsId, layout.SessionId, now, PlatformName, layout.LayoutVersion,
+                        layout.StoragePolicyVersion, layout.StoragePolicyHash,
+                        StorageProtectionState.NotEstablished,
+                        RootBoundaryValid: false, ReparsePointCheck: false,
+                        DiagnosticMessage: $"Autoritativni StateRoot '{normStateRoot}' nije validan direktorijum."));
+                }
+
+                if ((rootStat.PermissionBits & 0xFFF) != LinuxPosixStorageConstants.Mode0700)
+                {
+                    return Task.FromResult(new StorageProtectionObservation(
+                        obsId, layout.SessionId, now, PlatformName, layout.LayoutVersion,
+                        layout.StoragePolicyVersion, layout.StoragePolicyHash,
+                        StorageProtectionState.NotEstablished,
+                        RootBoundaryValid: false, ReparsePointCheck: false,
+                        DiagnosticMessage: $"StateRoot '{normStateRoot}' ima neispravne permisije 0{Convert.ToString(rootStat.PermissionBits, 8)}."));
+                }
+
+                if (!CheckOwnership(rootStat, out var rootOwnerErr))
+                {
+                    return Task.FromResult(new StorageProtectionObservation(
+                        obsId, layout.SessionId, now, PlatformName, layout.LayoutVersion,
+                        layout.StoragePolicyVersion, layout.StoragePolicyHash,
+                        StorageProtectionState.NotEstablished,
+                        RootBoundaryValid: false, ReparsePointCheck: false,
+                        DiagnosticMessage: $"StateRoot '{normStateRoot}' {rootOwnerErr}"));
+                }
+
+                // Verify sessionRoot is within StateRoot
+                if (!normSessionRoot.StartsWith(normStateRoot + "/", StringComparison.Ordinal) && normSessionRoot != normStateRoot)
+                {
+                    return Task.FromResult(new StorageProtectionObservation(
+                        obsId, layout.SessionId, now, PlatformName, layout.LayoutVersion,
+                        layout.StoragePolicyVersion, layout.StoragePolicyHash,
+                        StorageProtectionState.NotEstablished,
+                        RootBoundaryValid: false, ReparsePointCheck: false,
+                        DiagnosticMessage: $"Koren sesije '{sessionRoot}' se nalazi van StateRoot-a '{normStateRoot}'."));
+                }
+
+                var relSession = normSessionRoot.Substring(normStateRoot.Length).TrimStart('/');
+                var sessionSegments = relSession.Split('/', StringSplitOptions.RemoveEmptyEntries);
+
+                var currentFd = rootFd;
+
+                // Step-by-step traversal keeping kernel-validated descendant FDs alive
+                foreach (var seg in sessionSegments)
+                {
+                    var segHow = new OpenHow
+                    {
+                        Flags = LinuxPosixStorageConstants.O_RDONLY | LinuxPosixStorageConstants.O_DIRECTORY | LinuxPosixStorageConstants.O_CLOEXEC,
+                        Mode = 0,
+                        Resolve = LinuxPosixStorageConstants.RESOLVE_BENEATH | LinuxPosixStorageConstants.RESOLVE_NO_SYMLINKS | LinuxPosixStorageConstants.RESOLVE_NO_XDEV | LinuxPosixStorageConstants.RESOLVE_NO_MAGICLINKS
+                    };
+
+                    int nextFd = _posix.OpenAt2(currentFd, seg, ref segHow);
+                    if (nextFd < 0)
+                    {
+                        return Task.FromResult(new StorageProtectionObservation(
+                            obsId, layout.SessionId, now, PlatformName, layout.LayoutVersion,
+                            layout.StoragePolicyVersion, layout.StoragePolicyHash,
+                            StorageProtectionState.NotEstablished,
+                            RootBoundaryValid: false, ReparsePointCheck: false,
+                            DiagnosticMessage: $"Nije moguće bezbedno otvoriti segment '{seg}' kroz openat2. ZERO pathname fallback."));
+                    }
+
+                    openFds.Add(nextFd);
+
+                    if (_posix.Fstat(nextFd, out var fdStat) != 0 || !fdStat.IsDirectory)
+                    {
+                        return Task.FromResult(new StorageProtectionObservation(
+                            obsId, layout.SessionId, now, PlatformName, layout.LayoutVersion,
+                            layout.StoragePolicyVersion, layout.StoragePolicyHash,
+                            StorageProtectionState.NotEstablished,
+                            RootBoundaryValid: false, ReparsePointCheck: false,
+                            DiagnosticMessage: $"Segment '{seg}' nije validan direktorijum."));
+                    }
+
+                    if ((fdStat.PermissionBits & 0xFFF) != LinuxPosixStorageConstants.Mode0700)
+                    {
+                        return Task.FromResult(new StorageProtectionObservation(
+                            obsId, layout.SessionId, now, PlatformName, layout.LayoutVersion,
+                            layout.StoragePolicyVersion, layout.StoragePolicyHash,
+                            StorageProtectionState.NotEstablished,
+                            RootBoundaryValid: false, ReparsePointCheck: false,
+                            DiagnosticMessage: $"Segment '{seg}' ima neispravne permisije 0{Convert.ToString(fdStat.PermissionBits, 8)}."));
+                    }
+
+                    if (!CheckOwnership(fdStat, out var segOwnerErr))
+                    {
+                        return Task.FromResult(new StorageProtectionObservation(
+                            obsId, layout.SessionId, now, PlatformName, layout.LayoutVersion,
+                            layout.StoragePolicyVersion, layout.StoragePolicyHash,
+                            StorageProtectionState.NotEstablished,
+                            RootBoundaryValid: false, ReparsePointCheck: false,
+                            DiagnosticMessage: $"Segment '{seg}' {segOwnerErr}"));
+                    }
+
+                    currentFd = nextFd;
+                }
+
+                var sessionFd = currentFd;
+
+                // 2. Validate all semantic areas from kernel-validated sessionFd
+                var areaNames = new[] { "Raw", "Evidence", "Derived", "Exports" };
+                foreach (var area in areaNames)
+                {
+                    var areaHow = new OpenHow
+                    {
+                        Flags = LinuxPosixStorageConstants.O_RDONLY | LinuxPosixStorageConstants.O_DIRECTORY | LinuxPosixStorageConstants.O_CLOEXEC,
+                        Mode = 0,
+                        Resolve = LinuxPosixStorageConstants.RESOLVE_BENEATH | LinuxPosixStorageConstants.RESOLVE_NO_SYMLINKS | LinuxPosixStorageConstants.RESOLVE_NO_XDEV | LinuxPosixStorageConstants.RESOLVE_NO_MAGICLINKS
+                    };
+
+                    int areaFd = _posix.OpenAt2(sessionFd, area, ref areaHow);
+                    if (areaFd < 0)
+                    {
+                        return Task.FromResult(new StorageProtectionObservation(
+                            obsId, layout.SessionId, now, PlatformName, layout.LayoutVersion,
+                            layout.StoragePolicyVersion, layout.StoragePolicyHash,
+                            StorageProtectionState.NotEstablished,
+                            RootBoundaryValid: true, ReparsePointCheck: false,
+                            DiagnosticMessage: $"Podzona '{area}' ne postoji ili se ne može bezbedno otvoriti. ZERO pathname fallback."));
+                    }
+
+                    try
+                    {
+                        if (_posix.Fstat(areaFd, out var areaStat) != 0 || !areaStat.IsDirectory)
+                        {
+                            return Task.FromResult(new StorageProtectionObservation(
+                                obsId, layout.SessionId, now, PlatformName, layout.LayoutVersion,
+                                layout.StoragePolicyVersion, layout.StoragePolicyHash,
+                                StorageProtectionState.NotEstablished,
+                                RootBoundaryValid: true, ReparsePointCheck: false,
+                                DiagnosticMessage: $"Podzona '{area}' nije validan direktorijum."));
+                        }
+
+                        if ((areaStat.PermissionBits & 0xFFF) != LinuxPosixStorageConstants.Mode0700)
+                        {
+                            return Task.FromResult(new StorageProtectionObservation(
+                                obsId, layout.SessionId, now, PlatformName, layout.LayoutVersion,
+                                layout.StoragePolicyVersion, layout.StoragePolicyHash,
+                                StorageProtectionState.NotEstablished,
+                                RootBoundaryValid: true, ReparsePointCheck: false,
+                                DiagnosticMessage: $"Podzona '{area}' ima neispravne permisije 0{Convert.ToString(areaStat.PermissionBits, 8)}."));
+                        }
+
+                        if (!CheckOwnership(areaStat, out var areaOwnerErr))
+                        {
+                            return Task.FromResult(new StorageProtectionObservation(
+                                obsId, layout.SessionId, now, PlatformName, layout.LayoutVersion,
+                                layout.StoragePolicyVersion, layout.StoragePolicyHash,
+                                StorageProtectionState.NotEstablished,
+                                RootBoundaryValid: true, ReparsePointCheck: false,
+                                DiagnosticMessage: $"Podzona '{area}' {areaOwnerErr}"));
+                        }
+                    }
+                    finally
+                    {
+                        _posix.Close(areaFd);
+                    }
+                }
+
+                // 3. R3-B & R3-C: Open and read layout.json from the SAME validated sessionFd
                 var layoutHow = new OpenHow
                 {
                     Flags = LinuxPosixStorageConstants.O_RDONLY | LinuxPosixStorageConstants.O_CLOEXEC,
@@ -427,52 +571,78 @@ public sealed class LinuxSessionModeProvisioner : IStorageProtectionProvider
                 int layoutFd = _posix.OpenAt2(sessionFd, SessionLayoutDescriptor.FileName, ref layoutHow);
                 if (layoutFd < 0)
                 {
-                    return new StorageProtectionObservation(
+                    return Task.FromResult(new StorageProtectionObservation(
                         obsId, layout.SessionId, now, PlatformName, layout.LayoutVersion,
                         layout.StoragePolicyVersion, layout.StoragePolicyHash,
                         StorageProtectionState.NotEstablished,
                         RootBoundaryValid: true, ReparsePointCheck: false,
-                        DiagnosticMessage: $"Nije moguće bezbedno otvoriti '{SessionLayoutDescriptor.FileName}' kroz openat2.");
+                        DiagnosticMessage: $"Nije moguće bezbedno otvoriti '{SessionLayoutDescriptor.FileName}' kroz openat2. ZERO pathname fallback."));
                 }
 
                 try
                 {
                     if (_posix.Fstat(layoutFd, out var fdStat) != 0 || !fdStat.IsRegularFile)
                     {
-                        return new StorageProtectionObservation(
+                        return Task.FromResult(new StorageProtectionObservation(
                             obsId, layout.SessionId, now, PlatformName, layout.LayoutVersion,
                             layout.StoragePolicyVersion, layout.StoragePolicyHash,
                             StorageProtectionState.NotEstablished,
                             RootBoundaryValid: true, ReparsePointCheck: false,
-                            DiagnosticMessage: $"Deskriptor '{SessionLayoutDescriptor.FileName}' nije validan regularni fajl.");
+                            DiagnosticMessage: $"Deskriptor '{SessionLayoutDescriptor.FileName}' nije validan regularni fajl."));
                     }
 
-                    if (fdStat.Size > 65536)
+                    if ((fdStat.PermissionBits & 0xFFF) != LinuxPosixStorageConstants.Mode0600)
                     {
-                        return new StorageProtectionObservation(
+                        return Task.FromResult(new StorageProtectionObservation(
                             obsId, layout.SessionId, now, PlatformName, layout.LayoutVersion,
                             layout.StoragePolicyVersion, layout.StoragePolicyHash,
                             StorageProtectionState.NotEstablished,
                             RootBoundaryValid: true, ReparsePointCheck: false,
-                            DiagnosticMessage: $"Deskriptor '{SessionLayoutDescriptor.FileName}' premašuje maksimalnu dozvoljenu veličinu.");
+                            DiagnosticMessage: $"Deskriptor '{SessionLayoutDescriptor.FileName}' ima neispravne permisije 0{Convert.ToString(fdStat.PermissionBits, 8)} (zahteva se 0600)."));
+                    }
+
+                    if (!CheckOwnership(fdStat, out var layoutOwnerErr))
+                    {
+                        return Task.FromResult(new StorageProtectionObservation(
+                            obsId, layout.SessionId, now, PlatformName, layout.LayoutVersion,
+                            layout.StoragePolicyVersion, layout.StoragePolicyHash,
+                            StorageProtectionState.NotEstablished,
+                            RootBoundaryValid: true, ReparsePointCheck: false,
+                            DiagnosticMessage: $"Deskriptor '{SessionLayoutDescriptor.FileName}' {layoutOwnerErr}"));
+                    }
+
+                    if (fdStat.Size <= 0 || fdStat.Size > MaxLayoutDescriptorSizeBytes)
+                    {
+                        return Task.FromResult(new StorageProtectionObservation(
+                            obsId, layout.SessionId, now, PlatformName, layout.LayoutVersion,
+                            layout.StoragePolicyVersion, layout.StoragePolicyHash,
+                            StorageProtectionState.NotEstablished,
+                            RootBoundaryValid: true, ReparsePointCheck: false,
+                            DiagnosticMessage: $"Deskriptor '{SessionLayoutDescriptor.FileName}' ima nevalidnu veličinu ({fdStat.Size} bajtova)."));
                     }
 
                     var buffer = new byte[(int)fdStat.Size];
-                    int read = _posix.Read(layoutFd, buffer);
-                    if (read == buffer.Length && buffer.Length > 0)
+                    if (!ReadExactly(layoutFd, buffer))
                     {
-                        var loaded = SessionLayoutDescriptor.FromCanonicalBytes(buffer);
-                        if (loaded == null || loaded.SessionId != layout.SessionId)
-                        {
-                            return new StorageProtectionObservation(
-                                obsId, layout.SessionId, now, PlatformName, layout.LayoutVersion,
-                                layout.StoragePolicyVersion, layout.StoragePolicyHash,
-                                StorageProtectionState.NotEstablished,
-                                RootBoundaryValid: true, ReparsePointCheck: false,
-                                DiagnosticMessage: loaded == null
-                                    ? $"Deskriptor '{SessionLayoutDescriptor.FileName}' nije validan JSON."
-                                    : $"Deskriptor sadrži neslaganje SessionId: '{loaded.SessionId}' umesto očekivanog '{layout.SessionId}'.");
-                        }
+                        return Task.FromResult(new StorageProtectionObservation(
+                            obsId, layout.SessionId, now, PlatformName, layout.LayoutVersion,
+                            layout.StoragePolicyVersion, layout.StoragePolicyHash,
+                            StorageProtectionState.NotEstablished,
+                            RootBoundaryValid: true, ReparsePointCheck: false,
+                            DiagnosticMessage: $"Neuspešno ili nepotpuno čitanje (short read/EOF/greška) deskriptora '{SessionLayoutDescriptor.FileName}'."));
+                    }
+
+                    var loaded = SessionLayoutDescriptor.FromCanonicalBytes(buffer);
+                    if (loaded == null || loaded.SessionId != layout.SessionId)
+                    {
+                        return Task.FromResult(new StorageProtectionObservation(
+                            obsId, layout.SessionId, now, PlatformName, layout.LayoutVersion,
+                            layout.StoragePolicyVersion, layout.StoragePolicyHash,
+                            StorageProtectionState.NotEstablished,
+                            RootBoundaryValid: true, ReparsePointCheck: false,
+                            DiagnosticMessage: loaded == null
+                                ? $"Deskriptor '{SessionLayoutDescriptor.FileName}' nije validan JSON."
+                                : $"Deskriptor sadrži neslaganje SessionId: '{loaded.SessionId}' umesto očekivanog '{layout.SessionId}'."));
                     }
                 }
                 finally
@@ -482,44 +652,87 @@ public sealed class LinuxSessionModeProvisioner : IStorageProtectionProvider
             }
             finally
             {
-                _posix.Close(sessionFd);
-            }
-        }
-        else if (File.Exists(layoutPath))
-        {
-            try
-            {
-                var bytes = await File.ReadAllBytesAsync(layoutPath, ct).ConfigureAwait(false);
-                var loaded = SessionLayoutDescriptor.FromCanonicalBytes(bytes);
-                if (loaded == null || loaded.SessionId != layout.SessionId)
+                foreach (var fd in openFds)
                 {
-                    return new StorageProtectionObservation(
-                        obsId, layout.SessionId, now, PlatformName, layout.LayoutVersion,
-                        layout.StoragePolicyVersion, layout.StoragePolicyHash,
-                        StorageProtectionState.NotEstablished,
-                        RootBoundaryValid: true, ReparsePointCheck: false,
-                        DiagnosticMessage: loaded == null
-                            ? $"Deskriptor '{SessionLayoutDescriptor.FileName}' nije validan JSON."
-                            : $"Deskriptor sadrži neslaganje SessionId: '{loaded.SessionId}' umesto očekivanog '{layout.SessionId}'.");
+                    _posix.Close(fd);
                 }
             }
-            catch (Exception ex)
+
+            // All checks succeeded on validated FDs
+            return Task.FromResult(new StorageProtectionObservation(
+                obsId, layout.SessionId, now, PlatformName, layout.LayoutVersion,
+                layout.StoragePolicyVersion, layout.StoragePolicyHash,
+                StorageProtectionState.Established,
+                RootBoundaryValid: true, ReparsePointCheck: true,
+                PlatformSecurityDescriptorRef: $"POSIX:0700/0600:{_ownershipPolicy.PolicyName}"));
+        }
+        catch (Exception ex)
+        {
+            return Task.FromResult(new StorageProtectionObservation(
+                obsId, layout.SessionId, now, PlatformName, layout.LayoutVersion,
+                layout.StoragePolicyVersion, layout.StoragePolicyHash,
+                StorageProtectionState.NotEstablished,
+                RootBoundaryValid: false, ReparsePointCheck: false,
+                DiagnosticMessage: $"Greška pri verifikaciji Linux POSIX zaštite sesije: {ex.Message}"));
+        }
+    }
+
+    private bool WriteAll(int fd, ReadOnlySpan<byte> data)
+    {
+        int total = 0;
+        while (total < data.Length)
+        {
+            int n = _posix.Write(fd, data.Slice(total));
+            if (n <= 0)
             {
-                return new StorageProtectionObservation(
-                    obsId, layout.SessionId, now, PlatformName, layout.LayoutVersion,
-                    layout.StoragePolicyVersion, layout.StoragePolicyHash,
-                    StorageProtectionState.NotEstablished,
-                    RootBoundaryValid: true, ReparsePointCheck: false,
-                    DiagnosticMessage: $"Deskriptor '{SessionLayoutDescriptor.FileName}' je oštećen ili nečitljiv: {ex.Message}");
+                return false;
+            }
+            total += n;
+        }
+        return true;
+    }
+
+    private bool ReadExactly(int fd, Span<byte> buffer)
+    {
+        int total = 0;
+        while (total < buffer.Length)
+        {
+            int n = _posix.Read(fd, buffer.Slice(total));
+            if (n <= 0)
+            {
+                return false;
+            }
+            total += n;
+        }
+        return true;
+    }
+
+    private bool CheckOwnership(PosixStat stat, out string? errorMessage)
+    {
+        if (_ownershipPolicy.EnforceExactOwnership)
+        {
+            if (_ownershipPolicy.ExpectedUid.HasValue && stat.Uid != _ownershipPolicy.ExpectedUid.Value)
+            {
+                errorMessage = $"ima neispravnog vlasnika UID {stat.Uid} (očekivano {_ownershipPolicy.ExpectedUid.Value}).";
+                return false;
+            }
+            if (_ownershipPolicy.ExpectedGid.HasValue && stat.Gid != _ownershipPolicy.ExpectedGid.Value)
+            {
+                errorMessage = $"ima neispravnu grupu GID {stat.Gid} (očekivano {_ownershipPolicy.ExpectedGid.Value}).";
+                return false;
             }
         }
+        errorMessage = null;
+        return true;
+    }
 
-        // All checks succeeded
-        return new StorageProtectionObservation(
-            obsId, layout.SessionId, now, PlatformName, layout.LayoutVersion,
-            layout.StoragePolicyVersion, layout.StoragePolicyHash,
-            StorageProtectionState.Established,
-            RootBoundaryValid: true, ReparsePointCheck: true,
-            PlatformSecurityDescriptorRef: $"POSIX:0700/0600:{_ownershipPolicy.PolicyName}");
+    private static string NormalizePath(string path)
+    {
+        var norm = path.Replace('\\', '/').TrimEnd('/');
+        if (norm.Length >= 2 && norm[1] == ':' && char.IsLetter(norm[0]))
+        {
+            norm = norm.Substring(2);
+        }
+        return norm;
     }
 }
