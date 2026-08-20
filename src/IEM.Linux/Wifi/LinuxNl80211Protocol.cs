@@ -238,6 +238,10 @@ public static class LinuxNl80211Protocol
     public const byte NL80211_CMD_TRIGGER_SCAN = 33;
     public const byte NL80211_CMD_NEW_SCAN_RESULTS = 34;
     public const byte NL80211_CMD_SCAN_ABORTED = 35;
+    public const byte NL80211_CMD_START_SCHED_SCAN = 79;
+    public const byte NL80211_CMD_STOP_SCHED_SCAN = 80;
+    public const byte NL80211_CMD_SCHED_SCAN_RESULTS = 81;
+    public const byte NL80211_CMD_SCHED_SCAN_STOPPED = 82;
 
     // Top-level attributes
     public const ushort NL80211_ATTR_UNSPEC = 0;
@@ -249,6 +253,8 @@ public static class LinuxNl80211Protocol
     public const ushort NL80211_ATTR_MAC = 6;
     public const ushort NL80211_ATTR_STA_INFO = 21;
     public const ushort NL80211_ATTR_WIPHY_FREQ = 38;
+    public const ushort NL80211_ATTR_SCAN_FREQUENCIES = 44;
+    public const ushort NL80211_ATTR_SCAN_SSIDS = 45;
     public const ushort NL80211_ATTR_GENERATION = 46;
     public const ushort NL80211_ATTR_BSS = 47;
     public const ushort NL80211_ATTR_SSID = 52;

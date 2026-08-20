@@ -4090,7 +4090,7 @@ public class LinuxWifiRadioTests
 
         var clock = new StubNativeClock { CurrentBootTimeSec = 1000 };
         var tracker = new LinuxWifiScanCompletionTracker();
-        tracker.RecordScanEvent(3, 0x1000UL, LinuxWifiScanEventStatus.Completed, 1000_000_000_000UL);
+        tracker.RecordScanEvent(3, 0x1000UL, LinuxWifiScanEventStatus.Completed, 1000_000_000_000UL, LinuxWifiScanDomain.AllAllowedWildcard());
 
         using var radio = new LinuxNl80211Radio(socket, rfkillReader: null, boundInterfaceId: null, ownsSocket: null, scanCompletionTracker: tracker, clock: clock);
         var visible = await radio.IsSsidVisibleAsync("wlan0", "HomeMesh");

@@ -1061,11 +1061,27 @@ public sealed class LinuxNl80211Radio : IWirelessRadio, IDisposable, IAsyncDispo
             return null;
         }
 
-        var bssDump = await _socket.DumpBssAsync(family.FamilyId, targetIf.IfIndex, targetIf.Wdev.Value, cancellationToken).ConfigureAwait(false);
-        var currentBootTimeNs = LinuxWifiScanCache.TryGetCurrentBootTimeNs(_clock);
-        var snapshot = LinuxWifiScanCache.EvaluateScanDump(bssDump, targetIf.IfIndex, targetIf.Wdev, _scanCompletionTracker, currentBootTimeNs);
+        var preSnapshot = _scanCompletionTracker.GetSnapshot(targetIf.IfIndex, targetIf.Wdev);
+        var dumpStartedAtNs = LinuxWifiScanCache.TryGetCurrentBootTimeNs(_clock);
 
-        return LinuxWifiScanCache.EvaluateSsidVisibility(snapshot, ssid, currentBootTimeNs);
+        var bssDump = await _socket.DumpBssAsync(family.FamilyId, targetIf.IfIndex, targetIf.Wdev.Value, cancellationToken).ConfigureAwait(false);
+
+        var dumpCompletedAtNs = LinuxWifiScanCache.TryGetCurrentBootTimeNs(_clock);
+        var postSnapshot = _scanCompletionTracker.GetSnapshot(targetIf.IfIndex, targetIf.Wdev);
+
+        var snapshot = LinuxWifiScanCache.EvaluateScanDump(
+            bssDump,
+            targetIf.IfIndex,
+            targetIf.Wdev,
+            _scanCompletionTracker,
+            dumpCompletedAtNs,
+            preSnapshot,
+            postSnapshot,
+            dumpStartedAtNs,
+            dumpCompletedAtNs,
+            requestedSsid: ssid);
+
+        return LinuxWifiScanCache.EvaluateSsidVisibility(snapshot, ssid, dumpCompletedAtNs);
     }
 
     /// <summary>

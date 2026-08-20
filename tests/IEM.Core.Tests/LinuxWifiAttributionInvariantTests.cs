@@ -137,7 +137,7 @@ public sealed class LinuxWifiAttributionInvariantTests
         var rfkill = new StubRfkillReader { HardBlocked = false, SoftBlocked = false };
         var clock = new StubNativeClock { CurrentBootTimeSec = 1000 };
         var tracker = new LinuxWifiScanCompletionTracker();
-        tracker.RecordScanEvent(3, 0x1000UL, LinuxWifiScanEventStatus.Completed, 1000_000_000_000UL);
+        tracker.RecordScanEvent(3, 0x1000UL, LinuxWifiScanEventStatus.Completed, 1000_000_000_000UL, LinuxWifiScanDomain.AllAllowedWildcard());
 
         // Associated BSS present in remembered state, but in scan dump only OtherNet is fresh
         socket.BssDump.Add(CreateBss("OtherNet", seenMsAgo: 5000));

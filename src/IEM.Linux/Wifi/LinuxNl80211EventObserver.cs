@@ -45,15 +45,16 @@ public sealed class LinuxNl80211EventObserver : ILinuxNl80211EventObserver
     public LinuxNl80211EventObserver(
         ILinuxWifiScanCompletionTracker tracker,
         ILinuxNl80211Socket? querySocket = null,
-        Func<LinuxNativeNetlinkSocket>? eventSocketFactory = null)
-        : this(tracker, querySocket, eventSocketFactory, null)
+        Func<LinuxNativeNetlinkSocket>? eventSocketFactory = null,
+        bool? ownsQuerySocket = null)
+        : this(tracker, querySocket, eventSocketFactory, ownsQuerySocket, null)
     {
     }
 
     internal LinuxNl80211EventObserver(
         ILinuxWifiScanCompletionTracker tracker,
         ILinuxNativeClock? clock)
-        : this(tracker, null, null, clock)
+        : this(tracker, null, null, null, clock)
     {
     }
 
@@ -61,10 +62,11 @@ public sealed class LinuxNl80211EventObserver : ILinuxNl80211EventObserver
         ILinuxWifiScanCompletionTracker tracker,
         ILinuxNl80211Socket? querySocket,
         Func<LinuxNativeNetlinkSocket>? eventSocketFactory,
+        bool? ownsQuerySocket,
         ILinuxNativeClock? clock)
     {
         _tracker = tracker ?? throw new ArgumentNullException(nameof(tracker));
-        _ownsQuerySocket = querySocket == null;
+        _ownsQuerySocket = ownsQuerySocket ?? (querySocket == null);
         _querySocket = querySocket ?? LinuxNl80211Socket.Create();
         _eventSocketFactory = eventSocketFactory;
         _clock = clock;
@@ -209,16 +211,24 @@ public sealed class LinuxNl80211EventObserver : ILinuxNl80211EventObserver
                     var payload = buffer.Slice(offset + LinuxGenlProtocol.NlmsgHeaderSize + LinuxGenlProtocol.GenlHeaderSize,
                                                nlmsgLen - (LinuxGenlProtocol.NlmsgHeaderSize + LinuxGenlProtocol.GenlHeaderSize));
 
-                    if (genlCmd is LinuxNl80211Protocol.NL80211_CMD_NEW_SCAN_RESULTS or LinuxNl80211Protocol.NL80211_CMD_SCAN_ABORTED)
+                    LinuxWifiScanEventStatus? status = genlCmd switch
                     {
-                        var status = genlCmd == LinuxNl80211Protocol.NL80211_CMD_NEW_SCAN_RESULTS
-                            ? LinuxWifiScanEventStatus.Completed
-                            : LinuxWifiScanEventStatus.Aborted;
+                        LinuxNl80211Protocol.NL80211_CMD_TRIGGER_SCAN => LinuxWifiScanEventStatus.Started,
+                        LinuxNl80211Protocol.NL80211_CMD_NEW_SCAN_RESULTS => LinuxWifiScanEventStatus.Completed,
+                        LinuxNl80211Protocol.NL80211_CMD_SCAN_ABORTED => LinuxWifiScanEventStatus.Aborted,
+                        LinuxNl80211Protocol.NL80211_CMD_START_SCHED_SCAN => LinuxWifiScanEventStatus.ScheduledStarted,
+                        LinuxNl80211Protocol.NL80211_CMD_SCHED_SCAN_RESULTS => LinuxWifiScanEventStatus.ScheduledResults,
+                        LinuxNl80211Protocol.NL80211_CMD_STOP_SCHED_SCAN => LinuxWifiScanEventStatus.ScheduledStopped,
+                        LinuxNl80211Protocol.NL80211_CMD_SCHED_SCAN_STOPPED => LinuxWifiScanEventStatus.ScheduledStopped,
+                        _ => null
+                    };
 
-                        if (TryParseScanAttributes(payload, out int ifIndex, out ulong? wdev))
+                    if (status.HasValue)
+                    {
+                        if (TryParseScanAttributes(payload, out int ifIndex, out ulong? wdev, out LinuxWifiScanDomain domain))
                         {
                             var bootNs = LinuxWifiScanCache.TryGetCurrentBootTimeNs(_clock);
-                            _tracker.RecordScanEvent(ifIndex, wdev, status, bootNs);
+                            _tracker.RecordScanEvent(ifIndex, wdev, status.Value, bootNs, domain);
                         }
                     }
                 }
@@ -229,35 +239,185 @@ public sealed class LinuxNl80211EventObserver : ILinuxNl80211EventObserver
     }
 
     /// <summary>
-    /// Parses scan event attributes strictly extracting NL80211_ATTR_IFINDEX and NL80211_ATTR_WDEV.
+    /// Parses scan event attributes strictly with structural validation.
+    /// Invariant:
+    /// - Payload must be strictly valid Netlink attributes (no truncated/trailing garbage).
+    /// - IFINDEX must appear exactly once and be exactly 4 bytes, with value > 0.
+    /// - WDEV must appear at most once and be exactly 8 bytes, with value != 0.
+    /// - SCAN_FREQUENCIES and SCAN_SSIDS are parsed strictly. If present and valid, they build the domain; if malformed, domain is Unknown.
     /// </summary>
-    public static bool TryParseScanAttributes(ReadOnlySpan<byte> payload, out int ifIndex, out ulong? wdev)
+    public static bool TryParseScanAttributes(
+        ReadOnlySpan<byte> payload,
+        out int ifIndex,
+        out ulong? wdev,
+        out LinuxWifiScanDomain domain)
     {
         ifIndex = 0;
         wdev = null;
+        domain = LinuxWifiScanDomain.Unknown;
 
-        var attrs = LinuxGenlProtocol.EnumerateAttributes(payload);
+        if (!LinuxGenlProtocol.TryEnumerateAttributesStrict(payload, out var attrs))
+        {
+            return false;
+        }
+
+        bool hasIfIndex = false;
+        bool hasWdev = false;
+        byte[]? scanFreqsBytes = null;
+        byte[]? scanSsidsBytes = null;
+
         foreach (var (type, val) in attrs)
         {
             switch (type)
             {
                 case LinuxNl80211Protocol.NL80211_ATTR_IFINDEX:
-                    if (val.Length >= 4)
+                    if (hasIfIndex || val.Length != 4)
                     {
-                        ifIndex = MemoryMarshal.Read<int>(val);
+                        return false; // Duplicate or invalid width
                     }
+                    ifIndex = MemoryMarshal.Read<int>(val);
+                    if (ifIndex <= 0)
+                    {
+                        return false;
+                    }
+                    hasIfIndex = true;
                     break;
 
                 case LinuxNl80211Protocol.NL80211_ATTR_WDEV:
-                    if (val.Length >= 8)
+                    if (hasWdev || val.Length != 8)
                     {
-                        wdev = MemoryMarshal.Read<ulong>(val);
+                        return false; // Duplicate or invalid width
                     }
+                    var parsedWdev = MemoryMarshal.Read<ulong>(val);
+                    if (parsedWdev == 0)
+                    {
+                        return false;
+                    }
+                    wdev = parsedWdev;
+                    hasWdev = true;
+                    break;
+
+                case LinuxNl80211Protocol.NL80211_ATTR_SCAN_FREQUENCIES:
+                    if (scanFreqsBytes != null)
+                    {
+                        return false; // Duplicate scan freqs
+                    }
+                    scanFreqsBytes = val;
+                    break;
+
+                case LinuxNl80211Protocol.NL80211_ATTR_SCAN_SSIDS:
+                    if (scanSsidsBytes != null)
+                    {
+                        return false; // Duplicate scan ssids
+                    }
+                    scanSsidsBytes = val;
                     break;
             }
         }
 
-        return ifIndex > 0;
+        if (!hasIfIndex)
+        {
+            return false;
+        }
+
+        // Parse Domain
+        domain = ParseScanDomain(scanFreqsBytes, scanSsidsBytes);
+        return true;
+    }
+
+    public static bool TryParseScanAttributes(ReadOnlySpan<byte> payload, out int ifIndex, out ulong? wdev)
+    {
+        return TryParseScanAttributes(payload, out ifIndex, out wdev, out _);
+    }
+
+    public static LinuxWifiScanDomain ParseScanDomain(byte[]? scanFreqsBytes, byte[]? scanSsidsBytes)
+    {
+        var freqScope = LinuxWifiScanFrequencyScope.Unknown;
+        var ssidScope = LinuxWifiScanSsidScope.Unknown;
+        var freqs = new List<uint>();
+        var ssids = new List<byte[]>();
+
+        // 1. Frequencies
+        if (scanFreqsBytes != null)
+        {
+            if (LinuxGenlProtocol.TryEnumerateAttributesStrict(scanFreqsBytes, out var freqAttrs))
+            {
+                bool allFreqsValid = true;
+                foreach (var (_, val) in freqAttrs)
+                {
+                    if (val.Length == 4)
+                    {
+                        freqs.Add(MemoryMarshal.Read<uint>(val));
+                    }
+                    else
+                    {
+                        allFreqsValid = false;
+                        break;
+                    }
+                }
+
+                if (allFreqsValid && freqs.Count > 0)
+                {
+                    freqScope = LinuxWifiScanFrequencyScope.AllAllowed;
+                }
+                else
+                {
+                    freqScope = LinuxWifiScanFrequencyScope.Unknown;
+                }
+            }
+            else
+            {
+                freqScope = LinuxWifiScanFrequencyScope.Unknown;
+            }
+        }
+        else
+        {
+            freqScope = LinuxWifiScanFrequencyScope.Unknown;
+        }
+
+        // 2. SSIDs
+        if (scanSsidsBytes != null)
+        {
+            if (LinuxGenlProtocol.TryEnumerateAttributesStrict(scanSsidsBytes, out var ssidAttrs))
+            {
+                bool hasWildcard = false;
+                foreach (var (_, val) in ssidAttrs)
+                {
+                    if (val.Length == 0)
+                    {
+                        hasWildcard = true;
+                        ssids.Add(Array.Empty<byte>());
+                    }
+                    else
+                    {
+                        ssids.Add(val);
+                    }
+                }
+
+                if (hasWildcard)
+                {
+                    ssidScope = LinuxWifiScanSsidScope.WildcardActive;
+                }
+                else if (ssids.Count > 0)
+                {
+                    ssidScope = LinuxWifiScanSsidScope.ExplicitSsids;
+                }
+                else
+                {
+                    ssidScope = LinuxWifiScanSsidScope.PassiveOnly;
+                }
+            }
+            else
+            {
+                ssidScope = LinuxWifiScanSsidScope.Unknown;
+            }
+        }
+        else
+        {
+            ssidScope = LinuxWifiScanSsidScope.PassiveOnly;
+        }
+
+        return new LinuxWifiScanDomain(freqScope, ssidScope, freqs, ssids);
     }
 
     public void Dispose()

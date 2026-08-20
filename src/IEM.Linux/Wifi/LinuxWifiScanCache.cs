@@ -25,48 +25,145 @@ public enum LinuxWifiScanEvidenceBasis
     Unknown
 }
 
+public enum LinuxWifiScanFrequencyScope
+{
+    Unknown,
+    AllAllowed,
+    ExplicitSubset
+}
+
+public enum LinuxWifiScanSsidScope
+{
+    Unknown,
+    PassiveOnly,
+    WildcardActive,
+    ExplicitSsids
+}
+
+public sealed record LinuxWifiScanDomain(
+    LinuxWifiScanFrequencyScope FrequencyScope,
+    LinuxWifiScanSsidScope SsidScope,
+    IReadOnlyList<uint> FrequenciesMhz,
+    IReadOnlyList<byte[]> Ssids)
+{
+    public static readonly LinuxWifiScanDomain Unknown = new(
+        LinuxWifiScanFrequencyScope.Unknown,
+        LinuxWifiScanSsidScope.Unknown,
+        Array.Empty<uint>(),
+        Array.Empty<byte[]>());
+
+    public static LinuxWifiScanDomain AllAllowedWildcard() => new(
+        LinuxWifiScanFrequencyScope.AllAllowed,
+        LinuxWifiScanSsidScope.WildcardActive,
+        Array.Empty<uint>(),
+        new[] { Array.Empty<byte>() });
+
+    /// <summary>
+    /// Checks if this observation domain provides affirmative proof that the requested SSID
+    /// would have been observed if it were actively in the air.
+    /// Invariant: FrequencyScope must be AllAllowed AND (SsidScope is WildcardActive OR ExplicitSsids contains exact requested bytes).
+    /// </summary>
+    public bool CoversSsidObservation(byte[] requestedSsidBytes)
+    {
+        if (FrequencyScope != LinuxWifiScanFrequencyScope.AllAllowed)
+        {
+            return false;
+        }
+
+        if (SsidScope == LinuxWifiScanSsidScope.WildcardActive)
+        {
+            return true;
+        }
+
+        if (SsidScope == LinuxWifiScanSsidScope.ExplicitSsids && Ssids != null && requestedSsidBytes != null)
+        {
+            foreach (var ssid in Ssids)
+            {
+                if (ssid != null && ssid.AsSpan().SequenceEqual(requestedSsidBytes))
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+}
+
 public enum LinuxWifiScanEventStatus
 {
+    Started,
     Completed,
-    Aborted
+    Aborted,
+    ScheduledStarted,
+    ScheduledResults,
+    ScheduledStopped,
+    Unknown
 }
 
 public sealed record LinuxWifiScanCompletionRecord(
     int IfIndex,
     ulong? Wdev,
     ulong? ObservedAtBootTimeNs,
-    LinuxWifiScanEventStatus Status);
+    LinuxWifiScanEventStatus Status,
+    long Revision,
+    LinuxWifiScanDomain? Domain);
+
+public sealed record LinuxWifiScanTrackerSnapshot(
+    long Revision,
+    int IfIndex,
+    ulong? Wdev,
+    LinuxWifiScanEventStatus Status,
+    ulong? ObservedAtBootTimeNs,
+    LinuxWifiScanDomain? Domain);
 
 public interface ILinuxWifiScanCompletionTracker
 {
-    void RecordScanEvent(int ifIndex, ulong? wdev, LinuxWifiScanEventStatus status, ulong? bootTimeNs = null);
+    void RecordScanEvent(
+        int ifIndex,
+        ulong? wdev,
+        LinuxWifiScanEventStatus status,
+        ulong? bootTimeNs = null,
+        LinuxWifiScanDomain? domain = null);
+
     LinuxWifiScanCompletionRecord? GetLastScanCompletion(int ifIndex, ulong? wdev);
+    LinuxWifiScanTrackerSnapshot? GetSnapshot(int ifIndex, ulong? wdev);
 }
 
 public sealed class LinuxWifiScanCompletionTracker : ILinuxWifiScanCompletionTracker
 {
     private readonly object _lock = new();
     private readonly Dictionary<(int IfIndex, ulong Wdev), LinuxWifiScanCompletionRecord> _records = new();
+    private long _revisionCounter = 0;
 
-    public void RecordScanEvent(int ifIndex, ulong? wdev, LinuxWifiScanEventStatus status, ulong? bootTimeNs = null)
+    public void RecordScanEvent(
+        int ifIndex,
+        ulong? wdev,
+        LinuxWifiScanEventStatus status,
+        ulong? bootTimeNs = null,
+        LinuxWifiScanDomain? domain = null)
     {
         var bootNs = bootTimeNs ?? LinuxWifiScanCache.TryGetCurrentBootTimeNs();
         lock (_lock)
         {
-            if (status == LinuxWifiScanEventStatus.Aborted && !wdev.HasValue)
+            _revisionCounter++;
+            var rev = _revisionCounter;
+            var effectiveDomain = domain ?? LinuxWifiScanDomain.Unknown;
+
+            if (status is LinuxWifiScanEventStatus.Aborted or LinuxWifiScanEventStatus.ScheduledStarted or LinuxWifiScanEventStatus.ScheduledResults or LinuxWifiScanEventStatus.ScheduledStopped && !wdev.HasValue)
             {
-                // Invalidate all records for this ifindex on generic abort
+                // Invalidate all records for this ifindex on generic abort or sched event without WDEV
                 var matchingKeys = _records.Keys.Where(k => k.IfIndex == ifIndex).ToList();
                 foreach (var k in matchingKeys)
                 {
-                    _records[k] = new LinuxWifiScanCompletionRecord(ifIndex, k.Wdev == 0UL ? null : k.Wdev, bootNs, LinuxWifiScanEventStatus.Aborted);
+                    _records[k] = new LinuxWifiScanCompletionRecord(ifIndex, k.Wdev == 0UL ? null : k.Wdev, bootNs, status, rev, effectiveDomain);
                 }
-                _records[(ifIndex, 0UL)] = new LinuxWifiScanCompletionRecord(ifIndex, null, bootNs, LinuxWifiScanEventStatus.Aborted);
+                _records[(ifIndex, 0UL)] = new LinuxWifiScanCompletionRecord(ifIndex, null, bootNs, status, rev, effectiveDomain);
             }
             else
             {
                 var key = (ifIndex, wdev ?? 0UL);
-                _records[key] = new LinuxWifiScanCompletionRecord(ifIndex, wdev, bootNs, status);
+                _records[key] = new LinuxWifiScanCompletionRecord(ifIndex, wdev, bootNs, status, rev, effectiveDomain);
             }
         }
     }
@@ -81,6 +178,25 @@ public sealed class LinuxWifiScanCompletionTracker : ILinuxWifiScanCompletionTra
                 return record;
             }
             // Strict scoping: never fallback from known WDEV to 0UL for negative-proof completion
+            return null;
+        }
+    }
+
+    public LinuxWifiScanTrackerSnapshot? GetSnapshot(int ifIndex, ulong? wdev)
+    {
+        var key = (ifIndex, wdev ?? 0UL);
+        lock (_lock)
+        {
+            if (_records.TryGetValue(key, out var record))
+            {
+                return new LinuxWifiScanTrackerSnapshot(
+                    record.Revision,
+                    record.IfIndex,
+                    record.Wdev,
+                    record.Status,
+                    record.ObservedAtBootTimeNs,
+                    record.Domain);
+            }
             return null;
         }
     }
@@ -151,14 +267,20 @@ public static class LinuxWifiScanCache
     /// scan-completion provenance, and freshness.
     /// Invariant 250: NLMSG_DONE transport completeness alone does NOT prove RF scan completeness.
     /// RF scan completeness requires affirmative scan-completion provenance (e.g. NL80211_CMD_NEW_SCAN_RESULTS)
-    /// with known, proven freshness and exact adapter/WDEV identity match.
+    /// with known, proven freshness, causal precedence, revision stability, exact adapter/WDEV identity match,
+    /// and proven frequency/SSID observation domain coverage.
     /// </summary>
     public static LinuxWifiScanSnapshot EvaluateScanDump(
         LinuxNl80211DumpResult<LinuxNl80211BssInfo> dumpResult,
         int? ifIndex = null,
         ulong? wdev = null,
         ILinuxWifiScanCompletionTracker? completionTracker = null,
-        ulong? currentBootTimeNs = null)
+        ulong? currentBootTimeNs = null,
+        LinuxWifiScanTrackerSnapshot? preSnapshot = null,
+        LinuxWifiScanTrackerSnapshot? postSnapshot = null,
+        ulong? dumpStartedAtBootTimeNs = null,
+        ulong? dumpCompletedAtBootTimeNs = null,
+        string? requestedSsid = null)
     {
         if (dumpResult == null)
         {
@@ -181,26 +303,70 @@ public static class LinuxWifiScanCache
             completeness = LinuxWifiScanCompleteness.Unknown;
             evidenceBasis = LinuxWifiScanEvidenceBasis.Unknown;
         }
-        else if (transportComplete && ifIndex.HasValue && completionTracker != null)
+        else if (transportComplete && ifIndex.HasValue)
         {
-            var scanRecord = completionTracker.GetLastScanCompletion(ifIndex.Value, wdev);
-            if (scanRecord != null &&
-                scanRecord.Status == LinuxWifiScanEventStatus.Completed &&
-                scanRecord.ObservedAtBootTimeNs.HasValue &&
-                currentBootTimeNs.HasValue &&
-                currentBootTimeNs.Value >= scanRecord.ObservedAtBootTimeNs.Value)
+            if (preSnapshot != null && postSnapshot != null)
             {
-                // Strict check: if target adapter has known WDEV, the completion record must match WDEV exactly
-                bool wdevMatch = (!wdev.HasValue && !scanRecord.Wdev.HasValue) ||
-                                 (wdev.HasValue && scanRecord.Wdev.HasValue && wdev.Value == scanRecord.Wdev.Value);
+                // Causal Negative Proof Evaluation:
+                // 1. Revision stable across dump (no events arrived during GET_SCAN)
+                // 2. Both PRE and POST status == Completed
+                // 3. Exact IFINDEX and exact WDEV match
+                // 4. Timestamps known: completion <= dumpStartedAt, and dumpCompletedAt - completion <= MaximumAge
+                // 5. Domain covers requested SSID
+                bool revisionStable = preSnapshot.Revision == postSnapshot.Revision;
+                bool statusCompleted = preSnapshot.Status == LinuxWifiScanEventStatus.Completed &&
+                                       postSnapshot.Status == LinuxWifiScanEventStatus.Completed;
+                bool ifIndexMatch = preSnapshot.IfIndex == ifIndex.Value;
+                bool wdevMatch = (!wdev.HasValue && !preSnapshot.Wdev.HasValue) ||
+                                 (wdev.HasValue && preSnapshot.Wdev.HasValue && wdev.Value == preSnapshot.Wdev.Value);
 
-                if (wdevMatch)
+                if (revisionStable && statusCompleted && ifIndexMatch && wdevMatch &&
+                    preSnapshot.ObservedAtBootTimeNs.HasValue &&
+                    dumpStartedAtBootTimeNs.HasValue &&
+                    dumpCompletedAtBootTimeNs.HasValue &&
+                    preSnapshot.ObservedAtBootTimeNs.Value <= dumpStartedAtBootTimeNs.Value &&
+                    dumpCompletedAtBootTimeNs.Value >= preSnapshot.ObservedAtBootTimeNs.Value)
                 {
-                    var scanAgeMs = (currentBootTimeNs.Value - scanRecord.ObservedAtBootTimeNs.Value) / 1_000_000.0;
+                    var scanAgeMs = (dumpCompletedAtBootTimeNs.Value - preSnapshot.ObservedAtBootTimeNs.Value) / 1_000_000.0;
                     if (scanAgeMs <= MaximumAge.TotalMilliseconds)
                     {
-                        completeness = LinuxWifiScanCompleteness.Complete;
-                        evidenceBasis = LinuxWifiScanEvidenceBasis.CompletedScan;
+                        byte[]? reqBytes = requestedSsid != null ? System.Text.Encoding.UTF8.GetBytes(requestedSsid) : null;
+                        bool domainCovered = preSnapshot.Domain != null && (reqBytes == null || preSnapshot.Domain.CoversSsidObservation(reqBytes));
+
+                        if (domainCovered)
+                        {
+                            completeness = LinuxWifiScanCompleteness.Complete;
+                            evidenceBasis = LinuxWifiScanEvidenceBasis.CompletedScan;
+                        }
+                    }
+                }
+            }
+            else if (completionTracker != null)
+            {
+                var scanRecord = completionTracker.GetLastScanCompletion(ifIndex.Value, wdev);
+                if (scanRecord != null &&
+                    scanRecord.Status == LinuxWifiScanEventStatus.Completed &&
+                    scanRecord.ObservedAtBootTimeNs.HasValue &&
+                    currentBootTimeNs.HasValue &&
+                    currentBootTimeNs.Value >= scanRecord.ObservedAtBootTimeNs.Value)
+                {
+                    bool wdevMatch = (!wdev.HasValue && !scanRecord.Wdev.HasValue) ||
+                                     (wdev.HasValue && scanRecord.Wdev.HasValue && wdev.Value == scanRecord.Wdev.Value);
+
+                    if (wdevMatch)
+                    {
+                        var scanAgeMs = (currentBootTimeNs.Value - scanRecord.ObservedAtBootTimeNs.Value) / 1_000_000.0;
+                        if (scanAgeMs <= MaximumAge.TotalMilliseconds)
+                        {
+                            byte[]? reqBytes = requestedSsid != null ? System.Text.Encoding.UTF8.GetBytes(requestedSsid) : null;
+                            bool domainCovered = scanRecord.Domain != null && (reqBytes == null || scanRecord.Domain.CoversSsidObservation(reqBytes));
+
+                            if (domainCovered)
+                            {
+                                completeness = LinuxWifiScanCompleteness.Complete;
+                                evidenceBasis = LinuxWifiScanEvidenceBasis.CompletedScan;
+                            }
+                        }
                     }
                 }
             }
