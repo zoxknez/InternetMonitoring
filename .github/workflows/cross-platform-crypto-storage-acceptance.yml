@@ -37,11 +37,13 @@ jobs:
           $trxPath = Join-Path "tests/IEM.Core.Tests/TestResults" "shared_results.trx"
           if (-not (Test-Path $trxPath)) { throw "TRX results file not found at $trxPath" }
           $trx = [xml](Get-Content $trxPath)
+          $total = [int]$trx.TestRun.ResultSummary.Counters.total
           $passed = [int]$trx.TestRun.ResultSummary.Counters.passed
           $failed = [int]$trx.TestRun.ResultSummary.Counters.failed
-          Write-Host "Windows Runner -> Shared Acceptance Gates: Passed=$passed, Failed=$failed"
-          if ($passed -ne 16 -or $failed -ne 0) {
-            throw "Gate count assertion failed: Expected exactly 16 passed and 0 failed Shared gates, got $passed passed, $failed failed."
+          $skipped = if ($trx.TestRun.ResultSummary.Counters.notExecuted) { [int]$trx.TestRun.ResultSummary.Counters.notExecuted } else { 0 }
+          Write-Host "Windows Runner -> Shared Acceptance Gates: Total=$total, Passed=$passed, Failed=$failed, Skipped=$skipped"
+          if ($total -ne 16 -or $passed -ne 16 -or $failed -ne 0 -or $skipped -ne 0) {
+            throw "Gate count assertion failed: Expected exactly Total=16, Passed=16, Failed=0, Skipped=0 Shared gates, got Total=$total, Passed=$passed, Failed=$failed, Skipped=$skipped."
           }
 
       - name: Run Windows-Native Acceptance Tests (9 gates)
@@ -51,11 +53,13 @@ jobs:
           $trxPath = Join-Path "tests/IEM.App.Tests/TestResults" "windows_results.trx"
           if (-not (Test-Path $trxPath)) { throw "TRX results file not found at $trxPath" }
           $trx = [xml](Get-Content $trxPath)
+          $total = [int]$trx.TestRun.ResultSummary.Counters.total
           $passed = [int]$trx.TestRun.ResultSummary.Counters.passed
           $failed = [int]$trx.TestRun.ResultSummary.Counters.failed
-          Write-Host "Windows Runner -> Windows-Native Acceptance Gates: Passed=$passed, Failed=$failed"
-          if ($passed -ne 9 -or $failed -ne 0) {
-            throw "Gate count assertion failed: Expected exactly 9 passed and 0 failed Windows-native gates, got $passed passed, $failed failed."
+          $skipped = if ($trx.TestRun.ResultSummary.Counters.notExecuted) { [int]$trx.TestRun.ResultSummary.Counters.notExecuted } else { 0 }
+          Write-Host "Windows Runner -> Windows-Native Acceptance Gates: Total=$total, Passed=$passed, Failed=$failed, Skipped=$skipped"
+          if ($total -ne 9 -or $passed -ne 9 -or $failed -ne 0 -or $skipped -ne 0) {
+            throw "Gate count assertion failed: Expected exactly Total=9, Passed=9, Failed=0, Skipped=0 Windows-native gates, got Total=$total, Passed=$passed, Failed=$failed, Skipped=$skipped."
           }
 
   linux-crypto-storage:
@@ -82,11 +86,14 @@ jobs:
           dotnet test tests/IEM.Core.Tests/IEM.Core.Tests.csproj -c Release --no-build --nologo --filter "Acceptance=3.1-8F & Platform=Shared" --logger "console;verbosity=normal" --logger "trx;LogFileName=shared_results.trx"
           TRX_FILE="tests/IEM.Core.Tests/TestResults/shared_results.trx"
           if [ ! -f "$TRX_FILE" ]; then echo "TRX results file missing"; exit 1; fi
+          TOTAL=$(grep -o 'total="[0-9]*"' "$TRX_FILE" | head -1 | grep -o '[0-9]*')
           PASSED=$(grep -o 'passed="[0-9]*"' "$TRX_FILE" | head -1 | grep -o '[0-9]*')
           FAILED=$(grep -o 'failed="[0-9]*"' "$TRX_FILE" | head -1 | grep -o '[0-9]*')
-          echo "Linux Runner -> Shared Acceptance Gates: Passed=$PASSED, Failed=$FAILED"
-          if [ "$PASSED" != "16" ] || [ "$FAILED" != "0" ]; then
-            echo "Gate count assertion failed: Expected exactly 16 passed and 0 failed, got $PASSED passed, $FAILED failed."
+          SKIPPED=$(grep -o 'notExecuted="[0-9]*"' "$TRX_FILE" | head -1 | grep -o '[0-9]*')
+          if [ -z "$SKIPPED" ]; then SKIPPED=0; fi
+          echo "Linux Runner -> Shared Acceptance Gates: Total=$TOTAL, Passed=$PASSED, Failed=$FAILED, Skipped=$SKIPPED"
+          if [ "$TOTAL" != "16" ] || [ "$PASSED" != "16" ] || [ "$FAILED" != "0" ] || [ "$SKIPPED" != "0" ]; then
+            echo "Gate count assertion failed: Expected Total=16, Passed=16, Failed=0, Skipped=0, got Total=$TOTAL, Passed=$PASSED, Failed=$FAILED, Skipped=$SKIPPED."
             exit 1
           fi
 
@@ -95,10 +102,13 @@ jobs:
           dotnet test tests/IEM.Core.Tests/IEM.Core.Tests.csproj -c Release --no-build --nologo --filter "Acceptance=3.1-8F & Platform=Linux" --logger "console;verbosity=normal" --logger "trx;LogFileName=linux_results.trx"
           TRX_FILE="tests/IEM.Core.Tests/TestResults/linux_results.trx"
           if [ ! -f "$TRX_FILE" ]; then echo "TRX results file missing"; exit 1; fi
+          TOTAL=$(grep -o 'total="[0-9]*"' "$TRX_FILE" | head -1 | grep -o '[0-9]*')
           PASSED=$(grep -o 'passed="[0-9]*"' "$TRX_FILE" | head -1 | grep -o '[0-9]*')
           FAILED=$(grep -o 'failed="[0-9]*"' "$TRX_FILE" | head -1 | grep -o '[0-9]*')
-          echo "Linux Runner -> Linux-Native Acceptance Gates: Passed=$PASSED, Failed=$FAILED"
-          if [ "$PASSED" != "13" ] || [ "$FAILED" != "0" ]; then
-            echo "Gate count assertion failed: Expected exactly 13 passed and 0 failed, got $PASSED passed, $FAILED failed."
+          SKIPPED=$(grep -o 'notExecuted="[0-9]*"' "$TRX_FILE" | head -1 | grep -o '[0-9]*')
+          if [ -z "$SKIPPED" ]; then SKIPPED=0; fi
+          echo "Linux Runner -> Linux-Native Acceptance Gates: Total=$TOTAL, Passed=$PASSED, Failed=$FAILED, Skipped=$SKIPPED"
+          if [ "$TOTAL" != "13" ] || [ "$PASSED" != "13" ] || [ "$FAILED" != "0" ] || [ "$SKIPPED" != "0" ]; then
+            echo "Gate count assertion failed: Expected Total=13, Passed=13, Failed=0, Skipped=0, got Total=$TOTAL, Passed=$PASSED, Failed=$FAILED, Skipped=$SKIPPED."
             exit 1
           fi

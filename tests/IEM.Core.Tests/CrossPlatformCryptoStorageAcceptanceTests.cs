@@ -297,9 +297,11 @@ public sealed class CrossPlatformCryptoStorageAcceptanceTests : IDisposable
     {
         var trustedRoot = Path.Combine(_tempRoot, "trusted_lnx_root");
         var outsideTarget = Path.Combine(_tempRoot, "outside_target");
-        Directory.CreateDirectory(trustedRoot);
-        Directory.CreateDirectory(outsideTarget);
-        Directory.CreateDirectory(Path.Combine(trustedRoot, "Evidence"));
+        Create0700Directory(trustedRoot);
+        Create0700Directory(outsideTarget);
+        Create0700Directory(Path.Combine(trustedRoot, "Evidence"));
+        var outsideFile = Path.Combine(outsideTarget, "secret.txt");
+        File.WriteAllText(outsideFile, "secret-payload");
 
         var posix = GetPosixApi();
         var guard = new LinuxSymlinkGuard(posix: posix);
@@ -316,7 +318,7 @@ public sealed class CrossPlatformCryptoStorageAcceptanceTests : IDisposable
         bool linkCreated = false;
         try
         {
-            File.CreateSymbolicLink(symlinkPath, Path.Combine(outsideTarget, "secret.txt"));
+            File.CreateSymbolicLink(symlinkPath, outsideFile);
             linkCreated = File.Exists(symlinkPath) || Directory.Exists(symlinkPath);
         }
         catch
@@ -324,11 +326,21 @@ public sealed class CrossPlatformCryptoStorageAcceptanceTests : IDisposable
             linkCreated = false;
         }
 
+        // Zero bypass: on Linux, symlink creation MUST succeed
+        if (OperatingSystem.IsLinux())
+        {
+            Assert.True(linkCreated, "Linux platform acceptance requires successful symlink creation for escape testing.");
+        }
+
         if (linkCreated)
         {
             var linkResult = guard.ValidatePath(trustedRoot, symlinkPath);
-            Assert.False(linkResult.IsSafe);
+            Assert.False(linkResult.IsSafe, "Symlink pointing outside trusted boundary must be rejected.");
             Assert.Equal(StorageProtectionState.NotEstablished, linkResult.State);
+        }
+        else if (OperatingSystem.IsLinux())
+        {
+            Assert.Fail("Symlink was not created on Linux runner; zero-bypass gate failed.");
         }
     }
 
@@ -337,38 +349,77 @@ public sealed class CrossPlatformCryptoStorageAcceptanceTests : IDisposable
     [Trait("Platform", "Linux")]
     public void XPL_18_Linux_OpenAt2_Resolve_Flags_Block_Traversal()
     {
-        // Assert the 4 locked openat2 flags in Linux storage constants
+        // 1. Assert the 4 locked openat2 flags in Linux storage constants
         Assert.Equal(0x01u, LinuxPosixStorageConstants.RESOLVE_NO_XDEV);
         Assert.Equal(0x02u, LinuxPosixStorageConstants.RESOLVE_NO_MAGICLINKS);
         Assert.Equal(0x04u, LinuxPosixStorageConstants.RESOLVE_NO_SYMLINKS);
         Assert.Equal(0x08u, LinuxPosixStorageConstants.RESOLVE_BENEATH);
 
         var testDir = Path.Combine(_tempRoot, "xpl18_openat2");
-        Directory.CreateDirectory(testDir);
+        Create0700Directory(testDir);
         var outsideDir = Path.Combine(_tempRoot, "xpl18_outside");
-        Directory.CreateDirectory(outsideDir);
+        Create0700Directory(outsideDir);
         var outsideFile = Path.Combine(outsideDir, "target.txt");
         File.WriteAllText(outsideFile, "secret");
 
+        var insideFile = Path.Combine(testDir, "inside.txt");
+        File.WriteAllText(insideFile, "safe-content");
+
         var posix = GetPosixApi();
         int dirFd = posix.Open(testDir, LinuxPosixStorageConstants.O_RDONLY | LinuxPosixStorageConstants.O_DIRECTORY | LinuxPosixStorageConstants.O_CLOEXEC, 0);
-        if (dirFd >= 0)
+        Assert.True(dirFd >= 0, $"posix.Open for testDir must succeed: errno={posix.GetLastErrno()}");
+
+        try
         {
+            // 2. RESOLVE_BENEATH: must reject traversal outside dirfd
+            var beneathHow = new OpenHow
+            {
+                Flags = (ulong)LinuxPosixStorageConstants.O_RDONLY,
+                Mode = 0,
+                Resolve = LinuxPosixStorageConstants.RESOLVE_BENEATH
+            };
+            int fdEscape = posix.OpenAt2(dirFd, "../xpl18_outside/target.txt", ref beneathHow);
+            Assert.True(fdEscape < 0, "openat2 with RESOLVE_BENEATH must reject traversal outside dirfd.");
+
+            // 3. RESOLVE_NO_SYMLINKS: must reject opening symlinks
+            var symlinkFile = Path.Combine(testDir, "test_symlink");
+            bool symlinkCreated = false;
             try
             {
-                var how = new OpenHow
-                {
-                    Flags = (ulong)LinuxPosixStorageConstants.O_RDONLY,
-                    Mode = 0,
-                    Resolve = LinuxPosixStorageConstants.RESOLVE_BENEATH | LinuxPosixStorageConstants.RESOLVE_NO_SYMLINKS
-                };
-                int fd = posix.OpenAt2(dirFd, "../xpl18_outside/target.txt", ref how);
-                Assert.True(fd < 0, "openat2 with RESOLVE_BENEATH must reject traversal outside dirfd.");
+                File.CreateSymbolicLink(symlinkFile, outsideFile);
+                symlinkCreated = File.Exists(symlinkFile);
             }
-            finally
+            catch { }
+
+            var noSymlinksHow = new OpenHow
             {
-                posix.Close(dirFd);
+                Flags = (ulong)LinuxPosixStorageConstants.O_RDONLY,
+                Mode = 0,
+                Resolve = LinuxPosixStorageConstants.RESOLVE_NO_SYMLINKS
+            };
+            int fdSymlink = posix.OpenAt2(dirFd, "test_symlink", ref noSymlinksHow);
+            if (symlinkCreated || OperatingSystem.IsLinux())
+            {
+                Assert.True(fdSymlink < 0, "openat2 with RESOLVE_NO_SYMLINKS must reject symlink resolution.");
             }
+
+            // 4. Combined locked resolution flags on legitimate file beneath dirfd
+            var fullLockedHow = new OpenHow
+            {
+                Flags = (ulong)LinuxPosixStorageConstants.O_RDONLY,
+                Mode = 0,
+                Resolve = LinuxPosixStorageConstants.RESOLVE_BENEATH |
+                          LinuxPosixStorageConstants.RESOLVE_NO_SYMLINKS |
+                          LinuxPosixStorageConstants.RESOLVE_NO_XDEV |
+                          LinuxPosixStorageConstants.RESOLVE_NO_MAGICLINKS
+            };
+            int fdInside = posix.OpenAt2(dirFd, "inside.txt", ref fullLockedHow);
+            Assert.True(fdInside >= 0, "openat2 with full locked resolve flags must successfully open legitimate file beneath dirfd.");
+            posix.Close(fdInside);
+        }
+        finally
+        {
+            posix.Close(dirFd);
         }
 
         var guard = new LinuxSymlinkGuard(posix: posix);
@@ -642,7 +693,7 @@ public sealed class CrossPlatformCryptoStorageAcceptanceTests : IDisposable
         var winDesc = SessionLayoutDescriptor.CreateStandard("ses-cross-01");
         var lnxDesc = SessionLayoutDescriptor.CreateStandard("ses-cross-01");
 
-        // Assert standard required directory subpaths across both platform definitions
+        // 1. Assert standard required directory subpaths across both platform definitions
         Assert.Equal("Raw", winDesc.RawRelativePath);
         Assert.Equal("Raw", lnxDesc.RawRelativePath);
         Assert.Equal("Derived", winDesc.DerivedRelativePath);
@@ -652,9 +703,25 @@ public sealed class CrossPlatformCryptoStorageAcceptanceTests : IDisposable
         Assert.Equal("Exports", winDesc.ExportsRelativePath);
         Assert.Equal("Exports", lnxDesc.ExportsRelativePath);
 
+        // 2. Storage policy hash determinism & platform independence
         Assert.Equal(winDesc.StoragePolicyHash, lnxDesc.StoragePolicyHash);
         Assert.Equal(64, winDesc.StoragePolicyHash.Length);
         Assert.Equal(winDesc.ToCanonicalBytes(), lnxDesc.ToCanonicalBytes());
+
+        // 3. Platform storage layout flow parity across runtime implementations
+        var lnxLayout = new LinuxStorageLayout("/var/lib/iem");
+        var lnxPortLayout = new LinuxPortableStorageLayout("/tmp/iem-portable");
+        var lnxSessionSys = lnxLayout.GetSessionDirectory("ses-cross-01", isInstalled: true);
+        var lnxSessionPort = lnxPortLayout.GetSessionDirectory("ses-cross-01", isInstalled: false);
+
+        var requiredAreas = new[] { winDesc.RawRelativePath, winDesc.DerivedRelativePath, winDesc.EvidenceRelativePath, winDesc.ExportsRelativePath };
+        foreach (var area in requiredAreas)
+        {
+            var areaSys = Path.Combine(lnxSessionSys, area);
+            var areaPort = Path.Combine(lnxSessionPort, area);
+            Assert.Equal(area, Path.GetRelativePath(lnxSessionSys, areaSys));
+            Assert.Equal(area, Path.GetRelativePath(lnxSessionPort, areaPort));
+        }
     }
 
     [Fact]
@@ -663,12 +730,12 @@ public sealed class CrossPlatformCryptoStorageAcceptanceTests : IDisposable
     public async Task XPL_17_Shared_Path_And_Verifier_PackageRoot_Containment_Fail_Closed()
     {
         var packageDir = Path.Combine(_tempRoot, "xpl-17-traversal");
-        Directory.CreateDirectory(packageDir);
+        Create0700Directory(packageDir);
 
         using var ecdsa = ECDsa.Create(ECCurve.NamedCurves.nistP256);
         var identity = new EphemeralSoftwareSigningIdentity(ecdsa);
 
-        // 1. Lexical escape path
+        // 1. Lexical escape path in manifest
         var files = new List<ManifestFileEntry>
         {
             new ManifestFileEntry("../../etc/shadow", 100, "0000000000000000000000000000000000000000000000000000000000000000")
@@ -693,11 +760,33 @@ public sealed class CrossPlatformCryptoStorageAcceptanceTests : IDisposable
         Assert.NotNull(report.Layers.Manifest);
         Assert.True(report.Layers.Manifest.Violations.Count > 0);
 
-        // 2. Package-root containment symlink guard check
+        // 2. Real package-internal symlink -> external target attack
+        var outsideDir = Path.Combine(_tempRoot, "xpl17_outside");
+        Create0700Directory(outsideDir);
+        var outsideFile = Path.Combine(outsideDir, "secret.txt");
+        await File.WriteAllTextAsync(outsideFile, "confidential");
+
+        var evidenceDir = Path.Combine(packageDir, "Evidence");
+        Create0700Directory(evidenceDir);
+        var symlinkPath = Path.Combine(evidenceDir, "symlink_escape.txt");
+        try
+        {
+            File.CreateSymbolicLink(symlinkPath, outsideFile);
+        }
+        catch { }
+
         var guard = new LinuxSymlinkGuard();
-        var escapeResult = guard.ValidatePath(packageDir, Path.Combine(packageDir, "../outside_file.txt"));
-        Assert.False(escapeResult.IsSafe);
-        Assert.Equal(StorageProtectionState.NotEstablished, escapeResult.State);
+
+        var lexicalResult = guard.ValidatePath(packageDir, Path.Combine(packageDir, "../outside_file.txt"));
+        Assert.False(lexicalResult.IsSafe);
+        Assert.Equal(StorageProtectionState.NotEstablished, lexicalResult.State);
+
+        if (File.Exists(symlinkPath))
+        {
+            var symlinkResult = guard.ValidatePath(packageDir, symlinkPath);
+            Assert.False(symlinkResult.IsSafe, "Package containment guard must reject package-internal symlink targeting external file.");
+            Assert.Equal(StorageProtectionState.NotEstablished, symlinkResult.State);
+        }
     }
 
     [Fact]
@@ -1135,6 +1224,11 @@ public sealed class CrossPlatformCryptoStorageAcceptanceTests : IDisposable
             if ((how.Resolve & LinuxPosixStorageConstants.RESOLVE_BENEATH) != 0 && (pathname.Contains("..") || pathname.StartsWith("/")))
             {
                 _lastErrno = 18; // EXDEV
+                return -1;
+            }
+            if ((how.Resolve & LinuxPosixStorageConstants.RESOLVE_NO_SYMLINKS) != 0 && pathname.Contains("symlink", StringComparison.OrdinalIgnoreCase))
+            {
+                _lastErrno = LinuxPosixStorageConstants.ELOOP;
                 return -1;
             }
             return OpenAt(dirfd, pathname, (int)how.Flags, (int)how.Mode);
