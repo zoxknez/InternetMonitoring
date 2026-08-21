@@ -221,4 +221,49 @@ public sealed class UiPresentationTests
         speedVm.UpdateMeasurementResult(false, "TunnelDetectedWithoutBypass", null, null);
         Assert.DoesNotContain("0 Mbps", speedVm.DownloadThroughputText);
     }
+
+    [Fact]
+    public void Stage_3_1_9A_Characterization_Shell_Properties_And_Commands_Match_Inventory()
+    {
+        var host = new StubMonitorHost();
+        var shell = new ShellViewModel(host, Path.Combine(Path.GetTempPath(), "iem-9a-test"));
+
+        // Verify initial shell defaults match inventory
+        Assert.False(shell.IsRunning);
+        Assert.Null(shell.Fault);
+        Assert.Equal(ShellTab.Monitor, shell.ActiveTab);
+        Assert.Equal(6, shell.Durations.Count);
+        Assert.Equal(600, shell.TimelineCapacity);
+        Assert.NotNull(shell.MonitorTab);
+        Assert.NotNull(shell.EvidenceTab);
+        Assert.NotNull(shell.CaseTab);
+        Assert.NotNull(shell.SpeedTab);
+
+        // Verify command instances are created and wired
+        Assert.NotNull(shell.StartCommand);
+        Assert.NotNull(shell.StopCommand);
+        Assert.NotNull(shell.OpenFolderCommand);
+        Assert.NotNull(shell.OpenReportCommand);
+        Assert.NotNull(shell.PrepareComplaintCommand);
+        Assert.NotNull(shell.PrepareRegulatorCommand);
+        Assert.NotNull(shell.MarkSubmittedTodayCommand);
+        Assert.NotNull(shell.MarkRefusedTodayCommand);
+        Assert.NotNull(shell.MarkUpheldTodayCommand);
+        Assert.NotNull(shell.ScheduleSpeedCommand);
+        Assert.NotNull(shell.MeasureNowCommand);
+    }
+
+    [Fact]
+    public void Stage_3_1_9A_Characterization_Known_Defects_Are_Identified_For_Correction()
+    {
+        // DEF-01: SpeedViewModel false active defaults prior to measurement
+        var speedVm = new SpeedViewModel();
+        Assert.Equal("Wi-Fi", speedVm.RequestedInterface); // Characterized defect DEF-01
+        Assert.Equal("Match", speedVm.PathAgreement);       // Characterized defect DEF-01
+
+        // DEF-02: MonitorViewModel 0s default when Analysis == null
+        var monitorVm = new MonitorViewModel();
+        Assert.Equal("0s", monitorVm.TotalDuration);       // Characterized defect DEF-02
+        Assert.Equal(0, monitorVm.InterruptionsCount);     // Characterized defect DEF-02
+    }
 }
