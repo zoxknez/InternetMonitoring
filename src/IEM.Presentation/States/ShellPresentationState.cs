@@ -1,5 +1,6 @@
 namespace IEM.Presentation.States;
 
+using System.Collections.Immutable;
 using IEM.Core.Model;
 using IEM.Core.Presentation;
 using IEM.Presentation.Models;
@@ -17,7 +18,7 @@ public sealed record ShellPresentationState(
     string? Fault,
     ShellTab ActiveTab,
     DurationChoice SelectedDuration,
-    IReadOnlyList<DurationChoice> Durations,
+    ImmutableArray<DurationChoice> Durations,
     int TimelineCapacity,
     bool SurvivesClosing,
     string BackgroundClaimLabel,
@@ -25,11 +26,11 @@ public sealed record ShellPresentationState(
     string RestartClaimLabel,
     string RestartClaimDetail,
     string HostDescription,
-    SessionVerdict Verdict,
+    SessionVerdict? Verdict,
     string StateLabel,
     string StateExplanation,
-    bool IsOnline,
-    Severity CurrentSeverity,
+    ConnectivityPresentationState Connectivity,
+    Severity? CurrentSeverity,
     SemanticTone Tone,
     string LatencyText,
     string ElapsedText,
@@ -43,21 +44,20 @@ public sealed record ShellPresentationState(
     double ProgressPercent,
     bool HasProgress,
     string MediumText,
-    IReadOnlyList<MetricPresentationItem> Metrics,
+    ImmutableArray<MetricPresentationItem> Metrics,
     string EndsAtText,
-    IReadOnlyList<ProbePresentationState> Probes,
+    ImmutableArray<ProbePresentationState> Probes,
     string RemainingValue,
     string FactsLine,
     string? CaseText,
-    IReadOnlyList<TimelineSlice> Timeline,
-    IReadOnlyList<LatencyPoint> Latency,
+    ImmutableArray<TimelineSlice> Timeline,
+    ImmutableArray<LatencyPoint> Latency,
     string SpeedScheduleAmount,
     string SelectedSpeedScheduleUnit,
-    IReadOnlyList<string> SpeedScheduleUnits,
+    ImmutableArray<string> SpeedScheduleUnits,
     string ContractedRateText,
     string? SpeedStatus,
     bool SpeedBusy,
-    bool CanScheduleSpeed,
     bool IsUpdateBannerVisible,
     string UpdateVersionText,
     string UpdateSummaryText,
@@ -68,7 +68,24 @@ public sealed record ShellPresentationState(
     CasePresentationState Case,
     SpeedPresentationState Speed)
 {
-    private static readonly DurationChoice[] DefaultDurations =
+    /// <summary>
+    /// Derived from Connectivity: null when unobserved, true when online/degraded, false when outage.
+    /// Invariant 159: Unobserved connectivity is never represented as true/false success.
+    /// </summary>
+    public bool? IsOnline => Connectivity switch
+    {
+        ConnectivityPresentationState.Online => true,
+        ConnectivityPresentationState.Degraded => true,
+        ConnectivityPresentationState.Outage => false,
+        _ => null,
+    };
+
+    /// <summary>
+    /// Derived strictly from !SpeedBusy to prevent impossible contradicting scheduling states.
+    /// </summary>
+    public bool CanScheduleSpeed => !SpeedBusy;
+
+    public static ImmutableArray<DurationChoice> DefaultDurations { get; } =
     [
         new("1 sat", TimeSpan.FromHours(1), "brza provera"),
         new("6 sati", TimeSpan.FromHours(6), "popodne ili veče"),
@@ -78,7 +95,7 @@ public sealed record ShellPresentationState(
         new("Do zaustavljanja", Timeout.InfiniteTimeSpan, "zaustavljate ga ručno"),
     ];
 
-    private static readonly string[] DefaultSpeedUnits = ["minuta", "sati"];
+    public static ImmutableArray<string> DefaultSpeedUnits { get; } = ["minuta", "sati"];
 
     public static ShellPresentationState Initial { get; } = new(
         IsRunning: false,
@@ -93,12 +110,12 @@ public sealed record ShellPresentationState(
         RestartClaimLabel: "Ne preživljava restart",
         RestartClaimDetail: "Servis nije instaliran, pa restart računara prekida test. Za dvodnevni nadzor instalirajte servis.",
         HostDescription: "Nadzor radi u ovom prozoru. Ako ga zatvorite, test se zaustavlja. Za dvodnevni test instalirajte servis.",
-        Verdict: SessionVerdict.Evaluate(TimeSpan.Zero, 0, TimeSpan.Zero),
+        Verdict: null,
         StateLabel: "Spremno",
         StateExplanation: "Nadzor nije pokrenut.",
-        IsOnline: true,
-        CurrentSeverity: Severity.Ok,
-        Tone: SemanticTone.Neutral,
+        Connectivity: ConnectivityPresentationState.Unknown,
+        CurrentSeverity: null,
+        Tone: SemanticTone.Unknown,
         LatencyText: "-",
         ElapsedText: "0 sekundi",
         AvailabilityText: "—",
@@ -111,21 +128,20 @@ public sealed record ShellPresentationState(
         ProgressPercent: 0d,
         HasProgress: false,
         MediumText: "nepoznato",
-        Metrics: Array.Empty<MetricPresentationItem>(),
+        Metrics: ImmutableArray<MetricPresentationItem>.Empty,
         EndsAtText: "Test se završava...",
-        Probes: Array.Empty<ProbePresentationState>(),
+        Probes: ImmutableArray<ProbePresentationState>.Empty,
         RemainingValue: "bez roka",
         FactsLine: string.Empty,
         CaseText: null,
-        Timeline: Array.Empty<TimelineSlice>(),
-        Latency: Array.Empty<LatencyPoint>(),
+        Timeline: ImmutableArray<TimelineSlice>.Empty,
+        Latency: ImmutableArray<LatencyPoint>.Empty,
         SpeedScheduleAmount: string.Empty,
         SelectedSpeedScheduleUnit: "minuta",
         SpeedScheduleUnits: DefaultSpeedUnits,
         ContractedRateText: string.Empty,
         SpeedStatus: null,
         SpeedBusy: false,
-        CanScheduleSpeed: true,
         IsUpdateBannerVisible: false,
         UpdateVersionText: string.Empty,
         UpdateSummaryText: "Dostupna su nova poboljšanja i ispravke.",

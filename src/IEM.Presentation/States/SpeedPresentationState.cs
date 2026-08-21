@@ -9,6 +9,7 @@ using IEM.Presentation.Semantics;
 /// 167. NON_EXECUTED_OR_REFUSED_SPEED_MEASUREMENT_IS_NEVER_RENDERED_AS_ZERO_THROUGHPUT
 /// </summary>
 public sealed record SpeedPresentationState(
+    SpeedExecutionState ExecutionState,
     string? MeasurementIntent,
     string? RequestedInterface,
     string? ObservedPath,
@@ -19,11 +20,21 @@ public sealed record SpeedPresentationState(
     string DownloadThroughputText,
     string UploadThroughputText,
     string MeasurementStatusText,
-    bool Ran,
     string? RefusalReason,
     SemanticTone Tone)
 {
+    /// <summary>
+    /// Derived from ExecutionState: true if a measurement was executed or explicitly refused.
+    /// </summary>
+    public bool Ran => ExecutionState is SpeedExecutionState.Succeeded or SpeedExecutionState.Refused;
+
+    /// <summary>
+    /// Derived from ExecutionState: true if measurement was refused.
+    /// </summary>
+    public bool IsRefused => ExecutionState == SpeedExecutionState.Refused;
+
     public static SpeedPresentationState Initial { get; } = new(
+        ExecutionState: SpeedExecutionState.NotRun,
         MeasurementIntent: null,
         RequestedInterface: null,
         ObservedPath: null,
@@ -34,7 +45,6 @@ public sealed record SpeedPresentationState(
         DownloadThroughputText: "— (Nije pokrenuto)",
         UploadThroughputText: "— (Nije pokrenuto)",
         MeasurementStatusText: "Spremno za pokretanje testa brzine.",
-        Ran: false,
         RefusalReason: null,
         Tone: SemanticTone.Neutral);
 }

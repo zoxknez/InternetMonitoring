@@ -13,6 +13,16 @@ public sealed record MonitorTimelinePresentationItem(
     DateTimeOffset EndUtc,
     TimelinePresentationCategory Category,
     string CategoryLabel,
-    string Description,
-    bool IsSuspend,
-    bool IsOutage);
+    string Description)
+{
+    /// <summary>
+    /// Derived strictly from Category: true only for HostSuspended intervals.
+    /// Invariant 161: Non-observable intervals must never be visualized as network outage.
+    /// </summary>
+    public bool IsSuspend => Category == TimelinePresentationCategory.HostSuspended;
+
+    /// <summary>
+    /// Derived strictly from Category: true only for observed interruption intervals.
+    /// </summary>
+    public bool IsOutage => Category == TimelinePresentationCategory.InterruptionObserved;
+}

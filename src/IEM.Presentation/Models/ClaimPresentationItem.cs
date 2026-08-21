@@ -1,5 +1,6 @@
 namespace IEM.Presentation.Models;
 
+using IEM.Core.Reports;
 using IEM.Presentation.Semantics;
 
 /// <summary>
@@ -12,9 +13,9 @@ using IEM.Presentation.Semantics;
 public sealed record ClaimPresentationItem(
     string ClaimId,
     string StatementKey,
-    BadgeKind EpistemicBadge,
+    EpistemicClass EpistemicClass,
     string EpistemicLabel,
     string ValueText,
-    string SupportState,
-    BadgeKind QualityBadge,
+    ClaimSupportState SupportState,
+    QualityPresentationBand QualityBand,
     string? QualityAssessmentRef);

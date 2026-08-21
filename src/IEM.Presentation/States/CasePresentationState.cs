@@ -1,5 +1,6 @@
 namespace IEM.Presentation.States;
 
+using System.Collections.Immutable;
 using IEM.Core.Reports;
 using IEM.Presentation.Models;
 
@@ -16,7 +17,7 @@ public sealed record CasePresentationState(
     string UserContact,
     ReportCompositionProfile SelectedProfile,
     string PreviewText,
-    IReadOnlyList<UserStatementPresentationItem> UserStatements)
+    ImmutableArray<UserStatementPresentationItem> UserStatements)
 {
     public static CasePresentationState Initial { get; } = new(
         OperatorName: string.Empty,
@@ -24,5 +25,5 @@ public sealed record CasePresentationState(
         UserContact: string.Empty,
         SelectedProfile: ReportCompositionProfile.Complaint,
         PreviewText: "Dokument još uvek nije dostupan (čekanje na podatke sesije).",
-        UserStatements: Array.Empty<UserStatementPresentationItem>());
+        UserStatements: ImmutableArray<UserStatementPresentationItem>.Empty);
 }

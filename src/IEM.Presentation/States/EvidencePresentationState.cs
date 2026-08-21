@@ -1,5 +1,6 @@
 namespace IEM.Presentation.States;
 
+using System.Collections.Immutable;
 using IEM.Presentation.Models;
 using IEM.Presentation.Semantics;
 
@@ -12,24 +13,24 @@ using IEM.Presentation.Semantics;
 /// 170. VISUAL_STYLE_NEVER_CHANGES_OR_COLLAPSES_SEMANTIC_STATE
 /// </summary>
 public sealed record EvidencePresentationState(
-    BadgeKind OverallQualityBand,
+    QualityPresentationBand OverallQualityBand,
     string OverallQualityText,
-    BadgeKind IntegrityState,
+    IntegrityPresentationState IntegrityState,
     string IntegrityLabel,
-    BadgeKind TrustState,
+    TrustPresentationState TrustState,
     string TrustLabel,
     string PackageVerificationSummary,
     SemanticTone Tone,
-    IReadOnlyList<ClaimPresentationItem> Claims)
+    ImmutableArray<ClaimPresentationItem> Claims)
 {
     public static EvidencePresentationState Initial { get; } = new(
-        OverallQualityBand: BadgeKind.Unknown,
+        OverallQualityBand: QualityPresentationBand.Unknown,
         OverallQualityText: "Nepoznato",
-        IntegrityState: BadgeKind.Unknown,
+        IntegrityState: IntegrityPresentationState.Unknown,
         IntegrityLabel: "Nepoznato",
-        TrustState: BadgeKind.Unknown,
+        TrustState: TrustPresentationState.Unknown,
         TrustLabel: "Nepoznato",
         PackageVerificationSummary: "Nema aktivnog dokaznog paketa.",
         Tone: SemanticTone.Unknown,
-        Claims: Array.Empty<ClaimPresentationItem>());
+        Claims: ImmutableArray<ClaimPresentationItem>.Empty);
 }

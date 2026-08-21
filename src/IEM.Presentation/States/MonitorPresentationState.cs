@@ -1,5 +1,6 @@
 namespace IEM.Presentation.States;
 
+using System.Collections.Immutable;
 using IEM.Presentation.Models;
 using IEM.Presentation.Semantics;
 
@@ -13,24 +14,24 @@ using IEM.Presentation.Semantics;
 public sealed record MonitorPresentationState(
     string TargetHealthSummary,
     string ProbeHealthSummary,
-    BadgeKind QualityBand,
+    QualityPresentationBand QualityBand,
     string QualityBandText,
     string TotalDuration,
     string ActiveDuration,
     string SuspendDuration,
     int? InterruptionsCount,
     SemanticTone Tone,
-    IReadOnlyList<MonitorTimelinePresentationItem> TimelineItems)
+    ImmutableArray<MonitorTimelinePresentationItem> TimelineItems)
 {
     public static MonitorPresentationState Initial { get; } = new(
         TargetHealthSummary: "Nema aktivnih merenja (No data yet)",
         ProbeHealthSummary: "Sonde u stanju pripravnosti",
-        QualityBand: BadgeKind.Unknown,
+        QualityBand: QualityPresentationBand.Unknown,
         QualityBandText: "Nepoznato",
         TotalDuration: "—",
         ActiveDuration: "—",
         SuspendDuration: "—",
         InterruptionsCount: null,
         Tone: SemanticTone.Unknown,
-        TimelineItems: Array.Empty<MonitorTimelinePresentationItem>());
+        TimelineItems: ImmutableArray<MonitorTimelinePresentationItem>.Empty);
 }
