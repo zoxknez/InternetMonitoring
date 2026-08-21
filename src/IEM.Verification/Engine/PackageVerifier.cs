@@ -265,6 +265,16 @@ public static class PackageVerifier
                     }
                 }
             }
+            else if (rawOpenStatus == ConfinedPackageFileReader.ReadResultStatus.Violation)
+            {
+                rawChainReport = new RawChainReport(
+                    LayerStatus.Invalid,
+                    0,
+                    null,
+                    manifest.Evidence.RawChain.FinalChainHash,
+                    rawPathViolation ?? "Nebezbedna ili nevažeća putanja sirove evidencije.");
+                violations.Add(rawPathViolation ?? "Sirova evidencija krši pravila bezbednosti korenskog direktorijuma.");
+            }
             else
             {
                 rawChainReport = new RawChainReport(
@@ -363,10 +373,16 @@ public static class PackageVerifier
 
         string? activeTsrRel = null;
         byte[]? tsrBytes = null;
+        string? tsrViolationReason = null;
 
         foreach (var candidate in tsrRelativeCandidates)
         {
             var read = await ConfinedPackageFileReader.TryReadAllBytesAsync(packageDirectory, candidate, ct).ConfigureAwait(false);
+            if (read.Status == ConfinedPackageFileReader.ReadResultStatus.Violation)
+            {
+                tsrViolationReason = read.ViolationReason ?? $"Nebezbedna putanja datoteke vremenskog žiga '{candidate}'.";
+                break;
+            }
             if (read.Status == ConfinedPackageFileReader.ReadResultStatus.Success && read.Bytes is not null)
             {
                 activeTsrRel = candidate;
@@ -375,40 +391,62 @@ public static class PackageVerifier
             }
         }
 
-        if (activeTsrRel is not null && tsrBytes is not null && manifestSigRawBytes is not null)
+        if (tsrViolationReason is not null)
+        {
+            timestampReport = new TimestampReport(
+                LayerStatus.Invalid,
+                null,
+                null,
+                null,
+                tsrViolationReason);
+        }
+        else if (activeTsrRel is not null && tsrBytes is not null && manifestSigRawBytes is not null)
         {
             try
             {
                 var tsqRel = Path.ChangeExtension(activeTsrRel, ".tsq").Replace('\\', '/');
                 var tsqRead = await ConfinedPackageFileReader.TryReadAllBytesAsync(packageDirectory, tsqRel, ct).ConfigureAwait(false);
-                byte[]? tsqBytes = (tsqRead.Status == ConfinedPackageFileReader.ReadResultStatus.Success) ? tsqRead.Bytes : null;
 
-                var tsVerify = Rfc3161TimestampVerifier.Verify(manifestSigRawBytes, tsrBytes, tsqBytes, options.ExtraCertificates);
-                if (tsVerify.State == TrustedTimeState.ValidTrusted)
-                {
-                    timestampReport = new TimestampReport(
-                        LayerStatus.Verified,
-                        tsVerify.Timestamp?.GenTimeUtc,
-                        tsVerify.Timestamp?.TsaSubjectName,
-                        tsVerify.Timestamp?.MessageImprintSha256);
-                }
-                else if (tsVerify.State == TrustedTimeState.ValidUntrusted)
-                {
-                    timestampReport = new TimestampReport(
-                        LayerStatus.ValidUntrusted,
-                        tsVerify.Timestamp?.GenTimeUtc,
-                        tsVerify.Timestamp?.TsaSubjectName,
-                        tsVerify.Timestamp?.MessageImprintSha256,
-                        "Kriptografski validan, ali izdavalac nije u lokalnoj listi poverenja.");
-                }
-                else
+                if (tsqRead.Status == ConfinedPackageFileReader.ReadResultStatus.Violation)
                 {
                     timestampReport = new TimestampReport(
                         LayerStatus.Invalid,
-                        tsVerify.Timestamp?.GenTimeUtc,
-                        tsVerify.Timestamp?.TsaSubjectName,
-                        tsVerify.Timestamp?.MessageImprintSha256,
-                        tsVerify.FailureReason ?? "Neispravan vremenski žig.");
+                        null,
+                        null,
+                        null,
+                        tsqRead.ViolationReason ?? "Nebezbedna putanja datoteke zahteva vremenskog žiga (.tsq).");
+                }
+                else
+                {
+                    byte[]? tsqBytes = (tsqRead.Status == ConfinedPackageFileReader.ReadResultStatus.Success) ? tsqRead.Bytes : null;
+
+                    var tsVerify = Rfc3161TimestampVerifier.Verify(manifestSigRawBytes, tsrBytes, tsqBytes, options.ExtraCertificates);
+                    if (tsVerify.State == TrustedTimeState.ValidTrusted)
+                    {
+                        timestampReport = new TimestampReport(
+                            LayerStatus.Verified,
+                            tsVerify.Timestamp?.GenTimeUtc,
+                            tsVerify.Timestamp?.TsaSubjectName,
+                            tsVerify.Timestamp?.MessageImprintSha256);
+                    }
+                    else if (tsVerify.State == TrustedTimeState.ValidUntrusted)
+                    {
+                        timestampReport = new TimestampReport(
+                            LayerStatus.ValidUntrusted,
+                            tsVerify.Timestamp?.GenTimeUtc,
+                            tsVerify.Timestamp?.TsaSubjectName,
+                            tsVerify.Timestamp?.MessageImprintSha256,
+                            "Kriptografski validan, ali izdavalac nije u lokalnoj listi poverenja.");
+                    }
+                    else
+                    {
+                        timestampReport = new TimestampReport(
+                            LayerStatus.Invalid,
+                            tsVerify.Timestamp?.GenTimeUtc,
+                            tsVerify.Timestamp?.TsaSubjectName,
+                            tsVerify.Timestamp?.MessageImprintSha256,
+                            tsVerify.FailureReason ?? "Neispravan vremenski žig.");
+                    }
                 }
             }
             catch (Exception ex)
@@ -425,9 +463,15 @@ public static class PackageVerifier
             };
 
             var isPending = false;
+            string? tsqViolation = null;
             foreach (var tsqCand in tsqRelativeCandidates)
             {
                 var tsqCheck = await ConfinedPackageFileReader.TryReadAllBytesAsync(packageDirectory, tsqCand, ct).ConfigureAwait(false);
+                if (tsqCheck.Status == ConfinedPackageFileReader.ReadResultStatus.Violation)
+                {
+                    tsqViolation = tsqCheck.ViolationReason ?? $"Nebezbedna putanja .tsq datoteke '{tsqCand}'.";
+                    break;
+                }
                 if (tsqCheck.Status == ConfinedPackageFileReader.ReadResultStatus.Success)
                 {
                     isPending = true;
@@ -435,12 +479,24 @@ public static class PackageVerifier
                 }
             }
 
-            timestampReport = new TimestampReport(
-                isPending ? LayerStatus.Pending : LayerStatus.Missing,
-                null,
-                null,
-                null,
-                isPending ? "Vremenski žig je na čekanju (Pending)." : "Vremenski žig nije priložen.");
+            if (tsqViolation is not null)
+            {
+                timestampReport = new TimestampReport(
+                    LayerStatus.Invalid,
+                    null,
+                    null,
+                    null,
+                    tsqViolation);
+            }
+            else
+            {
+                timestampReport = new TimestampReport(
+                    isPending ? LayerStatus.Pending : LayerStatus.Missing,
+                    null,
+                    null,
+                    null,
+                    isPending ? "Vremenski žig je na čekanju (Pending)." : "Vremenski žig nije priložen.");
+            }
         }
 
         // -------------------------------------------------------------

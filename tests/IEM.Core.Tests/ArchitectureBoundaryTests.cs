@@ -147,6 +147,14 @@ public sealed class ArchitectureBoundaryTests
             foreach (var file in files)
             {
                 var isManifestBuilder = Path.GetFileName(file) == "ManifestBuilder.cs";
+                var isVerificationSafety = Path.GetDirectoryName(file)?.EndsWith(Path.Combine("IEM.Verification", "Safety")) == true;
+
+                if (isVerificationSafety)
+                {
+                    // Verification.Safety is the platform-neutral native confinement layer (Invariant 28/29)
+                    continue;
+                }
+
                 var lines = File.ReadAllLines(file);
                 for (var i = 0; i < lines.Length; i++)
                 {
