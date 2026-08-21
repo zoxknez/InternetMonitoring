@@ -1,15 +1,17 @@
 using System.Runtime.InteropServices;
 using IEM.Linux.Installation;
 using IEM.Storage;
+using Tmds.DBus.Protocol;
 
 namespace IEM.Service.Linux.Installation;
 
 /// <summary>
 /// Authoritative Linux system service presence source inspecting systemd Manager D-Bus truth.
-/// Invariants 8E-J, 8E-R1-A:
+/// Invariants 8E-J, 8E-R1-A, 8E-R1-R1:
 /// - Determines presence strictly from systemd unit/file registration truth via D-Bus.
+/// - Absence is recognized ONLY via exact D-Bus ErrorName (NoSuchUnit / NoSuchUnitFile).
 /// - StateRoot and socket existence MUST NOT determine InstallationPresence.
-/// - D-Bus failure / protocol error falls closed to Unknown, NEVER to PortableOnly.
+/// - D-Bus failure, permission error, or unexpected errors fall closed to Unknown, NEVER to PortableOnly.
 /// </summary>
 public sealed class SystemdServicePresenceSource : ILinuxSystemServicePresenceSource
 {
@@ -48,9 +50,9 @@ public sealed class SystemdServicePresenceSource : ILinuxSystemServicePresenceSo
                     return InstallationPresence.InstalledSystemService;
                 }
             }
-            catch (Exception ex) when (SystemdDbusManagerClient.IsNoSuchUnitError(ex.Message))
+            catch (DBusErrorReplyException ex) when (ex.ErrorName == SystemdDbusManagerClient.NoSuchUnitError)
             {
-                // NoSuchUnit -> fall through to inspect unit file registry
+                // Explicit NoSuchUnit -> fall through to inspect unit file registry
             }
 
             // 2. Check if unit file is registered/known in systemd unit search paths
@@ -66,7 +68,7 @@ public sealed class SystemdServicePresenceSource : ILinuxSystemServicePresenceSo
                 // Explicit null / no-such-file from systemd manager
                 return InstallationPresence.PortableOnly;
             }
-            catch (Exception ex) when (SystemdDbusManagerClient.IsNoSuchUnitError(ex.Message))
+            catch (DBusErrorReplyException ex) when (ex.ErrorName == SystemdDbusManagerClient.NoSuchUnitFileError)
             {
                 return InstallationPresence.PortableOnly;
             }

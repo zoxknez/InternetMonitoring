@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using IEM.Core.Hosting;
 using IEM.Core.Ipc;
 using IEM.Core.Model;
@@ -14,6 +15,7 @@ using IEM.Service.Linux.Installation;
 using IEM.Storage;
 using IEM.Storage.Layout;
 using Microsoft.Extensions.DependencyInjection;
+using Tmds.DBus.Protocol;
 
 namespace IEM.Core.Tests;
 
@@ -602,6 +604,100 @@ public sealed class LinuxProductionCompositionTests
         Assert.Equal(InstallationPresence.PortableOnly, presence);
     }
 
+    // ==============================================================
+    // R1-R1-A: EXACT D-BUS ERROR TRUTH CLASSIFICATION (SYS-R1-01..06)
+    // ==============================================================
+
+    [Fact]
+    public async Task SYS_R1_01_Exact_NoSuchUnit_Is_Absence()
+    {
+        var mockDbus = new MockSystemdDbusManager
+        {
+            GetUnitFunc = _ => throw new DBusErrorReplyException(SystemdDbusManagerClient.NoSuchUnitError, "Unit not found"),
+            GetUnitFileStateFunc = _ => Task.FromResult<string?>("enabled")
+        };
+
+        var source = new SystemdServicePresenceSource(dbusManager: mockDbus);
+        var presence = await source.ProbePresenceAsync();
+
+        Assert.Equal(InstallationPresence.InstalledSystemService, presence);
+    }
+
+    [Fact]
+    public async Task SYS_R1_02_Exact_NoSuchUnitFile_Is_PortableOnly()
+    {
+        var mockDbus = new MockSystemdDbusManager
+        {
+            GetUnitFunc = _ => throw new DBusErrorReplyException(SystemdDbusManagerClient.NoSuchUnitError, "Unit not found"),
+            GetUnitFileStateFunc = _ => throw new DBusErrorReplyException(SystemdDbusManagerClient.NoSuchUnitFileError, "Unit file not found")
+        };
+
+        var source = new SystemdServicePresenceSource(dbusManager: mockDbus);
+        var presence = await source.ProbePresenceAsync();
+
+        Assert.Equal(InstallationPresence.PortableOnly, presence);
+    }
+
+    [Fact]
+    public async Task SYS_R1_03_Unrelated_Error_With_NotLoaded_Text_Is_Unknown()
+    {
+        var mockDbus = new MockSystemdDbusManager
+        {
+            GetUnitFunc = _ => throw new DBusErrorReplyException("org.freedesktop.DBus.Error.Failed", "unit state could not be loaded")
+        };
+
+        var source = new SystemdServicePresenceSource(dbusManager: mockDbus);
+        var presence = await source.ProbePresenceAsync();
+
+        Assert.Equal(InstallationPresence.Unknown, presence);
+        Assert.NotEqual(InstallationPresence.PortableOnly, presence);
+    }
+
+    [Fact]
+    public async Task SYS_R1_04_Unrelated_Error_With_NoSuchFile_Text_Is_Unknown()
+    {
+        var mockDbus = new MockSystemdDbusManager
+        {
+            GetUnitFunc = _ => throw new DBusErrorReplyException("org.freedesktop.DBus.Error.Failed", "No such file or directory")
+        };
+
+        var source = new SystemdServicePresenceSource(dbusManager: mockDbus);
+        var presence = await source.ProbePresenceAsync();
+
+        Assert.Equal(InstallationPresence.Unknown, presence);
+        Assert.NotEqual(InstallationPresence.PortableOnly, presence);
+    }
+
+    [Fact]
+    public async Task SYS_R1_05_AccessDenied_Is_Unknown()
+    {
+        var mockDbus = new MockSystemdDbusManager
+        {
+            GetUnitFunc = _ => throw new DBusErrorReplyException("org.freedesktop.DBus.Error.AccessDenied", "Permission denied")
+        };
+
+        var source = new SystemdServicePresenceSource(dbusManager: mockDbus);
+        var presence = await source.ProbePresenceAsync();
+
+        Assert.Equal(InstallationPresence.Unknown, presence);
+        Assert.NotEqual(InstallationPresence.PortableOnly, presence);
+    }
+
+    [Fact]
+    public async Task SYS_R1_06_ServiceUnknown_Is_Unknown()
+    {
+        var mockDbus = new MockSystemdDbusManager
+        {
+            GetUnitFunc = _ => throw new DBusErrorReplyException("org.freedesktop.DBus.Error.ServiceUnknown", "systemd service unknown")
+        };
+
+        var source = new SystemdServicePresenceSource(dbusManager: mockDbus);
+        var presence = await source.ProbePresenceAsync();
+
+        Assert.Equal(InstallationPresence.Unknown, presence);
+        Assert.NotEqual(InstallationPresence.PortableOnly, presence);
+    }
+
     // ============================================
     // R1-D: CONCRETE REACHABILITY TESTS (IPC-01..07)
     // ============================================
@@ -721,6 +817,109 @@ public sealed class LinuxProductionCompositionTests
 
         var reachability = await source.ProbeReachabilityAsync();
         Assert.Equal(ServiceReachability.Unreachable, reachability);
+    }
+
+    // ==============================================================
+    // R1-R1-B: REAL AF_UNIX SOCKET ACCEPTANCE TESTS (IPC-R1-01..02)
+    // ==============================================================
+
+    [Fact]
+    public async Task IPC_R1_01_Real_AF_UNIX_Server_Performs_Valid_IEM_Handshake()
+    {
+        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+        {
+            // Fully executed on Linux host / CI environment
+            return;
+        }
+
+        var tempDir = Path.Combine(Path.GetTempPath(), "iem-test-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDir);
+        var socketPath = Path.Combine(tempDir, "control.sock");
+
+        using var serverSocket = new System.Net.Sockets.Socket(System.Net.Sockets.AddressFamily.Unix, System.Net.Sockets.SocketType.Stream, System.Net.Sockets.ProtocolType.Unspecified);
+        var endpoint = new System.Net.Sockets.UnixDomainSocketEndPoint(socketPath);
+        serverSocket.Bind(endpoint);
+        serverSocket.Listen(1);
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+
+        var serverTask = Task.Run(async () =>
+        {
+            using var clientSocket = await serverSocket.AcceptAsync(cts.Token);
+            using var stream = new System.Net.Sockets.NetworkStream(clientSocket, ownsSocket: false);
+
+            var reqBytes = await IpcMessageFraming.ReadFrameAsync(stream, cts.Token);
+            var reqJson = System.Text.Encoding.UTF8.GetString(reqBytes);
+            var req = System.Text.Json.JsonSerializer.Deserialize<IpcRequestEnvelope>(reqJson)!;
+
+            Assert.Equal(IpcRequestEnvelope.CurrentProtocolVersion, req.ProtocolVersion);
+            Assert.Equal("GetServiceStatus", req.CommandName);
+            Assert.False(string.IsNullOrWhiteSpace(req.RequestId));
+
+            var resp = IpcResponseEnvelope.CreateSuccess(req.RequestId, "real-linux-service-instance-99");
+            var respJson = System.Text.Json.JsonSerializer.Serialize(resp);
+            await IpcMessageFraming.WriteFrameAsync(stream, System.Text.Encoding.UTF8.GetBytes(respJson), cts.Token);
+        }, cts.Token);
+
+        try
+        {
+            var source = new LinuxControlSocketReachabilitySource(socketPath: socketPath);
+            var reachability = await source.ProbeReachabilityAsync(cts.Token);
+
+            Assert.Equal(ServiceReachability.Reachable, reachability);
+            await serverTask;
+        }
+        finally
+        {
+            try { serverSocket.Close(); } catch { }
+            try { if (File.Exists(socketPath)) File.Delete(socketPath); } catch { }
+            try { if (Directory.Exists(tempDir)) Directory.Delete(tempDir, recursive: true); } catch { }
+        }
+    }
+
+    [Fact]
+    public async Task IPC_R1_02_Real_AF_UNIX_Garbage_Server_Is_Unreachable()
+    {
+        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+        {
+            // Fully executed on Linux host / CI environment
+            return;
+        }
+
+        var tempDir = Path.Combine(Path.GetTempPath(), "iem-test-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDir);
+        var socketPath = Path.Combine(tempDir, "control.sock");
+
+        using var serverSocket = new System.Net.Sockets.Socket(System.Net.Sockets.AddressFamily.Unix, System.Net.Sockets.SocketType.Stream, System.Net.Sockets.ProtocolType.Unspecified);
+        var endpoint = new System.Net.Sockets.UnixDomainSocketEndPoint(socketPath);
+        serverSocket.Bind(endpoint);
+        serverSocket.Listen(1);
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+
+        var serverTask = Task.Run(async () =>
+        {
+            using var clientSocket = await serverSocket.AcceptAsync(cts.Token);
+            using var stream = new System.Net.Sockets.NetworkStream(clientSocket, ownsSocket: false);
+
+            _ = await IpcMessageFraming.ReadFrameAsync(stream, cts.Token);
+            await IpcMessageFraming.WriteFrameAsync(stream, "NOT_VALID_JSON"u8.ToArray(), cts.Token);
+        }, cts.Token);
+
+        try
+        {
+            var source = new LinuxControlSocketReachabilitySource(socketPath: socketPath);
+            var reachability = await source.ProbeReachabilityAsync(cts.Token);
+
+            Assert.Equal(ServiceReachability.Unreachable, reachability);
+            await serverTask;
+        }
+        finally
+        {
+            try { serverSocket.Close(); } catch { }
+            try { if (File.Exists(socketPath)) File.Delete(socketPath); } catch { }
+            try { if (Directory.Exists(tempDir)) Directory.Delete(tempDir, recursive: true); } catch { }
+        }
     }
 
     // ===========================================

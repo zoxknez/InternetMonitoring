@@ -5,9 +5,15 @@ namespace IEM.Service.Linux.Installation;
 
 /// <summary>
 /// Managed D-Bus client for org.freedesktop.systemd1.Manager on the Linux system bus.
+/// Invariant 8E-R1-R1: Absence truth is determined strictly via exact D-Bus ErrorName
+/// (org.freedesktop.systemd1.NoSuchUnit / org.freedesktop.systemd1.NoSuchUnitFile).
+/// All other D-Bus and system errors propagate and fail closed to Unknown.
 /// </summary>
 public sealed class SystemdDbusManagerClient : ISystemdDbusManager
 {
+    public const string NoSuchUnitError = "org.freedesktop.systemd1.NoSuchUnit";
+    public const string NoSuchUnitFileError = "org.freedesktop.systemd1.NoSuchUnitFile";
+
     private const string SystemdDestination = "org.freedesktop.systemd1";
     private const string SystemdPath = "/org/freedesktop/systemd1";
     private const string SystemdManagerInterface = "org.freedesktop.systemd1.Manager";
@@ -46,7 +52,7 @@ public sealed class SystemdDbusManagerClient : ISystemdDbusManager
                 message,
                 (Message msg, object? state) => msg.GetBodyReader().ReadObjectPath()).ConfigureAwait(false);
         }
-        catch (Exception ex) when (IsNoSuchUnitError(ex.Message) || IsNoSuchUnitError(ex.GetType().Name))
+        catch (DBusErrorReplyException ex) when (ex.ErrorName == NoSuchUnitError)
         {
             return null;
         }
@@ -86,20 +92,9 @@ public sealed class SystemdDbusManagerClient : ISystemdDbusManager
                 message,
                 (Message msg, object? state) => msg.GetBodyReader().ReadString()).ConfigureAwait(false);
         }
-        catch (Exception ex) when (IsNoSuchUnitError(ex.Message) || IsNoSuchUnitError(ex.GetType().Name))
+        catch (DBusErrorReplyException ex) when (ex.ErrorName == NoSuchUnitFileError)
         {
             return null;
         }
-    }
-
-    public static bool IsNoSuchUnitError(string? errorText)
-    {
-        if (string.IsNullOrWhiteSpace(errorText)) return false;
-        return errorText.Contains("NoSuchUnit", StringComparison.OrdinalIgnoreCase) ||
-               errorText.Contains("NoSuchUnitFile", StringComparison.OrdinalIgnoreCase) ||
-               errorText.Contains("FileNotFound", StringComparison.OrdinalIgnoreCase) ||
-               errorText.Contains("NoSuchFile", StringComparison.OrdinalIgnoreCase) ||
-               errorText.Contains("not loaded", StringComparison.OrdinalIgnoreCase) ||
-               errorText.Contains("No such file or directory", StringComparison.OrdinalIgnoreCase);
     }
 }
