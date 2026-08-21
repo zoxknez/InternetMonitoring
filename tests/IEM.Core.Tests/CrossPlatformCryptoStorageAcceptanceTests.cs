@@ -39,7 +39,7 @@ public sealed class CrossPlatformCryptoStorageAcceptanceTests : IDisposable
     public CrossPlatformCryptoStorageAcceptanceTests()
     {
         _tempRoot = Path.Combine(Path.GetTempPath(), "iem-xpl-tests-" + Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(_tempRoot);
+        Create0700Directory(_tempRoot);
     }
 
     public void Dispose()
@@ -56,7 +56,21 @@ public sealed class CrossPlatformCryptoStorageAcceptanceTests : IDisposable
         }
     }
 
-    // ======================================================================
+    private static void Create0700Directory(string path)
+    {
+        Directory.CreateDirectory(path);
+        if (OperatingSystem.IsLinux() || OperatingSystem.IsMacOS())
+        {
+            try
+            {
+                File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+            }
+            catch
+            {
+            }
+        }
+    }
+
     // ======================================================================
     // 1. LINUX-NATIVE ACCEPTANCE GATES (Platform = Linux, 13 tests)
     // ======================================================================
@@ -67,7 +81,7 @@ public sealed class CrossPlatformCryptoStorageAcceptanceTests : IDisposable
     public async Task XPL_01_Linux_System_Native_Identity_Produces_Verifier_Valid_ManifestSig()
     {
         var stateRoot = Path.Combine(_tempRoot, "xpl01_state");
-        Directory.CreateDirectory(stateRoot);
+        Create0700Directory(stateRoot);
         var posix = GetPosixApi();
         var provider = new LinuxEvidenceKeyProvider(LinuxSigningIdentityScope.SystemInstallation, customStateRoot: stateRoot, posix: posix);
         using var identity = await provider.GetOrCreateIdentityAsync();
@@ -99,7 +113,7 @@ public sealed class CrossPlatformCryptoStorageAcceptanceTests : IDisposable
     public async Task XPL_02_Linux_Portable_Native_Identity_Produces_Verifier_Valid_ManifestSig()
     {
         var stateRoot = Path.Combine(_tempRoot, "xpl02_state");
-        Directory.CreateDirectory(stateRoot);
+        Create0700Directory(stateRoot);
         var posix = GetPosixApi();
         var provider = new LinuxEvidenceKeyProvider(LinuxSigningIdentityScope.PortableUser, customStateRoot: stateRoot, posix: posix);
         using var identity = await provider.GetOrCreateIdentityAsync();
@@ -131,7 +145,7 @@ public sealed class CrossPlatformCryptoStorageAcceptanceTests : IDisposable
     public async Task XPL_03_LNX_Windows_And_Linux_Identities_Share_Canonical_Suite_SPKI_And_KeyId_Formula_Linux()
     {
         var stateRoot = Path.Combine(_tempRoot, "xpl03_state");
-        Directory.CreateDirectory(stateRoot);
+        Create0700Directory(stateRoot);
         var posix = GetPosixApi();
         var provider = new LinuxEvidenceKeyProvider(LinuxSigningIdentityScope.SystemInstallation, customStateRoot: stateRoot, posix: posix);
         using var identity = await provider.GetOrCreateIdentityAsync();
@@ -152,7 +166,7 @@ public sealed class CrossPlatformCryptoStorageAcceptanceTests : IDisposable
     public async Task XPL_06_Linux_System_KeyProtection_Claim_Is_Exact()
     {
         var stateRoot = Path.Combine(_tempRoot, "xpl06_state");
-        Directory.CreateDirectory(stateRoot);
+        Create0700Directory(stateRoot);
         var posix = GetPosixApi();
         var provider = new LinuxEvidenceKeyProvider(LinuxSigningIdentityScope.SystemInstallation, customStateRoot: stateRoot, posix: posix);
         using var identity = await provider.GetOrCreateIdentityAsync();
@@ -169,7 +183,7 @@ public sealed class CrossPlatformCryptoStorageAcceptanceTests : IDisposable
     public async Task XPL_07_Linux_Portable_KeyProtection_Claim_Is_Exact()
     {
         var stateRoot = Path.Combine(_tempRoot, "xpl07_state");
-        Directory.CreateDirectory(stateRoot);
+        Create0700Directory(stateRoot);
         var posix = GetPosixApi();
         var provider = new LinuxEvidenceKeyProvider(LinuxSigningIdentityScope.PortableUser, customStateRoot: stateRoot, posix: posix);
         using var identity = await provider.GetOrCreateIdentityAsync();
@@ -225,7 +239,7 @@ public sealed class CrossPlatformCryptoStorageAcceptanceTests : IDisposable
     public async Task XPL_13_LNX_StorageProtectionObservation_Uses_Factual_Platform_Provenance_Linux()
     {
         var stateRoot = Path.Combine(_tempRoot, "state_root_xpl13");
-        Directory.CreateDirectory(stateRoot);
+        Create0700Directory(stateRoot);
         var sessionDir = Path.Combine(stateRoot, "sessions", "Sesija_xpl13-01");
         var desc = SessionLayoutDescriptor.CreateStandard("xpl13-01");
         var posix = GetPosixApi();
@@ -245,9 +259,9 @@ public sealed class CrossPlatformCryptoStorageAcceptanceTests : IDisposable
     public async Task XPL_15_LNX_Existing_Session_Restart_Verifies_Without_Reprovision_Or_Repair_Linux()
     {
         var stateRoot = Path.Combine(_tempRoot, "state_root_restart");
-        Directory.CreateDirectory(stateRoot);
+        Create0700Directory(stateRoot);
         var sessionDir = Path.Combine(stateRoot, "sessions", "Sesija_restart-01");
-        Directory.CreateDirectory(sessionDir);
+        Create0700Directory(sessionDir);
         var desc = SessionLayoutDescriptor.CreateStandard("restart-01");
 
         var posix = GetPosixApi();
@@ -385,7 +399,7 @@ public sealed class CrossPlatformCryptoStorageAcceptanceTests : IDisposable
     public async Task XPL_20_LNX_StorageProtectionObservation_Boundary_Flags_Are_Factual_Linux()
     {
         var stateRoot = Path.Combine(_tempRoot, "state_root_fact");
-        Directory.CreateDirectory(stateRoot);
+        Create0700Directory(stateRoot);
         var sessionDir = Path.Combine(stateRoot, "sessions", "Sesija_fact-01");
         var desc = SessionLayoutDescriptor.CreateStandard("fact-01");
         var posix = GetPosixApi();
