@@ -239,7 +239,7 @@ public sealed class UiPresentationTests
         Assert.NotNull(shell.CaseTab);
         Assert.NotNull(shell.SpeedTab);
 
-        // Verify command instances are created and wired
+        // Verify command instances are created and wired (all 15 commands)
         Assert.NotNull(shell.StartCommand);
         Assert.NotNull(shell.StopCommand);
         Assert.NotNull(shell.OpenFolderCommand);
@@ -251,6 +251,18 @@ public sealed class UiPresentationTests
         Assert.NotNull(shell.MarkUpheldTodayCommand);
         Assert.NotNull(shell.ScheduleSpeedCommand);
         Assert.NotNull(shell.MeasureNowCommand);
+        Assert.NotNull(shell.OpenReleaseNotesCommand);
+        Assert.NotNull(shell.DownloadUpdateCommand);
+        Assert.NotNull(shell.SnoozeUpdateCommand);
+        Assert.NotNull(shell.DismissUpdateCommand);
+
+        // Verify public timeline/latency and speed schedule properties
+        Assert.NotNull(shell.Timeline);
+        Assert.Empty(shell.Timeline);
+        Assert.NotNull(shell.Latency);
+        Assert.Empty(shell.Latency);
+        Assert.Equal(2, shell.SpeedScheduleUnits.Count);
+        Assert.True(shell.CanScheduleSpeed);
     }
 
     [Fact]
