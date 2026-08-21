@@ -68,7 +68,7 @@ public sealed class SystemdServicePresenceSource : ILinuxSystemServicePresenceSo
                 // Explicit null / no-such-file from systemd manager
                 return InstallationPresence.PortableOnly;
             }
-            catch (DBusErrorReplyException ex) when (ex.ErrorName == SystemdDbusManagerClient.NoSuchUnitFileError)
+            catch (DBusErrorReplyException ex) when (ex.ErrorName == SystemdDbusManagerClient.UnitFileNotFoundError)
             {
                 return InstallationPresence.PortableOnly;
             }

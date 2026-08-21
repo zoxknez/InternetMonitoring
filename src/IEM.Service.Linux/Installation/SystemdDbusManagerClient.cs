@@ -5,14 +5,15 @@ namespace IEM.Service.Linux.Installation;
 
 /// <summary>
 /// Managed D-Bus client for org.freedesktop.systemd1.Manager on the Linux system bus.
-/// Invariant 8E-R1-R1: Absence truth is determined strictly via exact D-Bus ErrorName
-/// (org.freedesktop.systemd1.NoSuchUnit / org.freedesktop.systemd1.NoSuchUnitFile).
+/// Invariant 8E-R1-R2: Absence truth is determined strictly via exact upstream systemd D-Bus ErrorNames:
+/// - GetUnit: org.freedesktop.systemd1.NoSuchUnit
+/// - GetUnitFileState: org.freedesktop.DBus.Error.FileNotFound (standard sd-bus ENOENT mapping)
 /// All other D-Bus and system errors propagate and fail closed to Unknown.
 /// </summary>
 public sealed class SystemdDbusManagerClient : ISystemdDbusManager
 {
     public const string NoSuchUnitError = "org.freedesktop.systemd1.NoSuchUnit";
-    public const string NoSuchUnitFileError = "org.freedesktop.systemd1.NoSuchUnitFile";
+    public const string UnitFileNotFoundError = "org.freedesktop.DBus.Error.FileNotFound";
 
     private const string SystemdDestination = "org.freedesktop.systemd1";
     private const string SystemdPath = "/org/freedesktop/systemd1";
@@ -92,7 +93,7 @@ public sealed class SystemdDbusManagerClient : ISystemdDbusManager
                 message,
                 (Message msg, object? state) => msg.GetBodyReader().ReadString()).ConfigureAwait(false);
         }
-        catch (DBusErrorReplyException ex) when (ex.ErrorName == NoSuchUnitFileError)
+        catch (DBusErrorReplyException ex) when (ex.ErrorName == UnitFileNotFoundError)
         {
             return null;
         }

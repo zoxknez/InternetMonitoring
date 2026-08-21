@@ -604,12 +604,12 @@ public sealed class LinuxProductionCompositionTests
         Assert.Equal(InstallationPresence.PortableOnly, presence);
     }
 
-    // ==============================================================
-    // R1-R1-A: EXACT D-BUS ERROR TRUTH CLASSIFICATION (SYS-R1-01..06)
-    // ==============================================================
+    // ======================================================================
+    // R1-R2: REAL SYSTEMD D-BUS ABI ERROR TRUTH CLASSIFICATION (SYS-ABI-01..06)
+    // ======================================================================
 
     [Fact]
-    public async Task SYS_R1_01_Exact_NoSuchUnit_Is_Absence()
+    public async Task SYS_ABI_01_Exact_NoSuchUnit_Continues_To_UnitFile_State()
     {
         var mockDbus = new MockSystemdDbusManager
         {
@@ -624,12 +624,12 @@ public sealed class LinuxProductionCompositionTests
     }
 
     [Fact]
-    public async Task SYS_R1_02_Exact_NoSuchUnitFile_Is_PortableOnly()
+    public async Task SYS_ABI_02_Exact_FileNotFound_From_GetUnitFileState_Is_PortableOnly()
     {
         var mockDbus = new MockSystemdDbusManager
         {
             GetUnitFunc = _ => throw new DBusErrorReplyException(SystemdDbusManagerClient.NoSuchUnitError, "Unit not found"),
-            GetUnitFileStateFunc = _ => throw new DBusErrorReplyException(SystemdDbusManagerClient.NoSuchUnitFileError, "Unit file not found")
+            GetUnitFileStateFunc = _ => throw new DBusErrorReplyException(SystemdDbusManagerClient.UnitFileNotFoundError, "No such file or directory")
         };
 
         var source = new SystemdServicePresenceSource(dbusManager: mockDbus);
@@ -639,11 +639,12 @@ public sealed class LinuxProductionCompositionTests
     }
 
     [Fact]
-    public async Task SYS_R1_03_Unrelated_Error_With_NotLoaded_Text_Is_Unknown()
+    public async Task SYS_ABI_03_Fake_NoSuchUnitFile_Is_NOT_Authoritative_Absence()
     {
         var mockDbus = new MockSystemdDbusManager
         {
-            GetUnitFunc = _ => throw new DBusErrorReplyException("org.freedesktop.DBus.Error.Failed", "unit state could not be loaded")
+            GetUnitFunc = _ => throw new DBusErrorReplyException(SystemdDbusManagerClient.NoSuchUnitError, "Unit not found"),
+            GetUnitFileStateFunc = _ => throw new DBusErrorReplyException("org.freedesktop.systemd1.NoSuchUnitFile", "Unit file not found")
         };
 
         var source = new SystemdServicePresenceSource(dbusManager: mockDbus);
@@ -654,11 +655,11 @@ public sealed class LinuxProductionCompositionTests
     }
 
     [Fact]
-    public async Task SYS_R1_04_Unrelated_Error_With_NoSuchFile_Text_Is_Unknown()
+    public async Task SYS_ABI_04_FileNotFound_Text_With_Wrong_ErrorName_Remains_Unknown()
     {
         var mockDbus = new MockSystemdDbusManager
         {
-            GetUnitFunc = _ => throw new DBusErrorReplyException("org.freedesktop.DBus.Error.Failed", "No such file or directory")
+            GetUnitFunc = _ => throw new DBusErrorReplyException("org.freedesktop.DBus.Error.Failed", "File not found")
         };
 
         var source = new SystemdServicePresenceSource(dbusManager: mockDbus);
@@ -669,7 +670,7 @@ public sealed class LinuxProductionCompositionTests
     }
 
     [Fact]
-    public async Task SYS_R1_05_AccessDenied_Is_Unknown()
+    public async Task SYS_ABI_05_AccessDenied_Remains_Unknown()
     {
         var mockDbus = new MockSystemdDbusManager
         {
@@ -684,7 +685,7 @@ public sealed class LinuxProductionCompositionTests
     }
 
     [Fact]
-    public async Task SYS_R1_06_ServiceUnknown_Is_Unknown()
+    public async Task SYS_ABI_06_ServiceUnknown_Remains_Unknown()
     {
         var mockDbus = new MockSystemdDbusManager
         {
