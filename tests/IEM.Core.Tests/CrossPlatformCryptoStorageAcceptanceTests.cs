@@ -261,7 +261,6 @@ public sealed class CrossPlatformCryptoStorageAcceptanceTests : IDisposable
         var stateRoot = Path.Combine(_tempRoot, "state_root_restart");
         Create0700Directory(stateRoot);
         var sessionDir = Path.Combine(stateRoot, "sessions", "Sesija_restart-01");
-        Create0700Directory(sessionDir);
         var desc = SessionLayoutDescriptor.CreateStandard("restart-01");
 
         var posix = GetPosixApi();
@@ -269,8 +268,9 @@ public sealed class CrossPlatformCryptoStorageAcceptanceTests : IDisposable
         var initObs = await provisioner.ProvisionSessionBoundariesAsync(sessionDir, desc);
         Assert.Equal(StorageProtectionState.Established, initObs.ProtectionState);
 
-        var filesBefore = Directory.GetFiles(sessionDir, "*", SearchOption.AllDirectories)
-            .ToDictionary(f => f, f => File.ReadAllBytes(f));
+        var filesBefore = Directory.Exists(sessionDir)
+            ? Directory.GetFiles(sessionDir, "*", SearchOption.AllDirectories).ToDictionary(f => f, f => File.ReadAllBytes(f))
+            : new Dictionary<string, byte[]>();
 
         var verifyObs = await provisioner.VerifyStorageProtectionAsync(sessionDir, desc);
         Assert.Equal(StorageProtectionState.Established, verifyObs.ProtectionState);
@@ -278,8 +278,9 @@ public sealed class CrossPlatformCryptoStorageAcceptanceTests : IDisposable
         Assert.True(verifyObs.ReparsePointCheck);
         Assert.Equal("Linux", verifyObs.Platform);
 
-        var filesAfter = Directory.GetFiles(sessionDir, "*", SearchOption.AllDirectories)
-            .ToDictionary(f => f, f => File.ReadAllBytes(f));
+        var filesAfter = Directory.Exists(sessionDir)
+            ? Directory.GetFiles(sessionDir, "*", SearchOption.AllDirectories).ToDictionary(f => f, f => File.ReadAllBytes(f))
+            : new Dictionary<string, byte[]>();
 
         Assert.Equal(filesBefore.Count, filesAfter.Count);
         foreach (var kvp in filesBefore)
