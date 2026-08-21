@@ -53,8 +53,8 @@ public static class PackageVerifier
         // -------------------------------------------------------------
         // Layer 2: Manifest Verification
         // -------------------------------------------------------------
-        var manifestPath = Path.Combine(packageDirectory, EvidenceManifest.FileName);
-        if (!File.Exists(manifestPath))
+        var manifestRead = await ConfinedPackageFileReader.TryReadAllBytesAsync(packageDirectory, EvidenceManifest.FileName, ct).ConfigureAwait(false);
+        if (manifestRead.Status == ConfinedPackageFileReader.ReadResultStatus.NotFound)
         {
             return new VerificationReport
             {
@@ -69,22 +69,22 @@ public static class PackageVerifier
             };
         }
 
-        byte[] manifestRawBytes;
-        using (var stream = new FileStream(manifestPath, FileMode.Open, FileAccess.Read, FileShare.Read))
+        if (manifestRead.Status == ConfinedPackageFileReader.ReadResultStatus.Violation || manifestRead.Bytes is null)
         {
-            manifestRawBytes = new byte[stream.Length];
-            var read = await stream.ReadAsync(manifestRawBytes, ct).ConfigureAwait(false);
-            if (read != manifestRawBytes.Length)
+            return new VerificationReport
             {
-                return new VerificationReport
+                Overall = OverallStatus.Invalid,
+                Integrity = IntegrityStatus.Invalid,
+                Trust = TrustStatus.NotApplicable,
+                Layers = new VerificationReport.LayerReports
                 {
-                    Overall = OverallStatus.Invalid,
-                    Integrity = IntegrityStatus.Invalid,
-                    Trust = TrustStatus.NotApplicable,
-                    Notes = { "Neuspešno čitanje datoteke manifest.json." },
-                };
-            }
+                    Manifest = new ManifestReport(LayerStatus.Invalid, 0, 0, 0, 0, new[] { manifestRead.ViolationReason ?? "Nevažeća ili nebezbedna putanja manifest.json." }),
+                },
+                Notes = { manifestRead.ViolationReason ?? "manifest.json krši pravila bezbednosti korenskog direktorijuma." },
+            };
         }
+
+        var manifestRawBytes = manifestRead.Bytes;
 
         // Canonical verification: canonicalize the parsed JSON and verify exact byte equality
         try
@@ -119,7 +119,6 @@ public static class PackageVerifier
                 throw new InvalidOperationException("Manifest se deserijalizovao u null.");
             }
         }
-
         catch (Exception ex)
         {
             return new VerificationReport
@@ -178,34 +177,36 @@ public static class PackageVerifier
 
         foreach (var fileEntry in manifest.Files)
         {
-            if (!PathSafety.TryResolveSafeRelativePath(packageDirectory, fileEntry.RelativePath, out var safeFullPath, out var pathViolation))
+            var openStatus = ConfinedPackageFileReader.TryOpenRead(packageDirectory, fileEntry.RelativePath, out var fileStream, out var pathViolation);
+            if (openStatus == ConfinedPackageFileReader.ReadResultStatus.Violation)
             {
-                violations.Add(pathViolation ?? $"Nevažeća putanja: {fileEntry.RelativePath}");
+                violations.Add(pathViolation ?? $"Nevažeća ili nebezbedna putanja: {fileEntry.RelativePath}");
                 modifiedFiles++;
                 continue;
             }
 
-            if (!File.Exists(safeFullPath))
+            if (openStatus == ConfinedPackageFileReader.ReadResultStatus.NotFound || fileStream is null)
             {
                 violations.Add($"Nedostaje datoteka: {fileEntry.RelativePath}");
                 missingFiles++;
                 continue;
             }
 
-            var fileInfo = new FileInfo(safeFullPath);
-            if (fileInfo.Length != fileEntry.Size)
+            using (fileStream)
             {
-                violations.Add($"Izmenjena veličina datoteke '{fileEntry.RelativePath}': očekivano {fileEntry.Size} B, pronađeno {fileInfo.Length} B");
-                modifiedFiles++;
-                continue;
-            }
+                if (fileStream.Length != fileEntry.Size)
+                {
+                    violations.Add($"Izmenjena veličina datoteke '{fileEntry.RelativePath}': očekivano {fileEntry.Size} B, pronađeno {fileStream.Length} B");
+                    modifiedFiles++;
+                    continue;
+                }
 
-            using var fileStream = new FileStream(safeFullPath, FileMode.Open, FileAccess.Read, FileShare.Read);
-            var computedSha = Convert.ToHexStringLower(await SHA256.HashDataAsync(fileStream, ct).ConfigureAwait(false));
-            if (!string.Equals(computedSha, fileEntry.Sha256, StringComparison.OrdinalIgnoreCase))
-            {
-                violations.Add($"Izmenjen SHA-256 heš za '{fileEntry.RelativePath}': očekivano {fileEntry.Sha256}, izračunato {computedSha}");
-                modifiedFiles++;
+                var computedSha = Convert.ToHexStringLower(await SHA256.HashDataAsync(fileStream, ct).ConfigureAwait(false));
+                if (!string.Equals(computedSha, fileEntry.Sha256, StringComparison.OrdinalIgnoreCase))
+                {
+                    violations.Add($"Izmenjen SHA-256 heš za '{fileEntry.RelativePath}': očekivano {fileEntry.Sha256}, izračunato {computedSha}");
+                    modifiedFiles++;
+                }
             }
         }
 
@@ -227,39 +228,41 @@ public static class PackageVerifier
         RawChainReport rawChainReport;
         if (manifest.Evidence.RawChain is not null)
         {
-            if (PathSafety.TryResolveSafeRelativePath(packageDirectory, manifest.Evidence.RawChain.RelativePath, out var rawChainFullPath, out var rawPathViolation) &&
-                File.Exists(rawChainFullPath))
+            var rawOpenStatus = ConfinedPackageFileReader.TryOpenRead(packageDirectory, manifest.Evidence.RawChain.RelativePath, out var rawStream, out var rawPathViolation);
+            if (rawOpenStatus == ConfinedPackageFileReader.ReadResultStatus.Success && rawStream is not null)
             {
-                using var rawStream = new FileStream(rawChainFullPath, FileMode.Open, FileAccess.Read, FileShare.Read);
-                var chainVerification = ChainVerifier.Verify(rawStream);
+                using (rawStream)
+                {
+                    var chainVerification = ChainVerifier.Verify(rawStream);
 
-                if (!chainVerification.Valid)
-                {
-                    rawChainReport = new RawChainReport(
-                        LayerStatus.Invalid,
-                        chainVerification.EntriesChecked,
-                        chainVerification.HeadHash,
-                        manifest.Evidence.RawChain.FinalChainHash,
-                        $"Prekid heš lanca na liniji {chainVerification.FirstBrokenLine}: {chainVerification.Reason}");
-                }
-                else if (chainVerification.EntriesChecked != manifest.Evidence.RawChain.RecordCount ||
-                         !string.Equals(chainVerification.HeadHash, manifest.Evidence.RawChain.FinalChainHash, StringComparison.OrdinalIgnoreCase))
-                {
-                    rawChainReport = new RawChainReport(
-                        LayerStatus.Verified,
-                        chainVerification.EntriesChecked,
-                        chainVerification.HeadHash,
-                        manifest.Evidence.RawChain.FinalChainHash,
-                        "Heš lanac je sam po sebi ispravan, ali se ne poklapa sa deklaracijom u manifestu.");
-                    violations.Add("Heš lanac ne odgovara vrednostima u manifest.json.");
-                }
-                else
-                {
-                    rawChainReport = new RawChainReport(
-                        LayerStatus.Verified,
-                        chainVerification.EntriesChecked,
-                        chainVerification.HeadHash,
-                        manifest.Evidence.RawChain.FinalChainHash);
+                    if (!chainVerification.Valid)
+                    {
+                        rawChainReport = new RawChainReport(
+                            LayerStatus.Invalid,
+                            chainVerification.EntriesChecked,
+                            chainVerification.HeadHash,
+                            manifest.Evidence.RawChain.FinalChainHash,
+                            $"Prekid heš lanca na liniji {chainVerification.FirstBrokenLine}: {chainVerification.Reason}");
+                    }
+                    else if (chainVerification.EntriesChecked != manifest.Evidence.RawChain.RecordCount ||
+                             !string.Equals(chainVerification.HeadHash, manifest.Evidence.RawChain.FinalChainHash, StringComparison.OrdinalIgnoreCase))
+                    {
+                        rawChainReport = new RawChainReport(
+                            LayerStatus.Verified,
+                            chainVerification.EntriesChecked,
+                            chainVerification.HeadHash,
+                            manifest.Evidence.RawChain.FinalChainHash,
+                            "Heš lanac je sam po sebi ispravan, ali se ne poklapa sa deklaracijom u manifestu.");
+                        violations.Add("Heš lanac ne odgovara vrednostima u manifest.json.");
+                    }
+                    else
+                    {
+                        rawChainReport = new RawChainReport(
+                            LayerStatus.Verified,
+                            chainVerification.EntriesChecked,
+                            chainVerification.HeadHash,
+                            manifest.Evidence.RawChain.FinalChainHash);
+                    }
                 }
             }
             else
@@ -280,18 +283,15 @@ public static class PackageVerifier
         // -------------------------------------------------------------
         // Layer 3: Digital Signature Verification
         // -------------------------------------------------------------
-        var sigPath = Path.Combine(packageDirectory, SignatureEnvelope.FileName);
+        var sigRead = await ConfinedPackageFileReader.TryReadAllBytesAsync(packageDirectory, SignatureEnvelope.FileName, ct).ConfigureAwait(false);
         SignatureReport signatureReport;
         byte[]? manifestSigRawBytes = null;
 
-        if (File.Exists(sigPath))
+        if (sigRead.Status == ConfinedPackageFileReader.ReadResultStatus.Success && sigRead.Bytes is not null)
         {
+            manifestSigRawBytes = sigRead.Bytes;
             try
             {
-                using var sigStream = new FileStream(sigPath, FileMode.Open, FileAccess.Read, FileShare.Read);
-                manifestSigRawBytes = new byte[sigStream.Length];
-                await sigStream.ReadExactlyAsync(manifestSigRawBytes, ct).ConfigureAwait(false);
-
                 var envelope = JsonSerializer.Deserialize<SignatureEnvelope>(manifestSigRawBytes, JsonOptions);
                 if (envelope is null)
                 {
@@ -341,6 +341,10 @@ public static class PackageVerifier
                 signatureReport = new SignatureReport(LayerStatus.Invalid, "N/A", null, options.ExpectedKeyId, false, null, $"Greška pri čitanju potpisa: {ex.Message}");
             }
         }
+        else if (sigRead.Status == ConfinedPackageFileReader.ReadResultStatus.Violation)
+        {
+            signatureReport = new SignatureReport(LayerStatus.Invalid, "N/A", null, options.ExpectedKeyId, false, null, sigRead.ViolationReason ?? "Nebezbedna putanja manifest.sig.");
+        }
         else
         {
             signatureReport = new SignatureReport(LayerStatus.Missing, "N/A", null, options.ExpectedKeyId, false, null, "manifest.sig ne postoji.");
@@ -351,20 +355,33 @@ public static class PackageVerifier
         // Layer 4: Trusted Timestamp Verification (RFC 3161)
         // -------------------------------------------------------------
         TimestampReport timestampReport;
-        var tsrCandidates = new[]
+        var tsrRelativeCandidates = new[]
         {
-            Path.Combine(packageDirectory, "Evidence", "timestamp", "timestamp.tsr"),
-            Path.Combine(packageDirectory, "timestamp.tsr"),
+            "Evidence/timestamp/timestamp.tsr",
+            "timestamp.tsr",
         };
-        var tsrPath = tsrCandidates.FirstOrDefault(File.Exists);
 
-        if (tsrPath is not null && manifestSigRawBytes is not null)
+        string? activeTsrRel = null;
+        byte[]? tsrBytes = null;
+
+        foreach (var candidate in tsrRelativeCandidates)
+        {
+            var read = await ConfinedPackageFileReader.TryReadAllBytesAsync(packageDirectory, candidate, ct).ConfigureAwait(false);
+            if (read.Status == ConfinedPackageFileReader.ReadResultStatus.Success && read.Bytes is not null)
+            {
+                activeTsrRel = candidate;
+                tsrBytes = read.Bytes;
+                break;
+            }
+        }
+
+        if (activeTsrRel is not null && tsrBytes is not null && manifestSigRawBytes is not null)
         {
             try
             {
-                var tsrBytes = await File.ReadAllBytesAsync(tsrPath, ct).ConfigureAwait(false);
-                var tsqPath = Path.ChangeExtension(tsrPath, ".tsq");
-                byte[]? tsqBytes = File.Exists(tsqPath) ? await File.ReadAllBytesAsync(tsqPath, ct).ConfigureAwait(false) : null;
+                var tsqRel = Path.ChangeExtension(activeTsrRel, ".tsq").Replace('\\', '/');
+                var tsqRead = await ConfinedPackageFileReader.TryReadAllBytesAsync(packageDirectory, tsqRel, ct).ConfigureAwait(false);
+                byte[]? tsqBytes = (tsqRead.Status == ConfinedPackageFileReader.ReadResultStatus.Success) ? tsqRead.Bytes : null;
 
                 var tsVerify = Rfc3161TimestampVerifier.Verify(manifestSigRawBytes, tsrBytes, tsqBytes, options.ExtraCertificates);
                 if (tsVerify.State == TrustedTimeState.ValidTrusted)
@@ -401,12 +418,22 @@ public static class PackageVerifier
         }
         else
         {
-            var tsqCandidates = new[]
+            var tsqRelativeCandidates = new[]
             {
-                Path.Combine(packageDirectory, "Evidence", "timestamp", "timestamp.tsq"),
-                Path.Combine(packageDirectory, "timestamp.tsq"),
+                "Evidence/timestamp/timestamp.tsq",
+                "timestamp.tsq",
             };
-            var isPending = tsqCandidates.Any(File.Exists);
+
+            var isPending = false;
+            foreach (var tsqCand in tsqRelativeCandidates)
+            {
+                var tsqCheck = await ConfinedPackageFileReader.TryReadAllBytesAsync(packageDirectory, tsqCand, ct).ConfigureAwait(false);
+                if (tsqCheck.Status == ConfinedPackageFileReader.ReadResultStatus.Success)
+                {
+                    isPending = true;
+                    break;
+                }
+            }
 
             timestampReport = new TimestampReport(
                 isPending ? LayerStatus.Pending : LayerStatus.Missing,
