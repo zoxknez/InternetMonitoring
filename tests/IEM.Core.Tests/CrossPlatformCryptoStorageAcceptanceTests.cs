@@ -16,6 +16,7 @@ using IEM.Storage.Evidence;
 using IEM.Storage.Layout;
 using IEM.Verification.Engine;
 using IEM.Verification.Models;
+using IEM.Verification.Safety;
 using Xunit;
 
 namespace IEM.Core.Tests;
@@ -765,12 +766,12 @@ public sealed class CrossPlatformCryptoStorageAcceptanceTests : IDisposable
         Assert.NotNull(lexicalReport.Layers.Manifest);
         Assert.True(lexicalReport.Layers.Manifest.Violations.Count > 0);
 
-        // 2. Real package-internal symlink escape listed in valid manifest -> PackageVerifier must fail closed
+        // 2. Real size-neutral physical escape (Windows junction / Linux symlink) -> PackageVerifier must fail closed
         var outsideDir = Path.Combine(_tempRoot, "xpl17_outside");
         Create0700Directory(outsideDir);
         var outsideSecretFile = Path.Combine(outsideDir, "secret.bin");
-        var secretBytes = "OUTSIDE_SECRET_PAYLOAD_EVIDENCE"u8.ToArray();
-        await File.WriteAllBytesAsync(outsideSecretFile, secretBytes);
+        var initialSecretBytes = "OUTSIDE_SECRET_PAYLOAD_SIZE_NEUTRAL_CONFIDENTIAL"u8.ToArray();
+        await File.WriteAllBytesAsync(outsideSecretFile, initialSecretBytes);
 
         var symlinkPkgDir = Path.Combine(_tempRoot, "xpl17_symlink_pkg");
         Create0700Directory(symlinkPkgDir);
@@ -803,55 +804,93 @@ public sealed class CrossPlatformCryptoStorageAcceptanceTests : IDisposable
         var rawBytes = await File.ReadAllBytesAsync(rawLogPath);
         var jsonBytes = await File.ReadAllBytesAsync(sessionJsonPath);
 
-        // Create the real symlink pointing outside the package
-        var symlinkPath = Path.Combine(symlinkEvidenceDir, "escape.bin");
+        string targetRelativePath;
+        string linkPath;
         bool linkCreated = false;
-        try
-        {
-            File.CreateSymbolicLink(symlinkPath, outsideSecretFile);
-            linkCreated = File.Exists(symlinkPath);
-        }
-        catch { }
 
-        if (OperatingSystem.IsLinux())
+        if (OperatingSystem.IsWindows())
         {
-            Assert.True(linkCreated, "Linux platform requires successful symlink creation for XPL-17 physical escape gate.");
-        }
-
-        if (linkCreated)
-        {
-            var manifestFiles = new List<ManifestFileEntry>
+            var junctionPath = Path.Combine(symlinkEvidenceDir, "external");
+            try
             {
-                new ManifestFileEntry("Evidence/raw.log", rawBytes.Length, Convert.ToHexStringLower(SHA256.HashData(rawBytes))),
-                new ManifestFileEntry("Evidence/session_start.json", jsonBytes.Length, Convert.ToHexStringLower(SHA256.HashData(jsonBytes))),
-                new ManifestFileEntry("Evidence/escape.bin", secretBytes.Length, Convert.ToHexStringLower(SHA256.HashData(secretBytes)))
-            };
+                using var proc = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = "cmd.exe",
+                    Arguments = $"/c mklink /J \"{junctionPath}\" \"{outsideDir}\"",
+                    CreateNoWindow = true,
+                    UseShellExecute = false
+                });
+                proc?.WaitForExit();
+                linkCreated = Directory.Exists(junctionPath);
+            }
+            catch
+            {
+                linkCreated = false;
+            }
 
-            var symlinkManifest = new EvidenceManifest(
-                ManifestSchemaVersion: 1,
-                Canonicalization: "RFC8785-JCS",
-                CreatedUtc: DateTimeOffset.UtcNow,
-                Session: new ManifestSessionInfo("ses-17-sym", DateTimeOffset.UtcNow.AddMinutes(-10), DateTimeOffset.UtcNow, 1, "3.1.0"),
-                Evidence: new ManifestEvidenceSummary(new ManifestRawChainRef("Evidence/raw.log", finalChainHash, recordCount), null, null, null),
-                Files: manifestFiles,
-                AcquisitionContext: new ManifestAcquisitionContext("Shared", new Dictionary<string, string>()));
-
-            var symlinkManifestPath = Path.Combine(symlinkPkgDir, EvidenceManifest.FileName);
-            await File.WriteAllBytesAsync(symlinkManifestPath, symlinkManifest.ToCanonicalBytes());
-            await ManifestSigner.SignManifestAtomicallyAsync(symlinkPkgDir, identity);
-
-            var symlinkReport = await PackageVerifier.VerifyPackageAsync(symlinkPkgDir, new VerificationOptions { Offline = true });
-
-            // Invariant 29: PackageVerifier MUST NOT read or verify files outside package root through symlinks
-            Assert.Equal(OverallStatus.Invalid, symlinkReport.Overall);
-            Assert.Equal(IntegrityStatus.Invalid, symlinkReport.Integrity);
-            Assert.NotNull(symlinkReport.Layers.Manifest);
-            Assert.Equal(LayerStatus.Invalid, symlinkReport.Layers.Manifest.Status);
+            Assert.True(linkCreated, "Windows runner requires successful junction creation for XPL-17 physical escape gate.");
+            targetRelativePath = "Evidence/external/secret.bin";
+            linkPath = Path.Combine(symlinkPkgDir, targetRelativePath);
         }
-        else if (OperatingSystem.IsLinux())
+        else
         {
-            Assert.Fail("Symlink was not created on Linux runner; zero-bypass gate failed.");
+            var symlinkPath = Path.Combine(symlinkEvidenceDir, "escape.bin");
+            try
+            {
+                File.CreateSymbolicLink(symlinkPath, outsideSecretFile);
+                linkCreated = File.Exists(symlinkPath);
+            }
+            catch
+            {
+                linkCreated = false;
+            }
+
+            Assert.True(linkCreated, "Linux runner requires successful symlink creation for XPL-17 physical escape gate.");
+            targetRelativePath = "Evidence/escape.bin";
+            linkPath = symlinkPath;
         }
+
+        // Precondition checks:
+        Assert.True(File.Exists(linkPath), "Precondition: physical link target must be accessible via package path.");
+        Assert.True(PathSafety.TryResolveSafeRelativePath(symlinkPkgDir, targetRelativePath, out var safeFullPath, out _), "Precondition: lexical path safety must pass.");
+
+        // Size-neutrality: match targetBytes length precisely to observed FileInfo.Length
+        var observedLength = new FileInfo(linkPath).Length;
+        var targetBytes = new byte[observedLength > 0 ? (int)observedLength : 48];
+        Random.Shared.NextBytes(targetBytes);
+        await File.WriteAllBytesAsync(outsideSecretFile, targetBytes);
+
+        var refreshedInfo = new FileInfo(linkPath);
+        refreshedInfo.Refresh();
+        Assert.Equal(targetBytes.Length, refreshedInfo.Length);
+
+        var manifestFiles = new List<ManifestFileEntry>
+        {
+            new ManifestFileEntry("Evidence/raw.log", rawBytes.Length, Convert.ToHexStringLower(SHA256.HashData(rawBytes))),
+            new ManifestFileEntry("Evidence/session_start.json", jsonBytes.Length, Convert.ToHexStringLower(SHA256.HashData(jsonBytes))),
+            new ManifestFileEntry(targetRelativePath, targetBytes.Length, Convert.ToHexStringLower(SHA256.HashData(targetBytes)))
+        };
+
+        var symlinkManifest = new EvidenceManifest(
+            ManifestSchemaVersion: 1,
+            Canonicalization: "RFC8785-JCS",
+            CreatedUtc: DateTimeOffset.UtcNow,
+            Session: new ManifestSessionInfo("ses-17-sym", DateTimeOffset.UtcNow.AddMinutes(-10), DateTimeOffset.UtcNow, 1, "3.1.0"),
+            Evidence: new ManifestEvidenceSummary(new ManifestRawChainRef("Evidence/raw.log", finalChainHash, recordCount), null, null, null),
+            Files: manifestFiles,
+            AcquisitionContext: new ManifestAcquisitionContext("Shared", new Dictionary<string, string>()));
+
+        var symlinkManifestPath = Path.Combine(symlinkPkgDir, EvidenceManifest.FileName);
+        await File.WriteAllBytesAsync(symlinkManifestPath, symlinkManifest.ToCanonicalBytes());
+        await ManifestSigner.SignManifestAtomicallyAsync(symlinkPkgDir, identity);
+
+        var symlinkReport = await PackageVerifier.VerifyPackageAsync(symlinkPkgDir, new VerificationOptions { Offline = true });
+
+        // Invariant 29: PackageVerifier MUST NOT verify/accept files outside package root through symlinks/junctions
+        Assert.Equal(OverallStatus.Invalid, symlinkReport.Overall);
+        Assert.Equal(IntegrityStatus.Invalid, symlinkReport.Integrity);
+        Assert.NotNull(symlinkReport.Layers.Manifest);
+        Assert.Equal(LayerStatus.Invalid, symlinkReport.Layers.Manifest.Status);
     }
 
     [Fact]
