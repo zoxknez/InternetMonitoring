@@ -22,6 +22,7 @@ internal static class NativePackageConfinementInterop
     public const ulong RESOLVE_BENEATH = 0x08;
 
     public const uint S_IFMT = 0xF000;
+    public const uint S_IFDIR = 0x4000;
     public const uint S_IFREG = 0x8000;
 
     [StructLayout(LayoutKind.Sequential)]
@@ -73,8 +74,12 @@ internal static class NativePackageConfinementInterop
     // Windows Win32 / NT Handle Confinement
     // =========================================================================
     private const string Kernel32 = "kernel32.dll";
+    private const string Ntdll = "ntdll.dll";
 
     public const uint GENERIC_READ = 0x80000000;
+    public const uint FILE_READ_ATTRIBUTES = 0x0080;
+    public const uint FILE_LIST_DIRECTORY = 0x0001;
+    public const uint FILE_TRAVERSE = 0x0020;
     public const uint FILE_SHARE_READ = 0x00000001;
     public const uint FILE_SHARE_WRITE = 0x00000002;
     public const uint FILE_SHARE_DELETE = 0x00000004;
@@ -90,6 +95,29 @@ internal static class NativePackageConfinementInterop
     public const uint FILE_TYPE_DISK = 0x0001;
     public const uint VOLUME_NAME_DOS = 0x0;
 
+    // NT Constants
+    public const uint OBJ_DONT_REPARSE = 0x00002000;
+    public const uint OBJ_CASE_INSENSITIVE = 0x00000040;
+
+    public const uint FILE_READ_DATA = 0x0001;
+    public const uint FILE_READ_EA = 0x0008;
+    public const uint SYNCHRONIZE = 0x00100000;
+    public const uint STANDARD_RIGHTS_READ = 0x00020000;
+    public const uint NT_FILE_GENERIC_READ = STANDARD_RIGHTS_READ | FILE_READ_DATA | FILE_READ_ATTRIBUTES | FILE_READ_EA | SYNCHRONIZE;
+
+    public const uint FILE_SYNCHRONOUS_IO_NONALERT = 0x00000020;
+    public const uint FILE_NON_DIRECTORY_FILE = 0x00000040;
+    public const uint FILE_OPEN_REPARSE_POINT = 0x00200000;
+
+    public const uint STATUS_SUCCESS = 0x00000000;
+    public const uint STATUS_INVALID_PARAMETER = 0xC000000D;
+    public const uint STATUS_OBJECT_NAME_NOT_FOUND = 0xC0000034;
+    public const uint STATUS_OBJECT_PATH_NOT_FOUND = 0xC000003A;
+    public const uint STATUS_REPARSE_POINT_ENCOUNTERED = 0xC0000280;
+    public const uint STATUS_STOPPED_ON_SYMLINK = 0xC000028C;
+    public const uint STATUS_FILE_IS_A_DIRECTORY = 0xC00000BA;
+    public const uint STATUS_ACCESS_DENIED = 0xC0000022;
+
     [StructLayout(LayoutKind.Sequential)]
     public struct BY_HANDLE_FILE_INFORMATION
     {
@@ -103,6 +131,32 @@ internal static class NativePackageConfinementInterop
         public uint nNumberOfLinks;
         public uint nFileIndexHigh;
         public uint nFileIndexLow;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct UNICODE_STRING
+    {
+        public ushort Length;
+        public ushort MaximumLength;
+        public IntPtr Buffer;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct OBJECT_ATTRIBUTES
+    {
+        public int Length;
+        public IntPtr RootDirectory;
+        public IntPtr ObjectName;
+        public uint Attributes;
+        public IntPtr SecurityDescriptor;
+        public IntPtr SecurityQualityOfService;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct IO_STATUS_BLOCK
+    {
+        public IntPtr Status;
+        public IntPtr Information;
     }
 
     [DllImport(Kernel32, EntryPoint = "CreateFileW", CharSet = CharSet.Unicode, SetLastError = true)]
@@ -129,4 +183,18 @@ internal static class NativePackageConfinementInterop
         [Out] System.Text.StringBuilder lpszFilePath,
         uint cchFilePath,
         uint dwFlags);
+
+    [DllImport(Ntdll, ExactSpelling = true)]
+    public static extern uint NtOpenFile(
+        out IntPtr FileHandle,
+        uint DesiredAccess,
+        ref OBJECT_ATTRIBUTES ObjectAttributes,
+        out IO_STATUS_BLOCK IoStatusBlock,
+        uint ShareAccess,
+        uint OpenOptions);
+
+    [DllImport(Ntdll, ExactSpelling = true)]
+    public static extern void RtlInitUnicodeString(
+        ref UNICODE_STRING DestinationString,
+        IntPtr SourceString);
 }

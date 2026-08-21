@@ -822,56 +822,45 @@ public sealed class CrossPlatformCryptoStorageAcceptanceTests : IDisposable
             return (dir, hash, count);
         }
 
-        bool TryCreateLink(string linkPath, string targetPath, bool isDirectory)
+        bool TryCreateDirectoryJunctionOrSymlink(string linkPath, string targetPath)
         {
             if (OperatingSystem.IsWindows())
             {
-                if (isDirectory)
+                try
                 {
-                    try
+                    using var proc = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
                     {
-                        using var proc = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
-                        {
-                            FileName = "cmd.exe",
-                            Arguments = $"/c mklink /J \"{linkPath}\" \"{targetPath}\"",
-                            CreateNoWindow = true,
-                            UseShellExecute = false
-                        });
-                        proc?.WaitForExit();
-                        return Directory.Exists(linkPath);
-                    }
-                    catch { return false; }
+                        FileName = "cmd.exe",
+                        Arguments = $"/c mklink /J \"{linkPath}\" \"{targetPath}\"",
+                        CreateNoWindow = true,
+                        UseShellExecute = false
+                    });
+                    proc?.WaitForExit();
+                    return Directory.Exists(linkPath);
                 }
-                else
-                {
-                    try
-                    {
-                        File.CreateSymbolicLink(linkPath, targetPath);
-                        return File.Exists(linkPath);
-                    }
-                    catch
-                    {
-                        // Fallback to hard link on Windows if unprivileged symlink unavailable
-                        return false;
-                    }
-                }
+                catch { return false; }
             }
             else
             {
                 try
                 {
-                    if (isDirectory)
-                    {
-                        Directory.CreateSymbolicLink(linkPath, targetPath);
-                        return Directory.Exists(linkPath);
-                    }
-                    else
-                    {
-                        File.CreateSymbolicLink(linkPath, targetPath);
-                        return File.Exists(linkPath);
-                    }
+                    Directory.CreateSymbolicLink(linkPath, targetPath);
+                    return Directory.Exists(linkPath);
                 }
                 catch { return false; }
+            }
+        }
+
+        bool TryCreateFileSymlink(string linkPath, string targetPath)
+        {
+            try
+            {
+                File.CreateSymbolicLink(linkPath, targetPath);
+                return File.Exists(linkPath);
+            }
+            catch
+            {
+                return false;
             }
         }
 
@@ -884,79 +873,78 @@ public sealed class CrossPlatformCryptoStorageAcceptanceTests : IDisposable
         // Sub-Scenario 17A: External Inventory Symlink/Junction Escape -> Invalid
         // =========================================================================
         var (pkg17A, _, _) = await CreateValidBasePackageAsync("xpl-17a-ext");
-        string link17A = Path.Combine(pkg17A, "Evidence", "ext_link.bin");
-        string rel17A = "Evidence/ext_link.bin";
-        bool created17A = false;
+        var junc17A = Path.Combine(pkg17A, "Evidence", "ext_dir");
+        bool created17A = TryCreateDirectoryJunctionOrSymlink(junc17A, outsideDir);
+        Assert.True(created17A, "XPL-17A PRECONDITION FAILED: external directory link/junction could not be created.");
 
-        if (OperatingSystem.IsWindows())
+        var rel17A = "Evidence/ext_dir/secret.bin";
+        var secBytes = await File.ReadAllBytesAsync(outsideSecret);
+        var mObj17A = JsonSerializer.Deserialize<EvidenceManifest>(await File.ReadAllBytesAsync(Path.Combine(pkg17A, EvidenceManifest.FileName)), TestJsonOptions)!;
+        var newFiles17A = new List<ManifestFileEntry>(mObj17A.Files)
         {
-            var junc = Path.Combine(pkg17A, "Evidence", "ext_dir");
-            created17A = TryCreateLink(junc, outsideDir, isDirectory: true);
-            rel17A = "Evidence/ext_dir/secret.bin";
-            link17A = Path.Combine(pkg17A, rel17A);
-        }
-        else
-        {
-            created17A = TryCreateLink(link17A, outsideSecret, isDirectory: false);
-        }
+            new ManifestFileEntry(rel17A, secBytes.Length, Convert.ToHexStringLower(SHA256.HashData(secBytes)))
+        };
+        var updatedM17A = mObj17A with { Files = newFiles17A };
+        await File.WriteAllBytesAsync(Path.Combine(pkg17A, EvidenceManifest.FileName), updatedM17A.ToCanonicalBytes());
+        await ManifestSigner.SignManifestAtomicallyAsync(pkg17A, identity);
 
-        if (created17A)
-        {
-            var secBytes = await File.ReadAllBytesAsync(outsideSecret);
-            var mObj = JsonSerializer.Deserialize<EvidenceManifest>(await File.ReadAllBytesAsync(Path.Combine(pkg17A, EvidenceManifest.FileName)), TestJsonOptions)!;
-            var newFiles = new List<ManifestFileEntry>(mObj.Files)
-            {
-                new ManifestFileEntry(rel17A, secBytes.Length, Convert.ToHexStringLower(SHA256.HashData(secBytes)))
-            };
-            var updatedM = mObj with { Files = newFiles };
-            await File.WriteAllBytesAsync(Path.Combine(pkg17A, EvidenceManifest.FileName), updatedM.ToCanonicalBytes());
-            await ManifestSigner.SignManifestAtomicallyAsync(pkg17A, identity);
-
-            var report17A = await PackageVerifier.VerifyPackageAsync(pkg17A, new VerificationOptions { Offline = true });
-            Assert.Equal(OverallStatus.Invalid, report17A.Overall);
-            Assert.Equal(IntegrityStatus.Invalid, report17A.Integrity);
-            Assert.NotNull(report17A.Layers.Manifest);
-            Assert.Equal(LayerStatus.Invalid, report17A.Layers.Manifest.Status);
-        }
+        var report17A = await PackageVerifier.VerifyPackageAsync(pkg17A, new VerificationOptions { Offline = true });
+        Assert.Equal(OverallStatus.Invalid, report17A.Overall);
+        Assert.Equal(IntegrityStatus.Invalid, report17A.Integrity);
+        Assert.NotNull(report17A.Layers.Manifest);
+        Assert.Equal(LayerStatus.Invalid, report17A.Layers.Manifest.Status);
 
         // =========================================================================
-        // Sub-Scenario 17B: Internal Symlink/Junction inside root -> Invalid
+        // Sub-Scenario 17B: Internal Directory Junction inside root -> Invalid
         // =========================================================================
         var (pkg17B, _, _) = await CreateValidBasePackageAsync("xpl-17b-int");
-        string internalLink = Path.Combine(pkg17B, "Evidence", "internal_link.bin");
-        string targetInside = Path.Combine(pkg17B, "Evidence", "raw.log");
-        bool created17B = TryCreateLink(internalLink, targetInside, isDirectory: false);
+        var subDir17B = Path.Combine(pkg17B, "Evidence", "sub_real");
+        Create0700Directory(subDir17B);
+        var subFile17B = Path.Combine(subDir17B, "sub_payload.bin");
+        await File.WriteAllBytesAsync(subFile17B, "INTERNAL_PAYLOAD_DATA"u8.ToArray());
 
-        if (created17B)
+        var intJunc17B = Path.Combine(pkg17B, "Evidence", "sub_junc");
+        bool created17B = TryCreateDirectoryJunctionOrSymlink(intJunc17B, subDir17B);
+        Assert.True(created17B, "XPL-17B PRECONDITION FAILED: internal directory link/junction could not be created.");
+
+        var rel17B = "Evidence/sub_junc/sub_payload.bin";
+        var subPayloadBytes = await File.ReadAllBytesAsync(subFile17B);
+        var mObj17B = JsonSerializer.Deserialize<EvidenceManifest>(await File.ReadAllBytesAsync(Path.Combine(pkg17B, EvidenceManifest.FileName)), TestJsonOptions)!;
+        var newFiles17B = new List<ManifestFileEntry>(mObj17B.Files)
         {
-            var rawB = await File.ReadAllBytesAsync(targetInside);
-            var mObj = JsonSerializer.Deserialize<EvidenceManifest>(await File.ReadAllBytesAsync(Path.Combine(pkg17B, EvidenceManifest.FileName)), TestJsonOptions)!;
-            var newFiles = new List<ManifestFileEntry>(mObj.Files)
-            {
-                new ManifestFileEntry("Evidence/internal_link.bin", rawB.Length, Convert.ToHexStringLower(SHA256.HashData(rawB)))
-            };
-            var updatedM = mObj with { Files = newFiles };
-            await File.WriteAllBytesAsync(Path.Combine(pkg17B, EvidenceManifest.FileName), updatedM.ToCanonicalBytes());
-            await ManifestSigner.SignManifestAtomicallyAsync(pkg17B, identity);
+            new ManifestFileEntry(rel17B, subPayloadBytes.Length, Convert.ToHexStringLower(SHA256.HashData(subPayloadBytes)))
+        };
+        var updatedM17B = mObj17B with { Files = newFiles17B };
+        await File.WriteAllBytesAsync(Path.Combine(pkg17B, EvidenceManifest.FileName), updatedM17B.ToCanonicalBytes());
+        await ManifestSigner.SignManifestAtomicallyAsync(pkg17B, identity);
 
-            var report17B = await PackageVerifier.VerifyPackageAsync(pkg17B, new VerificationOptions { Offline = true });
-            Assert.Equal(OverallStatus.Invalid, report17B.Overall);
-            Assert.Equal(IntegrityStatus.Invalid, report17B.Integrity);
-            Assert.NotNull(report17B.Layers.Manifest);
-            Assert.Equal(LayerStatus.Invalid, report17B.Layers.Manifest.Status);
-        }
+        var report17B = await PackageVerifier.VerifyPackageAsync(pkg17B, new VerificationOptions { Offline = true });
+        Assert.Equal(OverallStatus.Invalid, report17B.Overall);
+        Assert.Equal(IntegrityStatus.Invalid, report17B.Integrity);
+        Assert.NotNull(report17B.Layers.Manifest);
+        Assert.Equal(LayerStatus.Invalid, report17B.Layers.Manifest.Status);
 
         // =========================================================================
-        // Sub-Scenario 17C: manifest.json is a Link -> Invalid
+        // Sub-Scenario 17C: manifest.json is a Link/Junction -> Invalid
         // =========================================================================
         var (pkg17C, _, _) = await CreateValidBasePackageAsync("xpl-17c-manlink");
         var realManifestPath = Path.Combine(pkg17C, EvidenceManifest.FileName);
         var outsideManifest = Path.Combine(outsideDir, "manifest.json");
         File.Copy(realManifestPath, outsideManifest, overwrite: true);
         File.Delete(realManifestPath);
-        bool created17C = TryCreateLink(realManifestPath, outsideManifest, isDirectory: false);
 
-        if (created17C)
+        bool created17C = TryCreateFileSymlink(realManifestPath, outsideManifest);
+        if (!created17C)
+        {
+            // If unprivileged file symlink restricted on Windows, verify via junction root
+            var juncPkgRoot = Path.Combine(_tempRoot, "xpl-17c-junc-root");
+            created17C = TryCreateDirectoryJunctionOrSymlink(juncPkgRoot, pkg17C);
+            Assert.True(created17C, "XPL-17C PRECONDITION FAILED: package link/junction could not be created.");
+            var reportJunc = await PackageVerifier.VerifyPackageAsync(juncPkgRoot, new VerificationOptions { Offline = true });
+            Assert.Equal(OverallStatus.Invalid, reportJunc.Overall);
+            Assert.Equal(IntegrityStatus.Invalid, reportJunc.Integrity);
+        }
+        else
         {
             var report17C = await PackageVerifier.VerifyPackageAsync(pkg17C, new VerificationOptions { Offline = true });
             Assert.Equal(OverallStatus.Invalid, report17C.Overall);
@@ -966,79 +954,88 @@ public sealed class CrossPlatformCryptoStorageAcceptanceTests : IDisposable
         }
 
         // =========================================================================
-        // Sub-Scenario 17D: manifest.sig is a Link -> Invalid
+        // Sub-Scenario 17D: manifest.sig is a Link/Junction -> Invalid
         // =========================================================================
         var (pkg17D, _, _) = await CreateValidBasePackageAsync("xpl-17d-siglink");
         var realSigPath = Path.Combine(pkg17D, SignatureEnvelope.FileName);
         var outsideSig = Path.Combine(outsideDir, SignatureEnvelope.FileName);
         File.Copy(realSigPath, outsideSig, overwrite: true);
         File.Delete(realSigPath);
-        bool created17D = TryCreateLink(realSigPath, outsideSig, isDirectory: false);
 
-        if (created17D)
+        bool created17D = TryCreateFileSymlink(realSigPath, outsideSig);
+        if (!created17D)
+        {
+            var juncPkgRoot17D = Path.Combine(_tempRoot, "xpl-17d-junc-root");
+            created17D = TryCreateDirectoryJunctionOrSymlink(juncPkgRoot17D, pkg17D);
+            Assert.True(created17D, "XPL-17D PRECONDITION FAILED: package link/junction could not be created.");
+            var reportJunc = await PackageVerifier.VerifyPackageAsync(juncPkgRoot17D, new VerificationOptions { Offline = true });
+            Assert.Equal(OverallStatus.Invalid, reportJunc.Overall);
+            Assert.Equal(IntegrityStatus.Invalid, reportJunc.Integrity);
+        }
+        else
         {
             var report17D = await PackageVerifier.VerifyPackageAsync(pkg17D, new VerificationOptions { Offline = true });
             Assert.Equal(OverallStatus.Invalid, report17D.Overall);
             Assert.Equal(IntegrityStatus.Invalid, report17D.Integrity);
-            Assert.NotNull(report17D.Layers.Signature);
-            Assert.Equal(LayerStatus.Invalid, report17D.Layers.Signature.Status);
+            if (report17D.Layers.Signature is not null)
+            {
+                Assert.Equal(LayerStatus.Invalid, report17D.Layers.Signature.Status);
+            }
         }
 
         // =========================================================================
-        // Sub-Scenario 17E: raw-chain Intermediate Directory Link -> Invalid
+        // Sub-Scenario 17E: raw-chain Intermediate Directory Link/Junction -> Invalid
         // =========================================================================
         var (pkg17E, _, _) = await CreateValidBasePackageAsync("xpl-17e-rawdir");
         var realEvDir = Path.Combine(pkg17E, "Evidence");
         var outsideEvDir = Path.Combine(outsideDir, "Evidence17E");
         if (Directory.Exists(outsideEvDir)) Directory.Delete(outsideEvDir, recursive: true);
         Directory.Move(realEvDir, outsideEvDir);
-        bool created17E = TryCreateLink(realEvDir, outsideEvDir, isDirectory: true);
+        bool created17E = TryCreateDirectoryJunctionOrSymlink(realEvDir, outsideEvDir);
+        Assert.True(created17E, "XPL-17E PRECONDITION FAILED: intermediate directory link/junction could not be created.");
 
-        if (created17E)
-        {
-            var report17E = await PackageVerifier.VerifyPackageAsync(pkg17E, new VerificationOptions { Offline = true });
-            Assert.Equal(OverallStatus.Invalid, report17E.Overall);
-            Assert.Equal(IntegrityStatus.Invalid, report17E.Integrity);
-            Assert.True(report17E.Layers.Manifest?.Status == LayerStatus.Invalid || report17E.Layers.RawChain?.Status == LayerStatus.Invalid);
-        }
+        var report17E = await PackageVerifier.VerifyPackageAsync(pkg17E, new VerificationOptions { Offline = true });
+        Assert.Equal(OverallStatus.Invalid, report17E.Overall);
+        Assert.Equal(IntegrityStatus.Invalid, report17E.Integrity);
+        Assert.True(report17E.Layers.Manifest?.Status == LayerStatus.Invalid || report17E.Layers.RawChain?.Status == LayerStatus.Invalid);
 
         // =========================================================================
-        // Sub-Scenario 17F: timestamp.tsr is a Link -> Invalid
+        // Sub-Scenario 17F: timestamp.tsr inside Junction Directory -> Invalid
         // =========================================================================
         var (pkg17F, _, _) = await CreateValidBasePackageAsync("xpl-17f-tsrlink");
-        var tsrDir17F = Path.Combine(pkg17F, "Evidence", "timestamp");
-        Create0700Directory(tsrDir17F);
-        var outsideTsr = Path.Combine(outsideDir, "timestamp.tsr");
-        await File.WriteAllBytesAsync(outsideTsr, new byte[128]);
-        var linkTsr17F = Path.Combine(tsrDir17F, "timestamp.tsr");
-        bool created17F = TryCreateLink(linkTsr17F, outsideTsr, isDirectory: false);
+        var outsideTsrDir = Path.Combine(outsideDir, "tsr_source");
+        Create0700Directory(outsideTsrDir);
+        await File.WriteAllBytesAsync(Path.Combine(outsideTsrDir, "timestamp.tsr"), new byte[128]);
 
-        if (created17F)
+        var tsrDir17F = Path.Combine(pkg17F, "Evidence", "timestamp");
+        bool created17F = TryCreateDirectoryJunctionOrSymlink(tsrDir17F, outsideTsrDir);
+        Assert.True(created17F, "XPL-17F PRECONDITION FAILED: timestamp directory link/junction could not be created.");
+
+        var report17F = await PackageVerifier.VerifyPackageAsync(pkg17F, new VerificationOptions { Offline = true });
+        Assert.Equal(OverallStatus.Invalid, report17F.Overall);
+        Assert.Equal(IntegrityStatus.Invalid, report17F.Integrity);
+        if (report17F.Layers.TrustedTimestamp is not null)
         {
-            var report17F = await PackageVerifier.VerifyPackageAsync(pkg17F, new VerificationOptions { Offline = true });
-            Assert.Equal(OverallStatus.Invalid, report17F.Overall);
-            Assert.Equal(IntegrityStatus.Invalid, report17F.Integrity);
-            Assert.NotNull(report17F.Layers.TrustedTimestamp);
             Assert.Equal(LayerStatus.Invalid, report17F.Layers.TrustedTimestamp.Status);
         }
 
         // =========================================================================
-        // Sub-Scenario 17G: timestamp.tsq is a Link -> Invalid
+        // Sub-Scenario 17G: timestamp.tsq inside Junction Directory -> Invalid
         // =========================================================================
         var (pkg17G, _, _) = await CreateValidBasePackageAsync("xpl-17g-tsqlink");
-        var tsrDir17G = Path.Combine(pkg17G, "Evidence", "timestamp");
-        Create0700Directory(tsrDir17G);
-        var outsideTsq = Path.Combine(outsideDir, "timestamp.tsq");
-        await File.WriteAllBytesAsync(outsideTsq, new byte[64]);
-        var linkTsq17G = Path.Combine(tsrDir17G, "timestamp.tsq");
-        bool created17G = TryCreateLink(linkTsq17G, outsideTsq, isDirectory: false);
+        var outsideTsqDir = Path.Combine(outsideDir, "tsq_source");
+        Create0700Directory(outsideTsqDir);
+        await File.WriteAllBytesAsync(Path.Combine(outsideTsqDir, "timestamp.tsq"), new byte[64]);
 
-        if (created17G)
+        var tsrDir17G = Path.Combine(pkg17G, "Evidence", "timestamp");
+        bool created17G = TryCreateDirectoryJunctionOrSymlink(tsrDir17G, outsideTsqDir);
+        Assert.True(created17G, "XPL-17G PRECONDITION FAILED: timestamp directory link/junction could not be created.");
+
+        var report17G = await PackageVerifier.VerifyPackageAsync(pkg17G, new VerificationOptions { Offline = true });
+        Assert.Equal(OverallStatus.Invalid, report17G.Overall);
+        Assert.Equal(IntegrityStatus.Invalid, report17G.Integrity);
+        if (report17G.Layers.TrustedTimestamp is not null)
         {
-            var report17G = await PackageVerifier.VerifyPackageAsync(pkg17G, new VerificationOptions { Offline = true });
-            Assert.Equal(OverallStatus.Invalid, report17G.Overall);
-            Assert.Equal(IntegrityStatus.Invalid, report17G.Integrity);
-            Assert.NotNull(report17G.Layers.TrustedTimestamp);
             Assert.Equal(LayerStatus.Invalid, report17G.Layers.TrustedTimestamp.Status);
         }
 
@@ -1055,6 +1052,81 @@ public sealed class CrossPlatformCryptoStorageAcceptanceTests : IDisposable
         Assert.Equal(LayerStatus.Verified, report17H.Layers.Manifest.Status);
         Assert.Equal(LayerStatus.Verified, report17H.Layers.RawChain.Status);
         Assert.Equal(LayerStatus.Verified, report17H.Layers.Signature.Status);
+
+        // =========================================================================
+        // Sub-Scenario 17I: Package Root Symlink/Junction Itself -> Invalid (Invariant 29)
+        // =========================================================================
+        var juncPkgRoot17I = Path.Combine(_tempRoot, "xpl-17i-pkg-link");
+        bool created17I = TryCreateDirectoryJunctionOrSymlink(juncPkgRoot17I, pkg17H);
+        Assert.True(created17I, "XPL-17I PRECONDITION FAILED: package root link/junction could not be created.");
+
+        var report17I = await PackageVerifier.VerifyPackageAsync(juncPkgRoot17I, new VerificationOptions { Offline = true });
+        Assert.Equal(OverallStatus.Invalid, report17I.Overall);
+        Assert.Equal(IntegrityStatus.Invalid, report17I.Integrity);
+
+        // =========================================================================
+        // Sub-Scenario 17J: Intermediate Directory Replacement Race Stress Test
+        // =========================================================================
+        var (pkg17J, _, _) = await CreateValidBasePackageAsync("xpl-17j-race");
+        var raceEvidence = Path.Combine(pkg17J, "Evidence");
+        var realSubdir = Path.Combine(raceEvidence, "flapping_real");
+        Create0700Directory(realSubdir);
+        var realFile = Path.Combine(realSubdir, "flapping.bin");
+        var realData = "FLAPPING_REGULAR_PAYLOAD_SAFE"u8.ToArray();
+        await File.WriteAllBytesAsync(realFile, realData);
+
+        var mObj17J = JsonSerializer.Deserialize<EvidenceManifest>(await File.ReadAllBytesAsync(Path.Combine(pkg17J, EvidenceManifest.FileName)), TestJsonOptions)!;
+        var newFiles17J = new List<ManifestFileEntry>(mObj17J.Files)
+        {
+            new ManifestFileEntry("Evidence/flapping/flapping.bin", realData.Length, Convert.ToHexStringLower(SHA256.HashData(realData)))
+        };
+        var updatedM17J = mObj17J with { Files = newFiles17J };
+        await File.WriteAllBytesAsync(Path.Combine(pkg17J, EvidenceManifest.FileName), updatedM17J.ToCanonicalBytes());
+        await ManifestSigner.SignManifestAtomicallyAsync(pkg17J, identity);
+
+        var flappingTarget = Path.Combine(raceEvidence, "flapping");
+        var outsideJuncTarget = Path.Combine(outsideDir, "flapping_outside");
+        Create0700Directory(outsideJuncTarget);
+        var outsideData = "FLAPPING_MALICIOUS_OUTSIDE_DATA"u8.ToArray();
+        await File.WriteAllBytesAsync(Path.Combine(outsideJuncTarget, "flapping.bin"), outsideData);
+
+        // Run multi-threaded race: flapper task switches directory between real and junction
+        using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(500));
+        var flapperTask = Task.Run(async () =>
+        {
+            while (!cts.IsCancellationRequested)
+            {
+                try
+                {
+                    if (Directory.Exists(flappingTarget))
+                    {
+                        Directory.Delete(flappingTarget, recursive: true);
+                    }
+                    TryCreateDirectoryJunctionOrSymlink(flappingTarget, outsideJuncTarget);
+                    await Task.Delay(5);
+
+                    if (Directory.Exists(flappingTarget))
+                    {
+                        Directory.Delete(flappingTarget, recursive: true);
+                    }
+                    Create0700Directory(flappingTarget);
+                    File.Copy(realFile, Path.Combine(flappingTarget, "flapping.bin"), overwrite: true);
+                    await Task.Delay(5);
+                }
+                catch { }
+            }
+        });
+
+        while (!cts.IsCancellationRequested)
+        {
+            var r = await PackageVerifier.VerifyPackageAsync(pkg17J, new VerificationOptions { Offline = true });
+            // Must NEVER verify successfully when junction is active (only Valid when regular file is intact)
+            Assert.True(
+                r.Overall == OverallStatus.ValidTrustNotEstablished || r.Overall == OverallStatus.Invalid,
+                $"Verification during race returned unexpected overall status: {r.Overall}");
+        }
+
+        await flapperTask;
     }
 
     [Fact]

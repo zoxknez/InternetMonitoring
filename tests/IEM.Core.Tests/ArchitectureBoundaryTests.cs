@@ -278,4 +278,32 @@ public sealed class ArchitectureBoundaryTests
 
         throw new InvalidOperationException("Repository root not found from candidates: " + string.Join(", ", candidates));
     }
+
+    [Fact]
+    public void ConfinedPackageFileReader_Reads_Root_And_Subfile_Successfully()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), "confined_test_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDir);
+        try
+        {
+            var subDir = Path.Combine(tempDir, "Sub");
+            Directory.CreateDirectory(subDir);
+            var rootFile = Path.Combine(tempDir, "root.txt");
+            var subFile = Path.Combine(subDir, "sub.txt");
+            File.WriteAllText(rootFile, "ROOT_DATA");
+            File.WriteAllText(subFile, "SUB_DATA");
+
+            var status1 = IEM.Verification.Safety.ConfinedPackageFileReader.TryOpenRead(tempDir, "root.txt", out var s1, out var err1);
+            Assert.True(status1 == IEM.Verification.Safety.ConfinedPackageFileReader.ReadResultStatus.Success, $"root.txt failed: {err1}");
+            s1?.Dispose();
+
+            var status2 = IEM.Verification.Safety.ConfinedPackageFileReader.TryOpenRead(tempDir, "Sub/sub.txt", out var s2, out var err2);
+            Assert.True(status2 == IEM.Verification.Safety.ConfinedPackageFileReader.ReadResultStatus.Success, $"Sub/sub.txt failed: {err2}");
+            s2?.Dispose();
+        }
+        finally
+        {
+            if (Directory.Exists(tempDir)) Directory.Delete(tempDir, recursive: true);
+        }
+    }
 }

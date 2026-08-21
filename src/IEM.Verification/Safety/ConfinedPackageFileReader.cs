@@ -5,10 +5,13 @@ using System.Text;
 using Microsoft.Win32.SafeHandles;
 
 /// <summary>
-/// Centralized, read-only, true handle-bound confined package reader ensuring forensic verifier
+/// Centralized, read-only, true native handle-bound confined package reader ensuring forensic verifier
 /// never accesses files outside the package root and eliminates check-then-open (TOCTOU) races.
 /// Invariant 29: VERIFIER_NEVER_READS_OUTSIDE_PACKAGE_ROOT.
-/// Policy: Any symbolic link, junction, or reparse point is strictly forbidden in forensic packages.
+/// Policy: Any symbolic link, junction, or reparse point (internal or external) is strictly forbidden.
+/// Implementation:
+/// - Linux: root dirfd + openat2(RESOLVE_BENEATH | RESOLVE_NO_SYMLINKS | RESOLVE_NO_MAGICLINKS | RESOLVE_NO_XDEV)
+/// - Windows: root directory handle + NtOpenFile(RootDirectory, OBJ_DONT_REPARSE | OBJ_CASE_INSENSITIVE)
 /// </summary>
 public static class ConfinedPackageFileReader
 {
@@ -21,8 +24,7 @@ public static class ConfinedPackageFileReader
 
     /// <summary>
     /// Safely opens a read-only FileStream bound directly to the verified native OS handle.
-    /// On Linux: uses root dirfd + openat2(RESOLVE_BENEATH | RESOLVE_NO_SYMLINKS | RESOLVE_NO_MAGICLINKS | RESOLVE_NO_XDEV).
-    /// On Windows: uses CreateFileW(FILE_FLAG_OPEN_REPARSE_POINT) with handle attribute verification and GetFinalPathNameByHandle.
+    /// Zero check-then-open path gap: all path resolution and confinement happens directly inside the OS kernel.
     /// </summary>
     public static ReadResultStatus TryOpenRead(
         string packageRoot,
@@ -33,13 +35,13 @@ public static class ConfinedPackageFileReader
         stream = null;
         violationReason = null;
 
-        // 1. Basic lexical validation
+        // 1. Lexical validation
         if (!PathSafety.TryResolveSafeRelativePath(packageRoot, relativePath, out var safeFullPath, out violationReason))
         {
             return ReadResultStatus.Violation;
         }
 
-        // 2. Native OS handle-bound open & validation
+        // 2. Native OS handle-bound open & confinement
         if (OperatingSystem.IsLinux())
         {
             return TryOpenReadLinux(packageRoot, relativePath, out stream, out violationReason);
@@ -47,7 +49,7 @@ public static class ConfinedPackageFileReader
 
         if (OperatingSystem.IsWindows())
         {
-            return TryOpenReadWindows(packageRoot, relativePath, safeFullPath, out stream, out violationReason);
+            return TryOpenReadWindows(packageRoot, relativePath, out stream, out violationReason);
         }
 
         // Cross-platform managed fallback (non-Windows, non-Linux)
@@ -78,7 +80,7 @@ public static class ConfinedPackageFileReader
     }
 
     // =========================================================================
-    // Linux Implementation: openat2
+    // Linux Implementation: openat2 with O_NOFOLLOW root
     // =========================================================================
     private static ReadResultStatus TryOpenReadLinux(
         string packageRoot,
@@ -92,23 +94,35 @@ public static class ConfinedPackageFileReader
         var fullRoot = Path.GetFullPath(packageRoot);
         int rootDirFd = NativePackageConfinementInterop.LinuxOpen(
             fullRoot,
-            NativePackageConfinementInterop.O_RDONLY | NativePackageConfinementInterop.O_DIRECTORY | NativePackageConfinementInterop.O_CLOEXEC,
+            NativePackageConfinementInterop.O_RDONLY | NativePackageConfinementInterop.O_DIRECTORY | NativePackageConfinementInterop.O_CLOEXEC | NativePackageConfinementInterop.O_NOFOLLOW,
             0);
 
         if (rootDirFd < 0)
         {
             var openRootErr = Marshal.GetLastWin32Error();
+            if (openRootErr == 40 /* ELOOP */)
+            {
+                violationReason = "Korenski direktorijum paketa je simbolički link, što je zabranjeno u paketu dokaza.";
+                return ReadResultStatus.Violation;
+            }
             if (openRootErr == 2 /* ENOENT */ || openRootErr == 20 /* ENOTDIR */)
             {
                 return ReadResultStatus.NotFound;
             }
-            violationReason = $"Nije moguće otvoriti korenski direktorijum paketa (errno {openRootErr}).";
+            violationReason = $"Nije moguće bezbedno otvoriti korenski direktorijum paketa (errno {openRootErr}).";
             return ReadResultStatus.Violation;
         }
 
         try
         {
-            var normalizedRel = relativePath.Replace('\\', '/');
+            if (NativePackageConfinementInterop.LinuxFstat(rootDirFd, out var rootStat) != 0 ||
+                (rootStat.st_mode & NativePackageConfinementInterop.S_IFMT) != NativePackageConfinementInterop.S_IFDIR)
+            {
+                violationReason = "Korenski direktorijum paketa nije validan direktorijum.";
+                return ReadResultStatus.Violation;
+            }
+
+            var normalizedRel = relativePath.Replace('\\', '/').TrimStart('/');
             var how = new NativePackageConfinementInterop.OpenHow
             {
                 Flags = (ulong)(NativePackageConfinementInterop.O_RDONLY | NativePackageConfinementInterop.O_CLOEXEC | NativePackageConfinementInterop.O_NOFOLLOW),
@@ -164,12 +178,11 @@ public static class ConfinedPackageFileReader
     }
 
     // =========================================================================
-    // Windows Implementation: Handle Confinement with FILE_FLAG_OPEN_REPARSE_POINT
+    // Windows Implementation: NtOpenFile(RootDirectory, OBJ_DONT_REPARSE)
     // =========================================================================
     private static ReadResultStatus TryOpenReadWindows(
         string packageRoot,
         string relativePath,
-        string safeFullPath,
         out FileStream? stream,
         out string? violationReason)
     {
@@ -177,149 +190,131 @@ public static class ConfinedPackageFileReader
         violationReason = null;
 
         var fullRoot = Path.GetFullPath(packageRoot);
-        if (!fullRoot.EndsWith(Path.DirectorySeparatorChar))
-        {
-            fullRoot += Path.DirectorySeparatorChar;
-        }
 
-        // Open intermediate directories to ensure no reparse points / junctions along the path
-        var normalized = relativePath.Replace('/', Path.DirectorySeparatorChar).Replace('\\', Path.DirectorySeparatorChar);
-        var segments = normalized.Split(Path.DirectorySeparatorChar, StringSplitOptions.RemoveEmptyEntries);
-
-        var currentWalk = fullRoot.TrimEnd(Path.DirectorySeparatorChar);
-        for (int i = 0; i < segments.Length - 1; i++)
-        {
-            currentWalk = Path.Combine(currentWalk, segments[i]);
-            using var hDir = NativePackageConfinementInterop.CreateFile(
-                currentWalk,
-                NativePackageConfinementInterop.GENERIC_READ,
-                NativePackageConfinementInterop.FILE_SHARE_READ | NativePackageConfinementInterop.FILE_SHARE_WRITE | NativePackageConfinementInterop.FILE_SHARE_DELETE,
-                IntPtr.Zero,
-                NativePackageConfinementInterop.OPEN_EXISTING,
-                NativePackageConfinementInterop.FILE_FLAG_BACKUP_SEMANTICS | NativePackageConfinementInterop.FILE_FLAG_OPEN_REPARSE_POINT,
-                IntPtr.Zero);
-
-            if (hDir.IsInvalid)
-            {
-                int err = Marshal.GetLastWin32Error();
-                if (err == 2 || err == 3) // ERROR_FILE_NOT_FOUND, ERROR_PATH_NOT_FOUND
-                {
-                    return ReadResultStatus.NotFound;
-                }
-                violationReason = $"Nije moguće otvoriti direktorijum '{segments[i]}' (kod greške {err}).";
-                return ReadResultStatus.Violation;
-            }
-
-            if (NativePackageConfinementInterop.GetFileInformationByHandle(hDir, out var dirInfo))
-            {
-                if ((dirInfo.dwFileAttributes & NativePackageConfinementInterop.FILE_ATTRIBUTE_REPARSE_POINT) != 0)
-                {
-                    violationReason = $"Segment putanje '{segments[i]}' je direktorijumski spoj (junction) ili reparse tačka.";
-                    return ReadResultStatus.Violation;
-                }
-            }
-        }
-
-        // Open target file directly with FILE_FLAG_OPEN_REPARSE_POINT to prevent following symlinks/junctions
-        var hFile = NativePackageConfinementInterop.CreateFile(
-            safeFullPath,
-            NativePackageConfinementInterop.GENERIC_READ,
-            NativePackageConfinementInterop.FILE_SHARE_READ,
+        // Open root directory handle with FILE_FLAG_OPEN_REPARSE_POINT to reject reparse root
+        using var hRootDir = NativePackageConfinementInterop.CreateFile(
+            fullRoot,
+            NativePackageConfinementInterop.FILE_READ_ATTRIBUTES | NativePackageConfinementInterop.FILE_LIST_DIRECTORY | NativePackageConfinementInterop.FILE_TRAVERSE | NativePackageConfinementInterop.SYNCHRONIZE,
+            NativePackageConfinementInterop.FILE_SHARE_READ | NativePackageConfinementInterop.FILE_SHARE_WRITE | NativePackageConfinementInterop.FILE_SHARE_DELETE,
             IntPtr.Zero,
             NativePackageConfinementInterop.OPEN_EXISTING,
-            NativePackageConfinementInterop.FILE_ATTRIBUTE_NORMAL | NativePackageConfinementInterop.FILE_FLAG_OPEN_REPARSE_POINT,
+            NativePackageConfinementInterop.FILE_FLAG_BACKUP_SEMANTICS | NativePackageConfinementInterop.FILE_FLAG_OPEN_REPARSE_POINT,
             IntPtr.Zero);
 
-        if (hFile.IsInvalid)
+        if (hRootDir.IsInvalid)
         {
             int err = Marshal.GetLastWin32Error();
             if (err == 2 || err == 3) // ERROR_FILE_NOT_FOUND, ERROR_PATH_NOT_FOUND
             {
                 return ReadResultStatus.NotFound;
             }
-            violationReason = $"Greška pri otvaranju datoteke '{relativePath}' (kod greške {err}).";
+            violationReason = $"Nije moguće otvoriti korenski direktorijum paketa (kod greške {err}).";
             return ReadResultStatus.Violation;
         }
 
-        // Validate opened handle
-        if (!NativePackageConfinementInterop.GetFileInformationByHandle(hFile, out var fileInfo))
+        if (NativePackageConfinementInterop.GetFileInformationByHandle(hRootDir, out var rootInfo))
         {
-            hFile.Dispose();
-            violationReason = $"Nije moguće dobiti atribute otvorene datoteke '{relativePath}'.";
+            if ((rootInfo.dwFileAttributes & NativePackageConfinementInterop.FILE_ATTRIBUTE_REPARSE_POINT) != 0)
+            {
+                violationReason = "Korenski direktorijum paketa je direktorijumski spoj (junction) ili reparse tačka.";
+                return ReadResultStatus.Violation;
+            }
+        }
+
+        // Prepare relative path with Windows backslashes for NT kernel resolution
+        var ntRelPath = relativePath.Replace('/', '\\').TrimStart('\\');
+        IntPtr pUniStrBuffer = Marshal.StringToHGlobalUni(ntRelPath);
+        var uString = new NativePackageConfinementInterop.UNICODE_STRING();
+        NativePackageConfinementInterop.RtlInitUnicodeString(ref uString, pUniStrBuffer);
+
+        var pUnicodeString = Marshal.AllocHGlobal(Marshal.SizeOf<NativePackageConfinementInterop.UNICODE_STRING>());
+        try
+        {
+            Marshal.StructureToPtr(uString, pUnicodeString, false);
+
+            var objAttr = new NativePackageConfinementInterop.OBJECT_ATTRIBUTES
+            {
+                Length = Marshal.SizeOf<NativePackageConfinementInterop.OBJECT_ATTRIBUTES>(),
+                RootDirectory = hRootDir.DangerousGetHandle(),
+                ObjectName = pUnicodeString,
+                Attributes = NativePackageConfinementInterop.OBJ_CASE_INSENSITIVE,
+                SecurityDescriptor = IntPtr.Zero,
+                SecurityQualityOfService = IntPtr.Zero
+            };
+
+            uint status = NativePackageConfinementInterop.NtOpenFile(
+                out IntPtr fileHandle,
+                NativePackageConfinementInterop.NT_FILE_GENERIC_READ,
+                ref objAttr,
+                out var ioStatus,
+                NativePackageConfinementInterop.FILE_SHARE_READ,
+                NativePackageConfinementInterop.FILE_SYNCHRONOUS_IO_NONALERT | NativePackageConfinementInterop.FILE_OPEN_REPARSE_POINT | NativePackageConfinementInterop.FILE_NON_DIRECTORY_FILE);
+
+            if (status == NativePackageConfinementInterop.STATUS_SUCCESS)
+            {
+                var safeHandle = new SafeFileHandle(fileHandle, ownsHandle: true);
+
+                // Validate opened handle
+                if (!NativePackageConfinementInterop.GetFileInformationByHandle(safeHandle, out var fileInfo))
+                {
+                    safeHandle.Dispose();
+                    violationReason = $"Nije moguće dobiti atribute otvorene datoteke '{relativePath}'.";
+                    return ReadResultStatus.Violation;
+                }
+
+                if ((fileInfo.dwFileAttributes & NativePackageConfinementInterop.FILE_ATTRIBUTE_REPARSE_POINT) != 0)
+                {
+                    safeHandle.Dispose();
+                    violationReason = $"Datoteka '{relativePath}' je simbolički link ili reparse tačka.";
+                    return ReadResultStatus.Violation;
+                }
+
+                if ((fileInfo.dwFileAttributes & NativePackageConfinementInterop.FILE_ATTRIBUTE_DIRECTORY) != 0)
+                {
+                    safeHandle.Dispose();
+                    violationReason = $"Putanja '{relativePath}' je direktorijum, a ne datoteka.";
+                    return ReadResultStatus.Violation;
+                }
+
+                if (NativePackageConfinementInterop.GetFileType(safeHandle) != NativePackageConfinementInterop.FILE_TYPE_DISK)
+                {
+                    safeHandle.Dispose();
+                    violationReason = $"Putanja '{relativePath}' nije regularna datoteka na disku.";
+                    return ReadResultStatus.Violation;
+                }
+
+                // Return FileStream over the EXACT open, validated SafeFileHandle
+                stream = new FileStream(safeHandle, FileAccess.Read, bufferSize: 4096);
+                return ReadResultStatus.Success;
+            }
+
+            if (status == NativePackageConfinementInterop.STATUS_OBJECT_NAME_NOT_FOUND ||
+                status == NativePackageConfinementInterop.STATUS_OBJECT_PATH_NOT_FOUND)
+            {
+                return ReadResultStatus.NotFound;
+            }
+
+            if (status == NativePackageConfinementInterop.STATUS_REPARSE_POINT_ENCOUNTERED ||
+                status == NativePackageConfinementInterop.STATUS_STOPPED_ON_SYMLINK)
+            {
+                violationReason = $"Putanja '{relativePath}' sadrži simbolički link, spoj (junction) ili reparse tačku, što je zabranjeno u paketu dokaza (STATUS_REPARSE_POINT_ENCOUNTERED).";
+                return ReadResultStatus.Violation;
+            }
+
+            if (status == NativePackageConfinementInterop.STATUS_FILE_IS_A_DIRECTORY)
+            {
+                violationReason = $"Putanja '{relativePath}' je direktorijum, a ne regularna datoteka.";
+                return ReadResultStatus.Violation;
+            }
+
+            violationReason = $"NT greška 0x{status:X8} pri otvaranju datoteke '{relativePath}'.";
             return ReadResultStatus.Violation;
         }
-
-        if ((fileInfo.dwFileAttributes & NativePackageConfinementInterop.FILE_ATTRIBUTE_REPARSE_POINT) != 0)
+        finally
         {
-            hFile.Dispose();
-            violationReason = $"Datoteka '{relativePath}' je simbolički link ili reparse tačka.";
-            return ReadResultStatus.Violation;
+            Marshal.FreeHGlobal(pUnicodeString);
+            Marshal.FreeHGlobal(pUniStrBuffer);
         }
-
-        if ((fileInfo.dwFileAttributes & NativePackageConfinementInterop.FILE_ATTRIBUTE_DIRECTORY) != 0)
-        {
-            hFile.Dispose();
-            violationReason = $"Putanja '{relativePath}' je direktorijum, a ne datoteka.";
-            return ReadResultStatus.Violation;
-        }
-
-        if (NativePackageConfinementInterop.GetFileType(hFile) != NativePackageConfinementInterop.FILE_TYPE_DISK)
-        {
-            hFile.Dispose();
-            violationReason = $"Putanja '{relativePath}' nije regularna datoteka na disku.";
-            return ReadResultStatus.Violation;
-        }
-
-        // Verify final physical path of the open handle is strictly inside fullRoot
-        var finalPath = NormalizeDosPath(GetFinalPath(hFile));
-        var canonicalRoot = NormalizeDosPath(fullRoot);
-        if (finalPath != null && !finalPath.StartsWith(canonicalRoot, StringComparison.OrdinalIgnoreCase))
-        {
-            hFile.Dispose();
-            violationReason = $"Fizička putanja otvorene datoteke ('{finalPath}') izlazi van korenskog direktorijuma paketa ('{canonicalRoot}').";
-            return ReadResultStatus.Violation;
-        }
-
-        // Return FileStream over the EXACT open, validated SafeFileHandle
-        stream = new FileStream(hFile, FileAccess.Read, bufferSize: 4096);
-        return ReadResultStatus.Success;
-    }
-
-    private static string? GetFinalPath(SafeFileHandle handle)
-    {
-        var sb = new StringBuilder(1024);
-        var res = NativePackageConfinementInterop.GetFinalPathNameByHandle(
-            handle,
-            sb,
-            (uint)sb.Capacity,
-            NativePackageConfinementInterop.VOLUME_NAME_DOS);
-
-        if (res == 0 || res > sb.Capacity)
-        {
-            return null;
-        }
-
-        return sb.ToString();
-    }
-
-    private static string NormalizeDosPath(string? path)
-    {
-        if (string.IsNullOrEmpty(path))
-        {
-            return string.Empty;
-        }
-
-        if (path.StartsWith(@"\\?\UNC\", StringComparison.OrdinalIgnoreCase))
-        {
-            return @"\\" + path.Substring(8);
-        }
-
-        if (path.StartsWith(@"\\?\", StringComparison.OrdinalIgnoreCase))
-        {
-            return path.Substring(4);
-        }
-
-        return path;
     }
 
     // =========================================================================
