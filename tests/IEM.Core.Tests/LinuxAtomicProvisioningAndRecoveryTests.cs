@@ -561,6 +561,67 @@ public sealed class LinuxAtomicProvisioningAndRecoveryTests
     }
 
     [Fact]
+    public void R3_R1_EEXIST_Race_Winner_With_Invalid_Mode_Fails_Closed_With_Zero_Fchmod_Repair()
+    {
+        var mock = new MockPosixStorageApi();
+        mock.AddEntry("/var/lib/internet-evidence-monitor/keys", isDir: true, isSymlink: false, mode: 0x1C0, uid: 1000, gid: 1000);
+        int keysFd = mock.Open("/var/lib/internet-evidence-monitor/keys", 0, 0);
+        var policy = LinuxStorageOwnershipPolicy.CreateSystem(uid: 1000, gid: 1000);
+
+        // Before Process A's OpenAt2(O_CREAT|O_EXCL) creates the lock file, Process B creates it with invalid mode 0644 (0x1A4)
+        mock.BeforeOpenAt2Hook = (pathname, flags) =>
+        {
+            if (pathname == LinuxStoragePaths.NamespaceLockFileName && (flags & (ulong)LinuxPosixStorageConstants.O_CREAT) != 0)
+            {
+                mock.AddEntry($"/var/lib/internet-evidence-monitor/keys/{LinuxStoragePaths.NamespaceLockFileName}", isDir: false, isSymlink: false, mode: 0x1A4, uid: 1000, gid: 1000);
+                mock.LastErrno = LinuxPosixStorageConstants.EEXIST;
+                return false;
+            }
+            return true;
+        };
+
+        var ex = Assert.Throws<InvalidOperationException>(() =>
+            LinuxAtomicFilePublisher.PublishAtomically(mock, keysFd, "evidence-signing-v1.p8", "DATA"u8.ToArray(), LinuxPosixStorageConstants.Mode0600, policy));
+
+        Assert.Contains("invalid", ex.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(0, mock.FchmodCallCount); // ZERO repair!
+        Assert.Equal(0, mock.FchownCallCount); // ZERO repair!
+
+        // Winner's mode must remain 0644 (unmodified)
+        Assert.True(mock.TryGetEntry($"/var/lib/internet-evidence-monitor/keys/{LinuxStoragePaths.NamespaceLockFileName}", out var entry));
+        Assert.Equal(0x1A4, (int)(entry.Stat.Mode & 0xFFF));
+    }
+
+    [Fact]
+    public void R3_R1_EEXIST_Race_Winner_With_Valid_Mode_Is_Verified_With_Zero_Fchmod_And_Flocked()
+    {
+        var mock = new MockPosixStorageApi();
+        mock.AddEntry("/var/lib/internet-evidence-monitor/keys", isDir: true, isSymlink: false, mode: 0x1C0, uid: 1000, gid: 1000);
+        int keysFd = mock.Open("/var/lib/internet-evidence-monitor/keys", 0, 0);
+        var policy = LinuxStorageOwnershipPolicy.CreateSystem(uid: 1000, gid: 1000);
+
+        // Process B creates valid 0600 lock file
+        mock.BeforeOpenAt2Hook = (pathname, flags) =>
+        {
+            if (pathname == LinuxStoragePaths.NamespaceLockFileName && (flags & (ulong)LinuxPosixStorageConstants.O_CREAT) != 0)
+            {
+                mock.AddEntry($"/var/lib/internet-evidence-monitor/keys/{LinuxStoragePaths.NamespaceLockFileName}", isDir: false, isSymlink: false, mode: 0x180, uid: 1000, gid: 1000);
+                mock.LastErrno = LinuxPosixStorageConstants.EEXIST;
+                return false;
+            }
+            return true;
+        };
+
+        using var result = LinuxAtomicFilePublisher.PublishAtomically(
+            mock, keysFd, "evidence-signing-v1.p8", "DATA"u8.ToArray(), LinuxPosixStorageConstants.Mode0600, policy);
+
+        Assert.True(result.IsSuccess);
+        Assert.DoesNotContain(mock.FchmodTargetPaths, p => p.EndsWith(LinuxStoragePaths.NamespaceLockFileName)); // ZERO fchmod on winner lock!
+        Assert.Equal(0, mock.FchownCallCount); // ZERO fchown on winner lock!
+        Assert.Single(mock.FchmodTargetPaths); // Only the temporary file was canonicalized
+    }
+
+    [Fact]
     public void Cleanup_Stale_Temp_Files_NEVER_Deletes_Foreign_Owned_File()
     {
         var mock = new MockPosixStorageApi();
@@ -641,6 +702,7 @@ public sealed class LinuxAtomicProvisioningAndRecoveryTests
         public int? FailFlockErrno { get; set; }
 
         public Func<bool>? BeforeRenameAt2Hook { get; set; }
+        public Func<string, ulong, bool>? BeforeOpenAt2Hook { get; set; }
         public Action<string>? OnEntryCreated { get; set; }
         public int LastErrno { get; set; }
 
@@ -720,6 +782,12 @@ public sealed class LinuxAtomicProvisioningAndRecoveryTests
             if (FailOpenAt2) return -1;
             if (!_openFds.TryGetValue(dirfd, out var baseDir)) return -1;
             var fullPath = $"{baseDir}/{pathname}".TrimEnd('/');
+
+            if (BeforeOpenAt2Hook != null)
+            {
+                bool proceed = BeforeOpenAt2Hook(pathname, how.Flags);
+                if (!proceed) return -1;
+            }
 
             if (_entries.TryGetValue(fullPath, out var existing))
             {
@@ -809,12 +877,15 @@ public sealed class LinuxAtomicProvisioningAndRecoveryTests
             return 0;
         }
 
+        public List<string> FchmodTargetPaths { get; } = new();
+
         public int Fchmod(int fd, int mode)
         {
             if (FailFchmod) return -1;
             FchmodCallCount++;
             if (_openFds.TryGetValue(fd, out var p) && _entries.TryGetValue(p, out var entry))
             {
+                FchmodTargetPaths.Add(p);
                 uint cleanMode = (entry.Stat.Mode & ~0xFFFu) | (uint)(mode & 0xFFF);
                 entry.Stat.Mode = cleanMode;
                 return 0;

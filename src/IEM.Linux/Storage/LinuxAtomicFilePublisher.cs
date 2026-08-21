@@ -102,47 +102,24 @@ public static partial class LinuxAtomicFilePublisher
                       LinuxPosixStorageConstants.RESOLVE_NO_XDEV |
                       LinuxPosixStorageConstants.RESOLVE_NO_MAGICLINKS;
 
+        bool createdByThisCall = false;
         int statRes = posix.FstatAt(parentFd, lockFileName, out var existingStat, LinuxPosixStorageConstants.AT_SYMLINK_NOFOLLOW);
         int lockFd;
+
+        var openExistingHow = new OpenHow
+        {
+            Flags = (ulong)(LinuxPosixStorageConstants.O_RDWR | LinuxPosixStorageConstants.O_CLOEXEC),
+            Mode = 0,
+            Resolve = resolve
+        };
 
         if (statRes == 0)
         {
             // Existing lock file: verify-only (NO REPAIR)
-            var openHow = new OpenHow
-            {
-                Flags = (ulong)(LinuxPosixStorageConstants.O_RDWR | LinuxPosixStorageConstants.O_CLOEXEC),
-                Mode = 0,
-                Resolve = resolve
-            };
-
-            lockFd = posix.OpenAt2(parentFd, lockFileName, ref openHow);
+            lockFd = posix.OpenAt2(parentFd, lockFileName, ref openExistingHow);
             if (lockFd < 0)
             {
                 throw new InvalidOperationException($"Failed to open existing namespace lock file '{lockFileName}' securely via openat2.");
-            }
-
-            try
-            {
-                if (posix.Fstat(lockFd, out var stat) != 0 || !stat.IsRegularFile)
-                {
-                    throw new InvalidOperationException($"Namespace lock '{lockFileName}' is not a regular file.");
-                }
-
-                if ((stat.PermissionBits & 0xFFF) != LinuxPosixStorageConstants.Mode0600)
-                {
-                    throw new InvalidOperationException(
-                        $"Namespace lock '{lockFileName}' permissions 0{Convert.ToString(stat.PermissionBits, 8)} are invalid (must be exact 0600).");
-                }
-
-                if (!CheckOwnership(stat, ownership, out var ownerErr))
-                {
-                    throw new InvalidOperationException($"Namespace lock '{lockFileName}' {ownerErr}");
-                }
-            }
-            catch
-            {
-                posix.Close(lockFd);
-                throw;
             }
         }
         else
@@ -168,26 +145,30 @@ public static partial class LinuxAtomicFilePublisher
                 int openErrno = posix.GetLastErrno();
                 if (openErrno == LinuxPosixStorageConstants.EEXIST)
                 {
-                    var openExistingHow = new OpenHow
-                    {
-                        Flags = (ulong)(LinuxPosixStorageConstants.O_RDWR | LinuxPosixStorageConstants.O_CLOEXEC),
-                        Mode = 0,
-                        Resolve = resolve
-                    };
+                    // Race winner created lock file: fall back to VERIFY-ONLY (NO REPAIR)
                     lockFd = posix.OpenAt2(parentFd, lockFileName, ref openExistingHow);
                     if (lockFd < 0)
                     {
-                        throw new InvalidOperationException($"Failed to open newly created namespace lock file '{lockFileName}' after race collision.");
+                        throw new InvalidOperationException($"Failed to open namespace lock file '{lockFileName}' after race collision.");
                     }
+                    createdByThisCall = false;
                 }
                 else
                 {
                     throw new InvalidOperationException($"Failed to create namespace lock file '{lockFileName}' via openat2 (errno {openErrno}).");
                 }
             }
-
-            try
+            else
             {
+                createdByThisCall = true;
+            }
+        }
+
+        try
+        {
+            if (createdByThisCall)
+            {
+                // Newly created by THIS transaction: defeat umask drift
                 if (posix.Fchmod(lockFd, LinuxPosixStorageConstants.Mode0600) != 0)
                 {
                     throw new InvalidOperationException($"Failed to set permissions 0600 on namespace lock '{lockFileName}'.");
@@ -214,11 +195,30 @@ public static partial class LinuxAtomicFilePublisher
                     throw new InvalidOperationException($"fsync failed during namespace lock '{lockFileName}' creation.");
                 }
             }
-            catch
+            else
             {
-                posix.Close(lockFd);
-                throw;
+                // Existing lock file or created by race winner: VERIFY ONLY (ZERO REPAIR)
+                if (posix.Fstat(lockFd, out var stat) != 0 || !stat.IsRegularFile)
+                {
+                    throw new InvalidOperationException($"Namespace lock '{lockFileName}' is not a regular file.");
+                }
+
+                if ((stat.PermissionBits & 0xFFF) != LinuxPosixStorageConstants.Mode0600)
+                {
+                    throw new InvalidOperationException(
+                        $"Namespace lock '{lockFileName}' permissions 0{Convert.ToString(stat.PermissionBits, 8)} are invalid (must be exact 0600).");
+                }
+
+                if (!CheckOwnership(stat, ownership, out var ownerErr))
+                {
+                    throw new InvalidOperationException($"Namespace lock '{lockFileName}' {ownerErr}");
+                }
             }
+        }
+        catch
+        {
+            posix.Close(lockFd);
+            throw;
         }
 
         // Acquire exclusive non-blocking advisory lock
@@ -226,12 +226,12 @@ public static partial class LinuxAtomicFilePublisher
         {
             int flockErrno = posix.GetLastErrno();
             posix.Close(lockFd);
-            if (failClosedOnContention)
+            if (!failClosedOnContention && (flockErrno == LinuxPosixStorageConstants.EWOULDBLOCK || flockErrno == LinuxPosixStorageConstants.EAGAIN))
             {
-                throw new InvalidOperationException(
-                    $"Failed to acquire exclusive namespace lock for '{lockFileName}' (errno {flockErrno}).");
+                return null;
             }
-            return null;
+            throw new InvalidOperationException(
+                $"Failed to acquire exclusive namespace lock for '{lockFileName}' (errno {flockErrno}).");
         }
 
         return new LinuxNamespaceLockScope(posix, lockFd);
