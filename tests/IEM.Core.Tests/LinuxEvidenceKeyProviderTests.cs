@@ -296,7 +296,7 @@ public sealed class LinuxEvidenceKeyProviderTests
     {
         var mock = new MockPosixStorageApi
         {
-            FailKeysDirFsync = true // Directory fsync fails after publish
+            FailKeysDirFsyncAfterCallNumber = 4 // Fails on parent fsync after file rename
         };
         mock.AddEntry("/var/lib/internet-evidence-monitor", isDir: true, isSymlink: false, mode: 0x1C0, uid: 1000, gid: 1000);
         mock.AddEntry("/var/lib/internet-evidence-monitor/keys", isDir: true, isSymlink: false, mode: 0x1C0, uid: 1000, gid: 1000);
@@ -789,15 +789,23 @@ public sealed class LinuxEvidenceKeyProviderTests
             return -1;
         }
 
+        public int FsyncCallCount { get; private set; }
+        public int? FailKeysDirFsyncAfterCallNumber { get; set; }
+
         public int Fsync(int fd)
         {
             if (FailFsync) return -1;
-            if (_openFds.TryGetValue(fd, out var path) && path.EndsWith("/keys") && FailKeysDirFsync)
+            FsyncCallCount++;
+            if (_openFds.TryGetValue(fd, out var path) && path.EndsWith("/keys"))
             {
-                return -1;
+                if (FailKeysDirFsync) return -1;
+                if (FailKeysDirFsyncAfterCallNumber.HasValue && FsyncCallCount >= FailKeysDirFsyncAfterCallNumber.Value)
+                    return -1;
             }
             return 0;
         }
+
+        public int Flock(int fd, int operation) => 0;
 
         public int Close(int fd)
         {

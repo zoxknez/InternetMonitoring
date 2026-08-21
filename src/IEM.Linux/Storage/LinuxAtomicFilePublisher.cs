@@ -1,3 +1,5 @@
+using System.Text.RegularExpressions;
+
 namespace IEM.Linux.Storage;
 
 public enum AtomicPublishStatus
@@ -6,29 +8,60 @@ public enum AtomicPublishStatus
     Collision
 }
 
-public sealed record AtomicPublishResult(
-    AtomicPublishStatus Status,
-    int FinalFd = -1,
-    PosixStat Stat = default) : IDisposable
+public sealed class AtomicPublishResult : IDisposable
 {
+    private readonly ILinuxPosixStorageApi? _posix;
+    private int _finalFd;
+
+    public AtomicPublishStatus Status { get; }
+    public PosixStat Stat { get; }
+
+    public int FinalFd => _finalFd;
     public bool IsSuccess => Status == AtomicPublishStatus.Success;
     public bool IsCollision => Status == AtomicPublishStatus.Collision;
 
+    public AtomicPublishResult(
+        AtomicPublishStatus status,
+        int finalFd = -1,
+        PosixStat stat = default,
+        ILinuxPosixStorageApi? posix = null)
+    {
+        Status = status;
+        _finalFd = finalFd;
+        Stat = stat;
+        _posix = posix;
+    }
+
+    /// <summary>
+    /// Transfers ownership of the open file descriptor to the caller.
+    /// After this call, Dispose() will no longer close the descriptor.
+    /// </summary>
+    public int TakeFinalFd()
+    {
+        int fd = _finalFd;
+        _finalFd = -1;
+        return fd;
+    }
+
     public void Dispose()
     {
-        if (FinalFd >= 0)
+        if (_finalFd >= 0)
         {
-            // Note: caller may take ownership of FinalFd or dispose result to close it
+            _posix?.Close(_finalFd);
+            _finalFd = -1;
         }
     }
 }
 
 /// <summary>
 /// Domain-agnostic, crash-safe atomic file publisher using POSIX O_CREAT|O_EXCL, Fchmod,
-/// Fstat verification, Fsync, RENAME_NOREPLACE, and directory durability.
+/// Fstat verification, Fsync, RENAME_NOREPLACE, flock concurrency guard, and directory durability.
 /// </summary>
-public static class LinuxAtomicFilePublisher
+public static partial class LinuxAtomicFilePublisher
 {
+    [GeneratedRegex(@"^\.tmp\.([a-zA-Z0-9_-]+)\.([0-9a-f]{32})$")]
+    private static partial Regex TempFileNameRegex();
+
     public static AtomicPublishResult PublishAtomically(
         ILinuxPosixStorageApi posix,
         int parentFd,
@@ -40,6 +73,7 @@ public static class LinuxAtomicFilePublisher
     {
         ArgumentNullException.ThrowIfNull(posix);
         ArgumentException.ThrowIfNullOrWhiteSpace(targetFileName);
+        ArgumentException.ThrowIfNullOrWhiteSpace(tempPrefix);
 
         var resolve = LinuxPosixStorageConstants.RESOLVE_BENEATH |
                       LinuxPosixStorageConstants.RESOLVE_NO_SYMLINKS |
@@ -50,7 +84,7 @@ public static class LinuxAtomicFilePublisher
         int statRes = posix.FstatAt(parentFd, targetFileName, out var existingStat, LinuxPosixStorageConstants.AT_SYMLINK_NOFOLLOW);
         if (statRes == 0)
         {
-            return new AtomicPublishResult(AtomicPublishStatus.Collision, -1, existingStat);
+            return new AtomicPublishResult(AtomicPublishStatus.Collision, -1, existingStat, posix);
         }
 
         int errno = posix.GetLastErrno();
@@ -60,7 +94,7 @@ public static class LinuxAtomicFilePublisher
                 $"Authoritative lookup of '{targetFileName}' failed with errno {errno} (not ENOENT). Publication aborted.");
         }
 
-        // 2. Create unique temporary file
+        // 2. Create unique temporary file with strict grammar: .tmp.<prefix>.<32-hex-guid>
         var tempName = $".tmp.{tempPrefix}.{Guid.NewGuid():N}";
         var tempHow = new OpenHow
         {
@@ -78,6 +112,9 @@ public static class LinuxAtomicFilePublisher
 
         try
         {
+            // Acquire exclusive advisory lock to mark this temp file as actively owned
+            posix.Flock(tempFd, LinuxPosixStorageConstants.LOCK_EX | LinuxPosixStorageConstants.LOCK_NB);
+
             // 3. Write all content
             if (!WriteAll(posix, tempFd, content))
             {
@@ -140,7 +177,7 @@ public static class LinuxAtomicFilePublisher
             {
                 if (posix.FstatAt(parentFd, targetFileName, out var winnerStat, LinuxPosixStorageConstants.AT_SYMLINK_NOFOLLOW) == 0)
                 {
-                    return new AtomicPublishResult(AtomicPublishStatus.Collision, -1, winnerStat);
+                    return new AtomicPublishResult(AtomicPublishStatus.Collision, -1, winnerStat, posix);
                 }
             }
 
@@ -174,17 +211,26 @@ public static class LinuxAtomicFilePublisher
             throw new InvalidOperationException($"Published file '{targetFileName}' is not a valid regular file.");
         }
 
-        return new AtomicPublishResult(AtomicPublishStatus.Success, finalFd, finalStat);
+        return new AtomicPublishResult(AtomicPublishStatus.Success, finalFd, finalStat, posix);
     }
 
     public static bool CleanupStaleTempFile(
         ILinuxPosixStorageApi posix,
         int parentFd,
         string tempFileName,
-        LinuxStorageOwnershipPolicy ownership)
+        string expectedPrefix,
+        LinuxStorageOwnershipPolicy ownership,
+        int expectedMode = LinuxPosixStorageConstants.Mode0600)
     {
         ArgumentNullException.ThrowIfNull(posix);
-        if (string.IsNullOrWhiteSpace(tempFileName) || !tempFileName.StartsWith(".tmp.") || tempFileName.Contains('/'))
+        if (string.IsNullOrWhiteSpace(tempFileName) || string.IsNullOrWhiteSpace(expectedPrefix))
+        {
+            return false;
+        }
+
+        // R1-C: Strict temp grammar check (.tmp.<expectedPrefix>.<32hex>)
+        var match = TempFileNameRegex().Match(tempFileName);
+        if (!match.Success || !string.Equals(match.Groups[1].Value, expectedPrefix, StringComparison.Ordinal))
         {
             return false;
         }
@@ -196,7 +242,7 @@ public static class LinuxAtomicFilePublisher
 
         var openHow = new OpenHow
         {
-            Flags = LinuxPosixStorageConstants.O_RDONLY | LinuxPosixStorageConstants.O_CLOEXEC,
+            Flags = LinuxPosixStorageConstants.O_RDWR | LinuxPosixStorageConstants.O_CLOEXEC,
             Mode = 0,
             Resolve = resolve
         };
@@ -209,19 +255,27 @@ public static class LinuxAtomicFilePublisher
 
         try
         {
+            // R1-F: Staleness / concurrency check via exclusive non-blocking lock
+            if (posix.Flock(tempFd, LinuxPosixStorageConstants.LOCK_EX | LinuxPosixStorageConstants.LOCK_NB) != 0)
+            {
+                // Lock held by active concurrent publisher -> NEVER delete
+                return false;
+            }
+
             if (posix.Fstat(tempFd, out var stat) != 0 || !stat.IsRegularFile)
             {
                 return false;
             }
 
+            // R1-D: Exact ownership and exact mode check
             if (!CheckOwnership(stat, ownership, out _))
             {
                 return false; // Foreign owned: NEVER delete
             }
 
-            if ((stat.PermissionBits & ~0x1FF) != 0) // No setuid/setgid/sticky bits
+            if ((stat.PermissionBits & 0xFFF) != (expectedMode & 0xFFF))
             {
-                return false;
+                return false; // Mode drift: NEVER delete blindly
             }
         }
         finally
@@ -229,10 +283,14 @@ public static class LinuxAtomicFilePublisher
             posix.Close(tempFd);
         }
 
-        // Safe app-owned temp file confirmed: unlink
+        // R1-E: Safe app-owned orphan temp file confirmed: unlink and check parent fsync durability
         if (posix.UnlinkAt(parentFd, tempFileName, 0) == 0)
         {
-            posix.Fsync(parentFd);
+            if (posix.Fsync(parentFd) != 0)
+            {
+                throw new InvalidOperationException(
+                    $"Temporary file '{tempFileName}' was unlinked but cleanup durability could not be established.");
+            }
             return true;
         }
 

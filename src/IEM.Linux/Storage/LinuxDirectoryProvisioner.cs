@@ -6,7 +6,7 @@ namespace IEM.Linux.Storage;
 /// - Authoritative absence (ENOENT) required before creation
 /// - Creation mode defeated umask via explicit fchmod(0700)
 /// - Exact ownership (UID/GID) and mode verification
-/// - Dual fsync (child newFd + parent parentFd) for durability
+/// - Dual fsync (child newFd + parent parentFd) for durability on creation AND existing verification
 /// - Verify-only for existing directories (ZERO chmod/chown repair)
 /// </summary>
 public static class LinuxDirectoryProvisioner
@@ -60,6 +60,17 @@ public static class LinuxDirectoryProvisioner
                 if (!CheckOwnership(stat, ownership, out var ownerErr))
                 {
                     throw new InvalidOperationException($"Directory '{dirName}' {ownerErr}");
+                }
+
+                // Durability confirmation for existing directory (R1-A & 8D-F recovery)
+                if (posix.Fsync(dirFd) != 0)
+                {
+                    throw new InvalidOperationException($"fsync failed on existing directory '{dirName}'.");
+                }
+
+                if (posix.Fsync(parentFd) != 0)
+                {
+                    throw new InvalidOperationException($"fsync failed on parent directory for existing entry '{dirName}'.");
                 }
 
                 return dirFd;

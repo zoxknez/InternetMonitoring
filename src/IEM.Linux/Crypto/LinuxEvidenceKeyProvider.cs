@@ -192,6 +192,13 @@ public sealed class LinuxEvidenceKeyProvider : IEvidenceKeyProvider
                     throw new SigningIdentityUnavailableException("ECDSA P-256 self-test sign/verify failed.");
                 }
 
+                // R1-B & 8D-F: Re-establish keys directory durability before returning existing identity
+                if (_posix.Fsync(keysFd) != 0)
+                {
+                    throw new SigningIdentityUnavailableException(
+                        "Existing signing key was validated but keys directory durability could not be established.");
+                }
+
                 success = true;
                 return new LinuxEvidenceSigningIdentity(ecdsa, protection, _scope);
             }

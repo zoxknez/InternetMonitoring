@@ -25,10 +25,18 @@ public static class LinuxPosixStorageConstants
 
     public const uint RENAME_NOREPLACE = 0x01;
 
+    // flock constants
+    public const int LOCK_SH = 1;
+    public const int LOCK_EX = 2;
+    public const int LOCK_NB = 4;
+    public const int LOCK_UN = 8;
+
     // Standard Linux POSIX errnos
     public const int ENOENT = 2;
     public const int EIO = 5;
     public const int EBADF = 9;
+    public const int EAGAIN = 11;
+    public const int EWOULDBLOCK = 11;
     public const int EACCES = 13;
     public const int EEXIST = 17;
     public const int ENOTDIR = 20;
@@ -104,6 +112,7 @@ public interface ILinuxPosixStorageApi
     int Write(int fd, ReadOnlySpan<byte> buffer);
     int Read(int fd, Span<byte> buffer);
     int Fsync(int fd);
+    int Flock(int fd, int operation);
     int Close(int fd);
     int GetLastErrno();
     uint GetEuid();
@@ -148,6 +157,9 @@ public sealed class LinuxNativePosixStorageApi : ILinuxPosixStorageApi
 
     [DllImport(LibC, EntryPoint = "fsync", SetLastError = true)]
     private static extern int NativeFsync(int fd);
+
+    [DllImport(LibC, EntryPoint = "flock", SetLastError = true)]
+    private static extern int NativeFlock(int fd, int operation);
 
     [DllImport(LibC, EntryPoint = "close", SetLastError = true)]
     private static extern int NativeClose(int fd);
@@ -228,6 +240,9 @@ public sealed class LinuxNativePosixStorageApi : ILinuxPosixStorageApi
 
     public int Fsync(int fd) =>
         OperatingSystem.IsLinux() ? NativeFsync(fd) : -1;
+
+    public int Flock(int fd, int operation) =>
+        OperatingSystem.IsLinux() ? NativeFlock(fd, operation) : -1;
 
     public int Close(int fd) =>
         OperatingSystem.IsLinux() ? NativeClose(fd) : -1;

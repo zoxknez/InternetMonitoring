@@ -984,6 +984,8 @@ public sealed class LinuxSessionModeProvisionerTests : IDisposable
 
         public int Fsync(int fd) => FailFsync ? -1 : 0;
 
+        public int Flock(int fd, int operation) => 0;
+
         public int Close(int fd)
         {
             _openFds.Remove(fd);
