@@ -47,7 +47,10 @@ public sealed class AboutWindowTests
 
         thread.SetApartmentState(ApartmentState.STA);
         thread.Start();
-        thread.Join(TimeSpan.FromSeconds(30));
+        if (!thread.Join(TimeSpan.FromSeconds(60)))
+        {
+            throw new TimeoutException("STA nit za dijalog 'O programu' je istekla nakon 60s.");
+        }
 
         if (failure is not null)
         {
