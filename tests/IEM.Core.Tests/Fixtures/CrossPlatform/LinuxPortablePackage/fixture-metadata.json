@@ -1,0 +1,11 @@
+{
+  "fixtureVersion": 1,
+  "sourcePlatform": "Linux",
+  "sourceProvider": "LinuxFileSystemKeyStore",
+  "signingScope": "PortableUser",
+  "keyId": "sha256:fc3988462087930b35e09800a1003dd117e77287f5b1e94f794f9f6ecf04c10b",
+  "generatedFromCommit": "dad549a0253d828e38b194072324e9d7efcfffb8",
+  "expectedOverall": "ValidTrustNotEstablished",
+  "expectedIntegrity": "Verified",
+  "expectedTrust": "NotEstablished"
+}

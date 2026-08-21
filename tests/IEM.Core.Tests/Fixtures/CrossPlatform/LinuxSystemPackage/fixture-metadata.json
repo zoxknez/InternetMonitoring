@@ -1,0 +1,11 @@
+{
+  "fixtureVersion": 1,
+  "sourcePlatform": "Linux",
+  "sourceProvider": "LinuxFileSystemKeyStore",
+  "signingScope": "SystemInstallation",
+  "keyId": "sha256:926cbaee18b1a4df1c039c7d1e58b0354ac4d52493b3cbb75cb9028d40ed7912",
+  "generatedFromCommit": "dad549a0253d828e38b194072324e9d7efcfffb8",
+  "expectedOverall": "ValidTrustNotEstablished",
+  "expectedIntegrity": "Verified",
+  "expectedTrust": "NotEstablished"
+}
