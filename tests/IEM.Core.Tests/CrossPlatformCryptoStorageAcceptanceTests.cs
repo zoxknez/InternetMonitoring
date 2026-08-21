@@ -852,7 +852,7 @@ public sealed class CrossPlatformCryptoStorageAcceptanceTests : IDisposable
 
         // Precondition checks:
         Assert.True(File.Exists(linkPath), "Precondition: physical link target must be accessible via package path.");
-        Assert.True(PathSafety.TryResolveSafeRelativePath(symlinkPkgDir, targetRelativePath, out var safeFullPath, out _), "Precondition: lexical path safety must pass.");
+        Assert.True(Path.GetFullPath(Path.Combine(symlinkPkgDir, targetRelativePath)).StartsWith(Path.GetFullPath(symlinkPkgDir)), "Precondition: lexical path containment must hold.");
 
         // Size-neutrality: match targetBytes length precisely to observed FileInfo.Length
         var observedLength = new FileInfo(linkPath).Length;
@@ -891,6 +891,7 @@ public sealed class CrossPlatformCryptoStorageAcceptanceTests : IDisposable
         Assert.Equal(IntegrityStatus.Invalid, symlinkReport.Integrity);
         Assert.NotNull(symlinkReport.Layers.Manifest);
         Assert.Equal(LayerStatus.Invalid, symlinkReport.Layers.Manifest.Status);
+        Assert.True(symlinkReport.Layers.Manifest.Violations.Count > 0, "PackageVerifier must record at least one manifest violation for physical escape.");
     }
 
     [Fact]
