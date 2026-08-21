@@ -391,6 +391,11 @@ public sealed class CrossPlatformCryptoStorageAcceptanceTests : IDisposable
             }
             catch { }
 
+            if (OperatingSystem.IsLinux())
+            {
+                Assert.True(symlinkCreated, "XPL-18 requires a real symlink before testing RESOLVE_NO_SYMLINKS on Linux.");
+            }
+
             var noSymlinksHow = new OpenHow
             {
                 Flags = (ulong)LinuxPosixStorageConstants.O_RDONLY,
@@ -729,63 +734,123 @@ public sealed class CrossPlatformCryptoStorageAcceptanceTests : IDisposable
     [Trait("Platform", "Shared")]
     public async Task XPL_17_Shared_Path_And_Verifier_PackageRoot_Containment_Fail_Closed()
     {
-        var packageDir = Path.Combine(_tempRoot, "xpl-17-traversal");
-        Create0700Directory(packageDir);
-
         using var ecdsa = ECDsa.Create(ECCurve.NamedCurves.nistP256);
         var identity = new EphemeralSoftwareSigningIdentity(ecdsa);
 
         // 1. Lexical escape path in manifest
-        var files = new List<ManifestFileEntry>
+        var lexicalPkgDir = Path.Combine(_tempRoot, "xpl-17-lexical");
+        Create0700Directory(lexicalPkgDir);
+
+        var lexicalFiles = new List<ManifestFileEntry>
         {
             new ManifestFileEntry("../../etc/shadow", 100, "0000000000000000000000000000000000000000000000000000000000000000")
         };
 
-        var manifest = new EvidenceManifest(
+        var lexicalManifest = new EvidenceManifest(
             ManifestSchemaVersion: 1,
             Canonicalization: "RFC8785-JCS",
             CreatedUtc: DateTimeOffset.UtcNow,
-            Session: new ManifestSessionInfo("ses-17", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, 1, "3.1.0"),
+            Session: new ManifestSessionInfo("ses-17-lex", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, 1, "3.1.0"),
             Evidence: new ManifestEvidenceSummary(new ManifestRawChainRef("Evidence/raw.log", "0000", 0), null, null, null),
-            Files: files,
+            Files: lexicalFiles,
             AcquisitionContext: new ManifestAcquisitionContext("Shared", new Dictionary<string, string>()));
 
-        var manifestPath = Path.Combine(packageDir, EvidenceManifest.FileName);
-        await File.WriteAllBytesAsync(manifestPath, manifest.ToCanonicalBytes());
-        await ManifestSigner.SignManifestAtomicallyAsync(packageDir, identity);
+        var lexicalManifestPath = Path.Combine(lexicalPkgDir, EvidenceManifest.FileName);
+        await File.WriteAllBytesAsync(lexicalManifestPath, lexicalManifest.ToCanonicalBytes());
+        await ManifestSigner.SignManifestAtomicallyAsync(lexicalPkgDir, identity);
 
-        var report = await PackageVerifier.VerifyPackageAsync(packageDir, new VerificationOptions { Offline = true });
-        Assert.Equal(OverallStatus.Invalid, report.Overall);
-        Assert.Equal(IntegrityStatus.Invalid, report.Integrity);
-        Assert.NotNull(report.Layers.Manifest);
-        Assert.True(report.Layers.Manifest.Violations.Count > 0);
+        var lexicalReport = await PackageVerifier.VerifyPackageAsync(lexicalPkgDir, new VerificationOptions { Offline = true });
+        Assert.Equal(OverallStatus.Invalid, lexicalReport.Overall);
+        Assert.Equal(IntegrityStatus.Invalid, lexicalReport.Integrity);
+        Assert.NotNull(lexicalReport.Layers.Manifest);
+        Assert.True(lexicalReport.Layers.Manifest.Violations.Count > 0);
 
-        // 2. Real package-internal symlink -> external target attack
+        // 2. Real package-internal symlink escape listed in valid manifest -> PackageVerifier must fail closed
         var outsideDir = Path.Combine(_tempRoot, "xpl17_outside");
         Create0700Directory(outsideDir);
-        var outsideFile = Path.Combine(outsideDir, "secret.txt");
-        await File.WriteAllTextAsync(outsideFile, "confidential");
+        var outsideSecretFile = Path.Combine(outsideDir, "secret.bin");
+        var secretBytes = "OUTSIDE_SECRET_PAYLOAD_EVIDENCE"u8.ToArray();
+        await File.WriteAllBytesAsync(outsideSecretFile, secretBytes);
 
-        var evidenceDir = Path.Combine(packageDir, "Evidence");
-        Create0700Directory(evidenceDir);
-        var symlinkPath = Path.Combine(evidenceDir, "symlink_escape.txt");
+        var symlinkPkgDir = Path.Combine(_tempRoot, "xpl17_symlink_pkg");
+        Create0700Directory(symlinkPkgDir);
+        var symlinkEvidenceDir = Path.Combine(symlinkPkgDir, "Evidence");
+        Create0700Directory(symlinkEvidenceDir);
+
+        // Create sample raw.log and session_start.json
+        var rawLogPath = Path.Combine(symlinkEvidenceDir, "raw.log");
+        string finalChainHash;
+        long recordCount;
+        using (var writer = HashChainWriter.Open(rawLogPath))
+        {
+            writer.Append(new SessionStartPayload(
+                SessionId: "ses-17-sym",
+                ToolVersion: "3.1.0",
+                StartedUtc: DateTimeOffset.UtcNow.AddMinutes(-10),
+                PlannedDuration: TimeSpan.FromMinutes(10),
+                MachineName: "HOST-17",
+                InterfaceName: "eth0",
+                Medium: LinkMedium.Ethernet,
+                LinkSpeedBitsPerSecond: 1_000_000_000,
+                GatewayAddress: "192.168.1.1"));
+            finalChainHash = writer.HeadHash;
+            recordCount = writer.EntriesWritten;
+        }
+
+        var sessionJsonPath = Path.Combine(symlinkEvidenceDir, "session_start.json");
+        await File.WriteAllTextAsync(sessionJsonPath, JsonSerializer.Serialize(new { sessionId = "ses-17-sym", version = "3.1.0" }));
+
+        var rawBytes = await File.ReadAllBytesAsync(rawLogPath);
+        var jsonBytes = await File.ReadAllBytesAsync(sessionJsonPath);
+
+        // Create the real symlink pointing outside the package
+        var symlinkPath = Path.Combine(symlinkEvidenceDir, "escape.bin");
+        bool linkCreated = false;
         try
         {
-            File.CreateSymbolicLink(symlinkPath, outsideFile);
+            File.CreateSymbolicLink(symlinkPath, outsideSecretFile);
+            linkCreated = File.Exists(symlinkPath);
         }
         catch { }
 
-        var guard = new LinuxSymlinkGuard();
-
-        var lexicalResult = guard.ValidatePath(packageDir, Path.Combine(packageDir, "../outside_file.txt"));
-        Assert.False(lexicalResult.IsSafe);
-        Assert.Equal(StorageProtectionState.NotEstablished, lexicalResult.State);
-
-        if (File.Exists(symlinkPath))
+        if (OperatingSystem.IsLinux())
         {
-            var symlinkResult = guard.ValidatePath(packageDir, symlinkPath);
-            Assert.False(symlinkResult.IsSafe, "Package containment guard must reject package-internal symlink targeting external file.");
-            Assert.Equal(StorageProtectionState.NotEstablished, symlinkResult.State);
+            Assert.True(linkCreated, "Linux platform requires successful symlink creation for XPL-17 physical escape gate.");
+        }
+
+        if (linkCreated)
+        {
+            var manifestFiles = new List<ManifestFileEntry>
+            {
+                new ManifestFileEntry("Evidence/raw.log", rawBytes.Length, Convert.ToHexStringLower(SHA256.HashData(rawBytes))),
+                new ManifestFileEntry("Evidence/session_start.json", jsonBytes.Length, Convert.ToHexStringLower(SHA256.HashData(jsonBytes))),
+                new ManifestFileEntry("Evidence/escape.bin", secretBytes.Length, Convert.ToHexStringLower(SHA256.HashData(secretBytes)))
+            };
+
+            var symlinkManifest = new EvidenceManifest(
+                ManifestSchemaVersion: 1,
+                Canonicalization: "RFC8785-JCS",
+                CreatedUtc: DateTimeOffset.UtcNow,
+                Session: new ManifestSessionInfo("ses-17-sym", DateTimeOffset.UtcNow.AddMinutes(-10), DateTimeOffset.UtcNow, 1, "3.1.0"),
+                Evidence: new ManifestEvidenceSummary(new ManifestRawChainRef("Evidence/raw.log", finalChainHash, recordCount), null, null, null),
+                Files: manifestFiles,
+                AcquisitionContext: new ManifestAcquisitionContext("Shared", new Dictionary<string, string>()));
+
+            var symlinkManifestPath = Path.Combine(symlinkPkgDir, EvidenceManifest.FileName);
+            await File.WriteAllBytesAsync(symlinkManifestPath, symlinkManifest.ToCanonicalBytes());
+            await ManifestSigner.SignManifestAtomicallyAsync(symlinkPkgDir, identity);
+
+            var symlinkReport = await PackageVerifier.VerifyPackageAsync(symlinkPkgDir, new VerificationOptions { Offline = true });
+
+            // Invariant 29: PackageVerifier MUST NOT read or verify files outside package root through symlinks
+            Assert.Equal(OverallStatus.Invalid, symlinkReport.Overall);
+            Assert.Equal(IntegrityStatus.Invalid, symlinkReport.Integrity);
+            Assert.NotNull(symlinkReport.Layers.Manifest);
+            Assert.Equal(LayerStatus.Invalid, symlinkReport.Layers.Manifest.Status);
+        }
+        else if (OperatingSystem.IsLinux())
+        {
+            Assert.Fail("Symlink was not created on Linux runner; zero-bypass gate failed.");
         }
     }
 
