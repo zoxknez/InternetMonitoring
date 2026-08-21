@@ -310,7 +310,7 @@ public sealed class ArchitectureBoundaryTests
     }
 
     [Fact]
-    public void ConfinedPackageFileReader_SourceCode_Enforces_ObjDontReparse_And_FailClosed_Checks()
+    public void ConfinedPackageFileReader_SourceCode_Enforces_SegmentedParentRelativeNoReparseTraversal()
     {
         var repoRoot = FindRepoRoot();
         var readerFile = Path.Combine(repoRoot, "src", "IEM.Verification", "Safety", "ConfinedPackageFileReader.cs");

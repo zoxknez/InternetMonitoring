@@ -11,8 +11,8 @@ using Microsoft.Win32.SafeHandles;
 /// Policy: Any symbolic link, junction, or reparse point (internal or external) is strictly forbidden.
 /// Implementation:
 /// - Linux: root dirfd + openat2(RESOLVE_BENEATH | RESOLVE_NO_SYMLINKS | RESOLVE_NO_MAGICLINKS | RESOLVE_NO_XDEV)
-/// - Windows: root directory handle + NtOpenFile(RootDirectory, OBJ_DONT_REPARSE | OBJ_CASE_INSENSITIVE)
-///   with guaranteed fail-closed segmented handle-bound traversal ensuring no-reparse on every path component.
+/// - Windows: root directory handle + segmented parent-relative NtOpenFile traversal with FILE_OPEN_REPARSE_POINT
+///   ensuring fail-closed no-reparse verification on every intermediate path component and leaf file.
 /// </summary>
 public static class ConfinedPackageFileReader
 {
@@ -20,7 +20,7 @@ public static class ConfinedPackageFileReader
     /// Test seam invoked immediately after lexical/pre-check succeeds, right before native OS open begins.
     /// Used for deterministic TOCTOU post-check/pre-open race tests.
     /// </summary>
-    public static Action<string, string>? OnPreCheckCompletedForTesting { get; set; }
+    internal static Action<string, string>? OnPreCheckCompletedForTesting { get; set; }
 
     public enum ReadResultStatus
     {
