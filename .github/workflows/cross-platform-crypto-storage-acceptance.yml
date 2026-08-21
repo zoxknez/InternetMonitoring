@@ -30,11 +30,11 @@ jobs:
       - name: Build solution
         run: dotnet build InternetEvidenceMonitor.slnx -c Release --no-restore --nologo
 
-      - name: Run IEM.Core Cross-Platform Acceptance Tests (Shared & Windows)
-        run: dotnet test tests/IEM.Core.Tests/IEM.Core.Tests.csproj -c Release --no-build --nologo --filter "Acceptance=3.1-8F & (Platform=Shared | Platform=Windows)"
+      - name: Run Shared Cross-Platform Acceptance Tests (16 gates)
+        run: dotnet test tests/IEM.Core.Tests/IEM.Core.Tests.csproj -c Release --no-build --nologo --filter "Acceptance=3.1-8F & Platform=Shared" --logger "console;verbosity=normal"
 
-      - name: Run IEM.App Windows-Native Acceptance Tests (Windows)
-        run: dotnet test tests/IEM.App.Tests/IEM.App.Tests.csproj -c Release --no-build --nologo --filter "Acceptance=3.1-8F & (Platform=Shared | Platform=Windows)"
+      - name: Run Windows-Native Acceptance Tests (9 gates)
+        run: dotnet test tests/IEM.App.Tests/IEM.App.Tests.csproj -c Release --no-build --nologo --filter "Acceptance=3.1-8F & Platform=Windows" --logger "console;verbosity=normal"
 
   linux-crypto-storage:
     name: Linux Crypto & Canonical Storage Acceptance (XPL-01..30)
@@ -55,5 +55,8 @@ jobs:
       - name: Build IEM.Core.Tests
         run: dotnet build tests/IEM.Core.Tests/IEM.Core.Tests.csproj -c Release --no-restore --nologo
 
-      - name: Run IEM.Core Cross-Platform Acceptance Tests (Shared & Linux)
-        run: dotnet test tests/IEM.Core.Tests/IEM.Core.Tests.csproj -c Release --no-build --nologo --filter "Acceptance=3.1-8F & (Platform=Shared | Platform=Linux)"
+      - name: Run Shared Cross-Platform Acceptance Tests (16 gates)
+        run: dotnet test tests/IEM.Core.Tests/IEM.Core.Tests.csproj -c Release --no-build --nologo --filter "Acceptance=3.1-8F & Platform=Shared" --logger "console;verbosity=normal"
+
+      - name: Run Linux-Native Acceptance Tests (13 gates)
+        run: dotnet test tests/IEM.Core.Tests/IEM.Core.Tests.csproj -c Release --no-build --nologo --filter "Acceptance=3.1-8F & Platform=Linux" --logger "console;verbosity=normal"

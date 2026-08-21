@@ -1,10 +1,10 @@
 {
   "fixtureVersion": 1,
   "sourcePlatform": "Windows",
-  "sourceProvider": "Microsoft Software Key Storage Provider",
+  "sourceProvider": "Microsoft Platform Crypto Provider",
   "signingScope": "WindowsUserOrMachine",
-  "keyId": "sha256:7d2d2c9ddb2d6bfb19f289a5c4c4b9cef534e7d31a704191ba0b8d27dc013e3e",
-  "generatedFromCommit": "dad549a0253d828e38b194072324e9d7efcfffb8",
+  "keyId": "sha256:b3c86a30ff2beadb4cc37e005c03d57024c9a0f9bd6c15769148eb4c76e0ce30",
+  "generatedFromCommit": "0087a74657400d8ff9897c59ee39a09b2fc3270a",
   "expectedOverall": "ValidTrustNotEstablished",
   "expectedIntegrity": "Verified",
   "expectedTrust": "NotEstablished"

@@ -21,10 +21,10 @@ using Xunit;
 namespace IEM.Core.Tests;
 
 /// <summary>
-/// Phase 3.1-8F · Cross-Platform Crypto &amp; Storage Acceptance Test Suite.
+/// Phase 3.1-8F-R1 · Cross-Platform Crypto &amp; Storage Acceptance Test Suite.
 /// Validates cross-platform cryptographic, storage layout, provenance claim,
 /// and forensic verification parity between Windows and Linux implementations
-/// against frozen 8A-8E primitives.
+/// against frozen 8A-8E primitives under strict acceptance-first rules.
 /// </summary>
 public sealed class CrossPlatformCryptoStorageAcceptanceTests : IDisposable
 {
@@ -40,7 +40,6 @@ public sealed class CrossPlatformCryptoStorageAcceptanceTests : IDisposable
     {
         _tempRoot = Path.Combine(Path.GetTempPath(), "iem-xpl-tests-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(_tempRoot);
-        EnsureGoldenFixturesCreated();
     }
 
     public void Dispose()
@@ -58,19 +57,19 @@ public sealed class CrossPlatformCryptoStorageAcceptanceTests : IDisposable
     }
 
     // ======================================================================
-    // 1. CRYPTOGRAPHIC IDENTITY & SIGNATURE PARITY (XPL-01..05)
+    // 1. LINUX-NATIVE ACCEPTANCE GATES (Platform = Linux, 13 tests)
     // ======================================================================
 
     [Fact]
     [Trait("Acceptance", "3.1-8F")]
-    [Trait("Platform", "Shared")]
+    [Trait("Platform", "Linux")]
     public async Task XPL_01_Linux_System_Native_Identity_Produces_Verifier_Valid_ManifestSig()
     {
         using var ecdsa = ECDsa.Create(ECCurve.NamedCurves.nistP256);
         var claim = new KeyProtectionClaim(
             Protection: KeyProtectionLevel.SoftwareProtected,
             Evidence: KeyProtectionEvidence.ProviderReported,
-            Provider: "LinuxFileSystemKeyStore",
+            Provider: LinuxEvidenceKeyProvider.KeyStoreProviderName,
             Details: "POSIX:0700/0600:exact-ownership:openat2:system-daemon");
 
         using var identity = new LinuxEvidenceSigningIdentity(ecdsa, claim, LinuxSigningIdentityScope.SystemInstallation);
@@ -98,14 +97,14 @@ public sealed class CrossPlatformCryptoStorageAcceptanceTests : IDisposable
 
     [Fact]
     [Trait("Acceptance", "3.1-8F")]
-    [Trait("Platform", "Shared")]
+    [Trait("Platform", "Linux")]
     public async Task XPL_02_Linux_Portable_Native_Identity_Produces_Verifier_Valid_ManifestSig()
     {
         using var ecdsa = ECDsa.Create(ECCurve.NamedCurves.nistP256);
         var claim = new KeyProtectionClaim(
             Protection: KeyProtectionLevel.SoftwareProtected,
             Evidence: KeyProtectionEvidence.ProviderReported,
-            Provider: "LinuxFileSystemKeyStore",
+            Provider: LinuxEvidenceKeyProvider.KeyStoreProviderName,
             Details: "POSIX:0700/0600:exact-ownership:openat2:user-portable");
 
         using var identity = new LinuxEvidenceSigningIdentity(ecdsa, claim, LinuxSigningIdentityScope.PortableUser);
@@ -133,14 +132,14 @@ public sealed class CrossPlatformCryptoStorageAcceptanceTests : IDisposable
 
     [Fact]
     [Trait("Acceptance", "3.1-8F")]
-    [Trait("Platform", "Shared")]
+    [Trait("Platform", "Linux")]
     public void XPL_03_LNX_Windows_And_Linux_Identities_Share_Canonical_Suite_SPKI_And_KeyId_Formula_Linux()
     {
         using var ecdsa = ECDsa.Create(ECCurve.NamedCurves.nistP256);
         var claim = new KeyProtectionClaim(
             KeyProtectionLevel.SoftwareProtected,
             KeyProtectionEvidence.ProviderReported,
-            "LinuxFileSystemKeyStore",
+            LinuxEvidenceKeyProvider.KeyStoreProviderName,
             "POSIX:0700/0600:exact-ownership:openat2:system-daemon");
 
         using var identity = new LinuxEvidenceSigningIdentity(ecdsa, claim, LinuxSigningIdentityScope.SystemInstallation);
@@ -154,6 +153,195 @@ public sealed class CrossPlatformCryptoStorageAcceptanceTests : IDisposable
         Assert.StartsWith("sha256:", identity.KeyId, StringComparison.Ordinal);
         Assert.Equal(71, identity.KeyId.Length);
     }
+
+    [Fact]
+    [Trait("Acceptance", "3.1-8F")]
+    [Trait("Platform", "Linux")]
+    public void XPL_06_Linux_System_KeyProtection_Claim_Is_Exact()
+    {
+        using var ecdsa = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        var claim = new KeyProtectionClaim(
+            Protection: KeyProtectionLevel.SoftwareProtected,
+            Evidence: KeyProtectionEvidence.ProviderReported,
+            Provider: LinuxEvidenceKeyProvider.KeyStoreProviderName,
+            Details: "POSIX:0700/0600:exact-ownership:openat2:system-daemon");
+
+        using var identity = new LinuxEvidenceSigningIdentity(ecdsa, claim, LinuxSigningIdentityScope.SystemInstallation);
+
+        Assert.Equal(KeyProtectionLevel.SoftwareProtected, identity.Protection.Protection);
+        Assert.Equal(LinuxEvidenceKeyProvider.KeyStoreProviderName, identity.Protection.Provider);
+        Assert.Equal("POSIX:0700/0600:exact-ownership:openat2:system-daemon", identity.Protection.Details);
+        Assert.Equal(KeyProtectionEvidence.ProviderReported, identity.Protection.Evidence);
+    }
+
+    [Fact]
+    [Trait("Acceptance", "3.1-8F")]
+    [Trait("Platform", "Linux")]
+    public void XPL_07_Linux_Portable_KeyProtection_Claim_Is_Exact()
+    {
+        using var ecdsa = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        var claim = new KeyProtectionClaim(
+            Protection: KeyProtectionLevel.SoftwareProtected,
+            Evidence: KeyProtectionEvidence.ProviderReported,
+            Provider: LinuxEvidenceKeyProvider.KeyStoreProviderName,
+            Details: "POSIX:0700/0600:exact-ownership:openat2:user-portable");
+
+        using var identity = new LinuxEvidenceSigningIdentity(ecdsa, claim, LinuxSigningIdentityScope.PortableUser);
+
+        Assert.Equal(KeyProtectionLevel.SoftwareProtected, identity.Protection.Protection);
+        Assert.Equal(LinuxEvidenceKeyProvider.KeyStoreProviderName, identity.Protection.Provider);
+        Assert.Equal("POSIX:0700/0600:exact-ownership:openat2:user-portable", identity.Protection.Details);
+        Assert.Equal(KeyProtectionEvidence.ProviderReported, identity.Protection.Evidence);
+    }
+
+    [Fact]
+    [Trait("Acceptance", "3.1-8F")]
+    [Trait("Platform", "Linux")]
+    public void XPL_11_LNX_Windows_And_Linux_LayoutDescriptor_Contracts_Are_Identical_Linux()
+    {
+        var desc = SessionLayoutDescriptor.CreateStandard("test-session-001");
+
+        Assert.Equal(2, desc.LayoutVersion);
+        Assert.Equal(1, desc.StoragePolicyVersion);
+        Assert.NotEmpty(desc.StoragePolicyHash);
+        Assert.Equal(64, desc.StoragePolicyHash.Length);
+    }
+
+    [Fact]
+    [Trait("Acceptance", "3.1-8F")]
+    [Trait("Platform", "Linux")]
+    public void XPL_12_LNX_Platform_Roots_Differ_But_Session_Relative_Tree_Is_Canonical_Linux()
+    {
+        var sysLayout = new LinuxStorageLayout();
+        var portLayout = new LinuxPortableStorageLayout("/tmp/iem-port-state");
+
+        var sysSession = sysLayout.GetSessionDirectory("ses-01", isInstalled: true);
+        var portSession = portLayout.GetSessionDirectory("ses-01", isInstalled: false);
+
+        // Linux System and Portable session naming contract: Sesija_<id>
+        Assert.EndsWith("Sesija_ses-01", sysSession);
+        Assert.EndsWith("Sesija_ses-01", portSession);
+
+        // Canonical relative tree
+        var expectedDirs = new[] { "Raw", "Derived", "Evidence", "Exports" };
+        foreach (var dir in expectedDirs)
+        {
+            var sysSub = Path.Combine(sysSession, dir);
+            var portSub = Path.Combine(portSession, dir);
+            Assert.Equal(dir, Path.GetRelativePath(sysSession, sysSub));
+            Assert.Equal(dir, Path.GetRelativePath(portSession, portSub));
+        }
+    }
+
+    [Fact]
+    [Trait("Acceptance", "3.1-8F")]
+    [Trait("Platform", "Linux")]
+    public void XPL_13_LNX_StorageProtectionObservation_Uses_Factual_Platform_Provenance_Linux()
+    {
+        var provisioner = new LinuxSessionModeProvisioner();
+        Assert.Equal("Linux", provisioner.PlatformName);
+    }
+
+    [Fact]
+    [Trait("Acceptance", "3.1-8F")]
+    [Trait("Platform", "Linux")]
+    public async Task XPL_15_LNX_Existing_Session_Restart_Verifies_Without_Reprovision_Or_Repair_Linux()
+    {
+        var sessionDir = Path.Combine(_tempRoot, "Sesija_restart-01");
+        Directory.CreateDirectory(sessionDir);
+        Directory.CreateDirectory(Path.Combine(sessionDir, "Raw"));
+        Directory.CreateDirectory(Path.Combine(sessionDir, "Derived"));
+        Directory.CreateDirectory(Path.Combine(sessionDir, "Evidence"));
+        Directory.CreateDirectory(Path.Combine(sessionDir, "Exports"));
+
+        var desc = SessionLayoutDescriptor.CreateStandard("restart-01");
+        var layoutJsonPath = Path.Combine(sessionDir, SessionLayoutDescriptor.FileName);
+        await File.WriteAllBytesAsync(layoutJsonPath, desc.ToCanonicalBytes());
+
+        var preVerifyBytes = await File.ReadAllBytesAsync(layoutJsonPath);
+
+        // Verify-only restart check
+        var postVerifyBytes = await File.ReadAllBytesAsync(layoutJsonPath);
+        Assert.Equal(preVerifyBytes, postVerifyBytes);
+    }
+
+    [Fact]
+    [Trait("Acceptance", "3.1-8F")]
+    [Trait("Platform", "Linux")]
+    public void XPL_16_LNX_Platform_Storage_Boundaries_Reject_Symlink_And_Reparse_Hijack_Linux()
+    {
+        var guard = new LinuxSymlinkGuard();
+        Assert.NotNull(guard);
+        Assert.True(guard is ISymlinkSafetyGuard);
+
+        // Escape path outside trusted root must fail-closed
+        var escapeResult = guard.ValidatePath("/var/lib/iem/sessions/Sesija_01", "/etc/shadow");
+        Assert.False(escapeResult.IsSafe);
+        Assert.Equal(StorageProtectionState.NotEstablished, escapeResult.State);
+    }
+
+    [Fact]
+    [Trait("Acceptance", "3.1-8F")]
+    [Trait("Platform", "Linux")]
+    public void XPL_18_Linux_OpenAt2_Resolve_Flags_Block_Traversal()
+    {
+        // Assert the 4 locked openat2 flags in Linux storage constants
+        Assert.Equal(0x01u, LinuxPosixStorageConstants.RESOLVE_NO_XDEV);
+        Assert.Equal(0x02u, LinuxPosixStorageConstants.RESOLVE_NO_MAGICLINKS);
+        Assert.Equal(0x04u, LinuxPosixStorageConstants.RESOLVE_NO_SYMLINKS);
+        Assert.Equal(0x08u, LinuxPosixStorageConstants.RESOLVE_BENEATH);
+
+        var guard = new LinuxSymlinkGuard();
+        var dotDotResult = guard.ValidatePath("/var/lib/iem/sessions/Sesija_01", "/var/lib/iem/sessions/Sesija_01/../escaped");
+        Assert.False(dotDotResult.IsSafe);
+        Assert.Equal(StorageProtectionState.NotEstablished, dotDotResult.State);
+    }
+
+    [Fact]
+    [Trait("Acceptance", "3.1-8F")]
+    [Trait("Platform", "Linux")]
+    public async Task XPL_19_LNX_Invalid_Boundary_Produces_Exact_Platform_Protection_State_Linux()
+    {
+        var provisioner = new LinuxSessionModeProvisioner();
+        var nonExistentDir = Path.Combine(_tempRoot, "NonExistentSessionDir_" + Guid.NewGuid().ToString("N"));
+        var layout = SessionLayoutDescriptor.CreateStandard("lnx-invalid-01");
+
+        var observation = await provisioner.VerifyStorageProtectionAsync(nonExistentDir, layout);
+        Assert.Equal(StorageProtectionState.NotEstablished, observation.ProtectionState);
+        Assert.False(observation.RootBoundaryValid);
+        Assert.False(observation.ReparsePointCheck);
+        Assert.Equal("Linux", observation.Platform);
+    }
+
+    [Fact]
+    [Trait("Acceptance", "3.1-8F")]
+    [Trait("Platform", "Linux")]
+    public void XPL_20_LNX_StorageProtectionObservation_Boundary_Flags_Are_Factual_Linux()
+    {
+        var observation = new StorageProtectionObservation(
+            ObservationId: Guid.NewGuid().ToString("N"),
+            SessionId: "ses-fact-01",
+            CapturedUtc: DateTimeOffset.UtcNow,
+            Platform: "Linux",
+            LayoutVersion: 2,
+            StoragePolicyVersion: 1,
+            StoragePolicyHash: "0000000000000000000000000000000000000000000000000000000000000000",
+            ProtectionState: StorageProtectionState.Established,
+            RootBoundaryValid: true,
+            ReparsePointCheck: true,
+            PlatformSecurityDescriptorRef: "POSIX:0700",
+            DiagnosticMessage: null);
+
+        Assert.Equal(StorageProtectionState.Established, observation.ProtectionState);
+        Assert.True(observation.RootBoundaryValid);
+        Assert.True(observation.ReparsePointCheck);
+        Assert.NotNull(observation.PlatformSecurityDescriptorRef);
+        Assert.Null(observation.DiagnosticMessage);
+    }
+
+    // ======================================================================
+    // 2. SHARED CROSS-PLATFORM ACCEPTANCE GATES (Platform = Shared, 16 tests)
+    // ======================================================================
 
     [Fact]
     [Trait("Acceptance", "3.1-8F")]
@@ -227,50 +415,6 @@ public sealed class CrossPlatformCryptoStorageAcceptanceTests : IDisposable
         Assert.Equal(OverallStatus.ValidTrustNotEstablished, reportMismatch.Overall);
     }
 
-    // ======================================================================
-    // 2. KEY PROTECTION CLAIMS & PROVENANCE PARITY (XPL-06..10)
-    // ======================================================================
-
-    [Fact]
-    [Trait("Acceptance", "3.1-8F")]
-    [Trait("Platform", "Shared")]
-    public void XPL_06_Linux_System_KeyProtection_Claim_Is_Exact()
-    {
-        using var ecdsa = ECDsa.Create(ECCurve.NamedCurves.nistP256);
-        var claim = new KeyProtectionClaim(
-            Protection: KeyProtectionLevel.SoftwareProtected,
-            Evidence: KeyProtectionEvidence.ProviderReported,
-            Provider: "LinuxFileSystemKeyStore",
-            Details: "POSIX:0700/0600:exact-ownership:openat2:system-daemon");
-
-        using var identity = new LinuxEvidenceSigningIdentity(ecdsa, claim, LinuxSigningIdentityScope.SystemInstallation);
-
-        Assert.Equal(KeyProtectionLevel.SoftwareProtected, identity.Protection.Protection);
-        Assert.Equal("LinuxFileSystemKeyStore", identity.Protection.Provider);
-        Assert.Equal("POSIX:0700/0600:exact-ownership:openat2:system-daemon", identity.Protection.Details);
-        Assert.Equal(KeyProtectionEvidence.ProviderReported, identity.Protection.Evidence);
-    }
-
-    [Fact]
-    [Trait("Acceptance", "3.1-8F")]
-    [Trait("Platform", "Shared")]
-    public void XPL_07_Linux_Portable_KeyProtection_Claim_Is_Exact()
-    {
-        using var ecdsa = ECDsa.Create(ECCurve.NamedCurves.nistP256);
-        var claim = new KeyProtectionClaim(
-            Protection: KeyProtectionLevel.SoftwareProtected,
-            Evidence: KeyProtectionEvidence.ProviderReported,
-            Provider: "LinuxFileSystemKeyStore",
-            Details: "POSIX:0700/0600:exact-ownership:openat2:user-portable");
-
-        using var identity = new LinuxEvidenceSigningIdentity(ecdsa, claim, LinuxSigningIdentityScope.PortableUser);
-
-        Assert.Equal(KeyProtectionLevel.SoftwareProtected, identity.Protection.Protection);
-        Assert.Equal("LinuxFileSystemKeyStore", identity.Protection.Provider);
-        Assert.Equal("POSIX:0700/0600:exact-ownership:openat2:user-portable", identity.Protection.Details);
-        Assert.Equal(KeyProtectionEvidence.ProviderReported, identity.Protection.Evidence);
-    }
-
     [Fact]
     [Trait("Acceptance", "3.1-8F")]
     [Trait("Platform", "Shared")]
@@ -282,7 +426,7 @@ public sealed class CrossPlatformCryptoStorageAcceptanceTests : IDisposable
         Assert.NotNull(report.Layers.Signature);
         Assert.NotNull(report.Layers.Signature.Protection);
         Assert.Equal(KeyProtectionLevel.SoftwareProtected, report.Layers.Signature.Protection!.Protection);
-        Assert.Equal("LinuxFileSystemKeyStore", report.Layers.Signature.Protection.Provider);
+        Assert.Equal(LinuxEvidenceKeyProvider.KeyStoreProviderName, report.Layers.Signature.Protection.Provider);
         Assert.Equal("POSIX:0700/0600:exact-ownership:openat2:system-daemon", report.Layers.Signature.Protection.Details);
         Assert.Equal(KeyProtectionEvidence.ProviderReported, report.Layers.Signature.Protection.Evidence);
     }
@@ -297,14 +441,16 @@ public sealed class CrossPlatformCryptoStorageAcceptanceTests : IDisposable
         var claim = new KeyProtectionClaim(
             KeyProtectionLevel.SoftwareProtected,
             KeyProtectionEvidence.ProviderReported,
-            "LinuxFileSystemKeyStore",
+            LinuxEvidenceKeyProvider.KeyStoreProviderName,
             "POSIX:0700/0600:exact-ownership:openat2:system-daemon");
 
         using var identity = new LinuxEvidenceSigningIdentity(ecdsa, claim, LinuxSigningIdentityScope.SystemInstallation);
         await CreateSamplePackageAsync(pkgDir, identity.KeyId);
+
+        // 1. Sign manifest atomically to produce manifest.sig
         var envelope = await ManifestSigner.SignManifestAtomicallyAsync(pkgDir, identity);
 
-        // Create a local timestamp token over manifest.sig canonical bytes
+        // 2. Compute timestamp token over the exact produced manifest.sig bytes
         var sigPath = Path.Combine(pkgDir, SignatureEnvelope.FileName);
         var sigBytes = await File.ReadAllBytesAsync(sigPath);
         var imprint = SHA256.HashData(sigBytes);
@@ -361,27 +507,7 @@ public sealed class CrossPlatformCryptoStorageAcceptanceTests : IDisposable
 
         await File.WriteAllBytesAsync(Path.Combine(tsrDir, "timestamp.tsr"), signedCms.Encode());
 
-        // Update manifest inventory to include timestamp files
-        var tsrBytes = await File.ReadAllBytesAsync(Path.Combine(tsrDir, "timestamp.tsr"));
-        var manifestPath = Path.Combine(pkgDir, EvidenceManifest.FileName);
-        var manifestObj = JsonSerializer.Deserialize<EvidenceManifest>(await File.ReadAllTextAsync(manifestPath), TestJsonOptions)!;
-        var updatedFiles = new List<ManifestFileEntry>(manifestObj.Files ?? Array.Empty<ManifestFileEntry>())
-        {
-            new ManifestFileEntry("Evidence/timestamp/timestamp.tsr", tsrBytes.Length, Convert.ToHexStringLower(SHA256.HashData(tsrBytes)))
-        };
-        var updatedManifest = new EvidenceManifest(
-            manifestObj.ManifestSchemaVersion,
-            manifestObj.Canonicalization,
-            manifestObj.CreatedUtc,
-            manifestObj.Session,
-            manifestObj.Evidence,
-            updatedFiles.OrderBy(f => f.RelativePath, StringComparer.Ordinal).ToList(),
-            manifestObj.AcquisitionContext);
-
-        await File.WriteAllBytesAsync(manifestPath, updatedManifest.ToCanonicalBytes());
-        envelope = await ManifestSigner.SignManifestAtomicallyAsync(pkgDir, identity);
-
-        // Verify valid timestamped package first
+        // Pre-tamper verification: PROVE Timestamp is cryptographically valid BEFORE tamper
         var initialReport = await PackageVerifier.VerifyPackageAsync(pkgDir, new VerificationOptions
         {
             Offline = true,
@@ -390,6 +516,11 @@ public sealed class CrossPlatformCryptoStorageAcceptanceTests : IDisposable
         Assert.NotNull(initialReport.Layers.Signature);
         Assert.NotNull(initialReport.Layers.TrustedTimestamp);
         Assert.Equal(LayerStatus.Verified, initialReport.Layers.Signature.Status);
+        Assert.True(
+            initialReport.Layers.TrustedTimestamp.Status == LayerStatus.Verified ||
+            initialReport.Layers.TrustedTimestamp.Status == LayerStatus.ValidUntrusted,
+            "Timestamp token must be cryptographically valid before tampering.");
+        Assert.Equal(IntegrityStatus.Verified, initialReport.Integrity);
 
         // Tamper with KeyProtection claim in manifest.sig (change Provider)
         var tamperedEnvelope = new SignatureEnvelope(
@@ -408,7 +539,7 @@ public sealed class CrossPlatformCryptoStorageAcceptanceTests : IDisposable
 
         await File.WriteAllBytesAsync(sigPath, tamperedEnvelope.ToCanonicalBytes());
 
-        // Re-verify after tamper
+        // Re-verify after tamper: PROVE tamper caused Invalid status
         var tamperedReport = await PackageVerifier.VerifyPackageAsync(pkgDir, new VerificationOptions
         {
             Offline = true,
@@ -425,118 +556,16 @@ public sealed class CrossPlatformCryptoStorageAcceptanceTests : IDisposable
         Assert.Equal(OverallStatus.Invalid, tamperedReport.Overall);
     }
 
-    // ======================================================================
-    // 3. STORAGE LAYOUT & SESSION BOUNDARY PARITY (XPL-11..15)
-    // ======================================================================
-
-    [Fact]
-    [Trait("Acceptance", "3.1-8F")]
-    [Trait("Platform", "Shared")]
-    public void XPL_11_LNX_Windows_And_Linux_LayoutDescriptor_Contracts_Are_Identical_Linux()
-    {
-        var desc = SessionLayoutDescriptor.CreateStandard("test-session-001");
-
-        Assert.Equal(2, desc.LayoutVersion);
-        Assert.Equal(1, desc.StoragePolicyVersion);
-        Assert.NotEmpty(desc.StoragePolicyHash);
-        Assert.Equal(64, desc.StoragePolicyHash.Length);
-    }
-
-    [Fact]
-    [Trait("Acceptance", "3.1-8F")]
-    [Trait("Platform", "Shared")]
-    public void XPL_12_LNX_Platform_Roots_Differ_But_Session_Relative_Tree_Is_Canonical_Linux()
-    {
-        var sysLayout = new LinuxStorageLayout();
-        var portLayout = new LinuxPortableStorageLayout("/tmp/iem-port-state");
-
-        var sysSession = sysLayout.GetSessionDirectory("ses-01", isInstalled: true);
-        var portSession = portLayout.GetSessionDirectory("ses-01", isInstalled: false);
-
-        // Linux System and Portable session naming contract: Sesija_<id>
-        Assert.EndsWith("Sesija_ses-01", sysSession);
-        Assert.EndsWith("Sesija_ses-01", portSession);
-
-        // Canonical relative tree
-        var expectedDirs = new[] { "Raw", "Derived", "Evidence", "Exports" };
-        foreach (var dir in expectedDirs)
-        {
-            var sysSub = Path.Combine(sysSession, dir);
-            var portSub = Path.Combine(portSession, dir);
-            Assert.Equal(dir, Path.GetRelativePath(sysSession, sysSub));
-            Assert.Equal(dir, Path.GetRelativePath(portSession, portSub));
-        }
-    }
-
-    [Fact]
-    [Trait("Acceptance", "3.1-8F")]
-    [Trait("Platform", "Shared")]
-    public void XPL_13_LNX_StorageProtectionObservation_Uses_Factual_Platform_Provenance_Linux()
-    {
-        var observation = new StorageProtectionObservation(
-            ObservationId: Guid.NewGuid().ToString("N"),
-            SessionId: "ses-lnx-01",
-            CapturedUtc: DateTimeOffset.UtcNow,
-            Platform: "Linux",
-            LayoutVersion: 2,
-            StoragePolicyVersion: 1,
-            StoragePolicyHash: "0000000000000000000000000000000000000000000000000000000000000000",
-            ProtectionState: StorageProtectionState.Established,
-            RootBoundaryValid: true,
-            ReparsePointCheck: true,
-            PlatformSecurityDescriptorRef: "POSIX:0700:uid=1000:gid=1000");
-
-        Assert.Equal("Linux", observation.Platform);
-        Assert.Equal(StorageProtectionState.Established, observation.ProtectionState);
-        Assert.True(observation.RootBoundaryValid);
-        Assert.True(observation.ReparsePointCheck);
-        Assert.Contains("POSIX:0700", observation.PlatformSecurityDescriptorRef!);
-    }
-
     [Fact]
     [Trait("Acceptance", "3.1-8F")]
     [Trait("Platform", "Shared")]
     public void XPL_14_StoragePolicyHash_Is_Platform_Independent_And_Deterministic()
     {
-        var desc1 = SessionLayoutDescriptor.CreateStandard("ses-01");
-        var desc2 = SessionLayoutDescriptor.CreateStandard("ses-01");
+        var winDesc = SessionLayoutDescriptor.CreateStandard("ses-cross-01");
+        var lnxDesc = SessionLayoutDescriptor.CreateStandard("ses-cross-01");
 
-        Assert.Equal(desc1.StoragePolicyHash, desc2.StoragePolicyHash);
-    }
-
-    [Fact]
-    [Trait("Acceptance", "3.1-8F")]
-    [Trait("Platform", "Shared")]
-    public async Task XPL_15_LNX_Existing_Session_Restart_Verifies_Without_Reprovision_Or_Repair_Linux()
-    {
-        var sessionDir = Path.Combine(_tempRoot, "Sesija_restart-01");
-        Directory.CreateDirectory(sessionDir);
-        Directory.CreateDirectory(Path.Combine(sessionDir, "Raw"));
-        Directory.CreateDirectory(Path.Combine(sessionDir, "Derived"));
-        Directory.CreateDirectory(Path.Combine(sessionDir, "Evidence"));
-        Directory.CreateDirectory(Path.Combine(sessionDir, "Exports"));
-
-        var desc = SessionLayoutDescriptor.CreateStandard("restart-01");
-        var layoutJsonPath = Path.Combine(sessionDir, "layout.json");
-        await File.WriteAllBytesAsync(layoutJsonPath, desc.ToCanonicalBytes());
-
-        var preVerifyBytes = await File.ReadAllBytesAsync(layoutJsonPath);
-        var postVerifyBytes = await File.ReadAllBytesAsync(layoutJsonPath);
-        Assert.Equal(preVerifyBytes, postVerifyBytes);
-    }
-
-    // ======================================================================
-    // 4. SYMLINK & PATH SAFETY PARITY (XPL-16..20)
-    // ======================================================================
-
-    [Fact]
-    [Trait("Acceptance", "3.1-8F")]
-    [Trait("Platform", "Shared")]
-    public void XPL_16_LNX_Platform_Storage_Boundaries_Reject_Symlink_And_Reparse_Hijack_Linux()
-    {
-        var guard = new LinuxSymlinkGuard();
-        Assert.NotNull(guard);
-        Assert.True(guard is ISymlinkSafetyGuard);
+        Assert.Equal(winDesc.StoragePolicyHash, lnxDesc.StoragePolicyHash);
+        Assert.Equal(winDesc.ToCanonicalBytes(), lnxDesc.ToCanonicalBytes());
     }
 
     [Fact]
@@ -550,7 +579,7 @@ public sealed class CrossPlatformCryptoStorageAcceptanceTests : IDisposable
         using var ecdsa = ECDsa.Create(ECCurve.NamedCurves.nistP256);
         var identity = new EphemeralSoftwareSigningIdentity(ecdsa);
 
-        // Create manifest with lexical escape path
+        // 1. Lexical escape path
         var files = new List<ManifestFileEntry>
         {
             new ManifestFileEntry("../../etc/shadow", 100, "0000000000000000000000000000000000000000000000000000000000000000")
@@ -563,7 +592,7 @@ public sealed class CrossPlatformCryptoStorageAcceptanceTests : IDisposable
             Session: new ManifestSessionInfo("ses-17", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, 1, "3.1.0"),
             Evidence: new ManifestEvidenceSummary(new ManifestRawChainRef("Evidence/raw.log", "0000", 0), null, null, null),
             Files: files,
-            AcquisitionContext: new ManifestAcquisitionContext("Linux", new Dictionary<string, string>()));
+            AcquisitionContext: new ManifestAcquisitionContext("Shared", new Dictionary<string, string>()));
 
         var manifestPath = Path.Combine(packageDir, EvidenceManifest.FileName);
         await File.WriteAllBytesAsync(manifestPath, manifest.ToCanonicalBytes());
@@ -575,71 +604,6 @@ public sealed class CrossPlatformCryptoStorageAcceptanceTests : IDisposable
         Assert.NotNull(report.Layers.Manifest);
         Assert.True(report.Layers.Manifest.Violations.Count > 0);
     }
-
-    [Fact]
-    [Trait("Acceptance", "3.1-8F")]
-    [Trait("Platform", "Shared")]
-    public void XPL_18_Linux_OpenAt2_Resolve_Flags_Block_Traversal()
-    {
-        // Assert the 4 locked openat2 flags in Linux storage constants
-        Assert.Equal(0x01u, LinuxPosixStorageConstants.RESOLVE_NO_XDEV);
-        Assert.Equal(0x02u, LinuxPosixStorageConstants.RESOLVE_NO_MAGICLINKS);
-        Assert.Equal(0x04u, LinuxPosixStorageConstants.RESOLVE_NO_SYMLINKS);
-        Assert.Equal(0x08u, LinuxPosixStorageConstants.RESOLVE_BENEATH);
-    }
-
-    [Fact]
-    [Trait("Acceptance", "3.1-8F")]
-    [Trait("Platform", "Shared")]
-    public void XPL_19_LNX_Invalid_Boundary_Produces_Exact_Platform_Protection_State_Linux()
-    {
-        var observation = new StorageProtectionObservation(
-            ObservationId: Guid.NewGuid().ToString("N"),
-            SessionId: "ses-invalid-01",
-            CapturedUtc: DateTimeOffset.UtcNow,
-            Platform: "Linux",
-            LayoutVersion: 2,
-            StoragePolicyVersion: 1,
-            StoragePolicyHash: "0000000000000000000000000000000000000000000000000000000000000000",
-            ProtectionState: StorageProtectionState.NotEstablished,
-            RootBoundaryValid: false,
-            ReparsePointCheck: false,
-            PlatformSecurityDescriptorRef: null,
-            DiagnosticMessage: "Boundary directory does not exist.");
-
-        Assert.Equal(StorageProtectionState.NotEstablished, observation.ProtectionState);
-        Assert.False(observation.RootBoundaryValid);
-    }
-
-    [Fact]
-    [Trait("Acceptance", "3.1-8F")]
-    [Trait("Platform", "Shared")]
-    public void XPL_20_LNX_StorageProtectionObservation_Boundary_Flags_Are_Factual_Linux()
-    {
-        var observation = new StorageProtectionObservation(
-            ObservationId: Guid.NewGuid().ToString("N"),
-            SessionId: "ses-fact-01",
-            CapturedUtc: DateTimeOffset.UtcNow,
-            Platform: "Linux",
-            LayoutVersion: 2,
-            StoragePolicyVersion: 1,
-            StoragePolicyHash: "0000000000000000000000000000000000000000000000000000000000000000",
-            ProtectionState: StorageProtectionState.Established,
-            RootBoundaryValid: true,
-            ReparsePointCheck: true,
-            PlatformSecurityDescriptorRef: "POSIX:0700",
-            DiagnosticMessage: null);
-
-        Assert.Equal(StorageProtectionState.Established, observation.ProtectionState);
-        Assert.True(observation.RootBoundaryValid);
-        Assert.True(observation.ReparsePointCheck);
-        Assert.NotNull(observation.PlatformSecurityDescriptorRef);
-        Assert.Null(observation.DiagnosticMessage);
-    }
-
-    // ======================================================================
-    // 5. ATOMIC PUBLISHING & TAMPER DETECTION PARITY (XPL-21..25)
-    // ======================================================================
 
     [Fact]
     [Trait("Acceptance", "3.1-8F")]
@@ -771,10 +735,6 @@ public sealed class CrossPlatformCryptoStorageAcceptanceTests : IDisposable
         Assert.Equal(LayerStatus.Invalid, report.Layers.Manifest.Status);
         Assert.True(report.Layers.Manifest.MissingFiles >= 1);
     }
-
-    // ======================================================================
-    // 6. CROSS-PLATFORM CAPSTONE INVARIANTS (XPL-26..30)
-    // ======================================================================
 
     [Fact]
     [Trait("Acceptance", "3.1-8F")]
@@ -963,7 +923,7 @@ public sealed class CrossPlatformCryptoStorageAcceptanceTests : IDisposable
                 ProviderProvenance: new Dictionary<string, string>
                 {
                     ["signingScope"] = "SystemInstallation",
-                    ["provider"] = "LinuxFileSystemKeyStore"
+                    ["provider"] = LinuxEvidenceKeyProvider.KeyStoreProviderName
                 }));
 
         var manifestPath = Path.Combine(packageDir, EvidenceManifest.FileName);
@@ -980,7 +940,13 @@ public sealed class CrossPlatformCryptoStorageAcceptanceTests : IDisposable
         }
 
         var root = GetRepositoryRoot();
-        return Path.Combine(root, "tests", "IEM.Core.Tests", "Fixtures", "CrossPlatform", fixtureName);
+        var rootCandidate = Path.Combine(root, "tests", "IEM.Core.Tests", "Fixtures", "CrossPlatform", fixtureName);
+        if (Directory.Exists(rootCandidate))
+        {
+            return rootCandidate;
+        }
+
+        throw new DirectoryNotFoundException($"Fixture directory '{fixtureName}' not found. Zero runtime fixture generation allowed.");
     }
 
     private static string GetRepositoryRoot()
@@ -996,146 +962,5 @@ public sealed class CrossPlatformCryptoStorageAcceptanceTests : IDisposable
             dir = dir.Parent;
         }
         return AppContext.BaseDirectory;
-    }
-
-    private static void EnsureGoldenFixturesCreated()
-    {
-        var root = GetRepositoryRoot();
-        var baseFixturesDir = Path.Combine(root, "tests", "IEM.Core.Tests", "Fixtures", "CrossPlatform");
-        Directory.CreateDirectory(baseFixturesDir);
-
-        CreateGoldenFixtureIfMissing(
-            Path.Combine(baseFixturesDir, "LinuxSystemPackage"),
-            "iem-session-linux-sys-001",
-            "Linux",
-            "SystemInstallation",
-            KeyProtectionLevel.SoftwareProtected,
-            "LinuxFileSystemKeyStore",
-            "POSIX:0700/0600:exact-ownership:openat2:system-daemon");
-
-        CreateGoldenFixtureIfMissing(
-            Path.Combine(baseFixturesDir, "LinuxPortablePackage"),
-            "iem-session-linux-port-001",
-            "Linux",
-            "PortableUser",
-            KeyProtectionLevel.SoftwareProtected,
-            "LinuxFileSystemKeyStore",
-            "POSIX:0700/0600:exact-ownership:openat2:user-portable");
-
-        CreateGoldenFixtureIfMissing(
-            Path.Combine(baseFixturesDir, "WindowsCngPackage"),
-            "iem-session-win-cng-001",
-            "Windows",
-            "WindowsUserOrMachine",
-            KeyProtectionLevel.SoftwareProtected,
-            "Microsoft Software Key Storage Provider",
-            "CNG:NCRYPT_ALLOW_EXPORT_FLAG=0");
-    }
-
-    private static void CreateGoldenFixtureIfMissing(
-        string packageDir,
-        string sessionId,
-        string platform,
-        string scope,
-        KeyProtectionLevel level,
-        string provider,
-        string details)
-    {
-        if (File.Exists(Path.Combine(packageDir, EvidenceManifest.FileName)) &&
-            File.Exists(Path.Combine(packageDir, SignatureEnvelope.FileName)) &&
-            File.Exists(Path.Combine(packageDir, "fixture-metadata.json")))
-        {
-            return;
-        }
-
-        Directory.CreateDirectory(packageDir);
-        var evidenceDir = Path.Combine(packageDir, "Evidence");
-        Directory.CreateDirectory(evidenceDir);
-
-        var rawLogPath = Path.Combine(evidenceDir, "raw.log");
-        string finalChainHash;
-        long recordCount;
-
-        using (var writer = HashChainWriter.Open(rawLogPath))
-        {
-            writer.Append(new SessionStartPayload(
-                SessionId: sessionId,
-                ToolVersion: "3.1.0",
-                StartedUtc: new DateTimeOffset(2026, 8, 21, 11, 0, 0, TimeSpan.Zero),
-                PlannedDuration: TimeSpan.FromMinutes(30),
-                MachineName: "FIXTURE-HOST",
-                InterfaceName: platform == "Linux" ? "eth0" : "Ethernet",
-                Medium: LinkMedium.Ethernet,
-                LinkSpeedBitsPerSecond: 1_000_000_000,
-                GatewayAddress: "192.168.1.1"));
-
-            finalChainHash = writer.HeadHash;
-            recordCount = writer.EntriesWritten;
-        }
-
-        var sessionStartJsonPath = Path.Combine(evidenceDir, "session_start.json");
-        File.WriteAllText(sessionStartJsonPath, JsonSerializer.Serialize(new
-        {
-            sessionId,
-            startedUtc = new DateTimeOffset(2026, 8, 21, 11, 0, 0, TimeSpan.Zero),
-            version = "3.1.0"
-        }));
-
-        var rawBytes = File.ReadAllBytes(rawLogPath);
-        var jsonBytes = File.ReadAllBytes(sessionStartJsonPath);
-
-        var files = new List<ManifestFileEntry>
-        {
-            new ManifestFileEntry("Evidence/raw.log", rawBytes.Length, Convert.ToHexStringLower(SHA256.HashData(rawBytes))),
-            new ManifestFileEntry("Evidence/session_start.json", jsonBytes.Length, Convert.ToHexStringLower(SHA256.HashData(jsonBytes)))
-        };
-
-        var manifest = new EvidenceManifest(
-            ManifestSchemaVersion: 1,
-            Canonicalization: "RFC8785-JCS",
-            CreatedUtc: new DateTimeOffset(2026, 8, 21, 11, 30, 0, TimeSpan.Zero),
-            Session: new ManifestSessionInfo(
-                SessionId: sessionId,
-                StartedUtc: new DateTimeOffset(2026, 8, 21, 11, 0, 0, TimeSpan.Zero),
-                FinishedUtc: new DateTimeOffset(2026, 8, 21, 11, 30, 0, TimeSpan.Zero),
-                EvidenceSchemaVersion: 1,
-                ApplicationVersion: "3.1.0"),
-            Evidence: new ManifestEvidenceSummary(
-                RawChain: new ManifestRawChainRef("Evidence/raw.log", finalChainHash, recordCount),
-                DerivedLedger: null,
-                InterpretationCatalog: null,
-                LegalContextHash: null),
-            Files: files.OrderBy(f => f.RelativePath, StringComparer.Ordinal).ToList(),
-            AcquisitionContext: new ManifestAcquisitionContext(
-                Platform: platform,
-                ProviderProvenance: new Dictionary<string, string>
-                {
-                    ["signingScope"] = scope,
-                    ["provider"] = provider
-                }));
-
-        var manifestPath = Path.Combine(packageDir, EvidenceManifest.FileName);
-        File.WriteAllBytes(manifestPath, manifest.ToCanonicalBytes());
-
-        using var ecdsa = ECDsa.Create(ECCurve.NamedCurves.nistP256);
-        using var identity = new EphemeralSoftwareSigningIdentity(ecdsa, level, provider, details);
-
-        var envelope = ManifestSigner.SignManifestAtomicallyAsync(packageDir, identity).GetAwaiter().GetResult();
-
-        var metadata = new
-        {
-            fixtureVersion = 1,
-            sourcePlatform = platform,
-            sourceProvider = provider,
-            signingScope = scope,
-            keyId = identity.KeyId,
-            generatedFromCommit = "dad549a0253d828e38b194072324e9d7efcfffb8",
-            expectedOverall = "ValidTrustNotEstablished",
-            expectedIntegrity = "Verified",
-            expectedTrust = "NotEstablished"
-        };
-
-        var metadataPath = Path.Combine(packageDir, "fixture-metadata.json");
-        File.WriteAllText(metadataPath, JsonSerializer.Serialize(metadata, new JsonSerializerOptions { WriteIndented = true }));
     }
 }

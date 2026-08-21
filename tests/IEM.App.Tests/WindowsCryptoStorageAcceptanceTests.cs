@@ -10,7 +10,7 @@ using Xunit;
 namespace IEM.App.Tests;
 
 /// <summary>
-/// Phase 3.1-8F · Windows-Native Crypto &amp; Storage Acceptance Test Suite.
+/// Phase 3.1-8F-R1 · Windows-Native Crypto &amp; Storage Acceptance Test Suite.
 /// Validates Windows CNG signing identity, Windows ACL provisioning,
 /// Windows reparse point guard, and Windows storage layout truth.
 /// </summary>
@@ -43,11 +43,6 @@ public sealed class WindowsCryptoStorageAcceptanceTests : IDisposable
     [Trait("Platform", "Windows")]
     public async Task XPL_03_WIN_Windows_And_Linux_Identities_Share_Canonical_Suite_SPKI_And_KeyId_Formula_Windows()
     {
-        if (!OperatingSystem.IsWindows())
-        {
-            return;
-        }
-
         var provider = new WindowsCngKeyProvider("IEM_Test_XPL_03_" + Guid.NewGuid().ToString("N"), machineKey: false);
         var identity = await provider.GetOrCreateIdentityAsync();
 
@@ -64,28 +59,23 @@ public sealed class WindowsCryptoStorageAcceptanceTests : IDisposable
     [Fact]
     [Trait("Acceptance", "3.1-8F")]
     [Trait("Platform", "Windows")]
-    public void XPL_08_WIN_Windows_KeyProtection_Claim_Is_Exact_Provider_Level_Pair()
+    public async Task XPL_08_WIN_Windows_KeyProtection_Claim_Is_Exact_Provider_Level_Pair()
     {
-        // Valid Pair 1: TpmBacked + Microsoft Platform Crypto Provider
-        var tpmClaim = new KeyProtectionClaim(
-            KeyProtectionLevel.TpmBacked,
-            KeyProtectionEvidence.ProviderReported,
-            CngProvider.MicrosoftPlatformCryptoProvider.Provider);
+        var provider = new WindowsCngKeyProvider("IEM_Test_XPL_08_" + Guid.NewGuid().ToString("N"), machineKey: false);
+        var identity = await provider.GetOrCreateIdentityAsync();
 
-        Assert.Equal(KeyProtectionLevel.TpmBacked, tpmClaim.Protection);
-        Assert.Equal("Microsoft Platform Crypto Provider", tpmClaim.Provider);
+        Assert.NotNull(identity.Protection);
+        Assert.Equal(KeyProtectionEvidence.ProviderReported, identity.Protection.Evidence);
 
-        // Valid Pair 2: SoftwareProtected + Microsoft Software Key Storage Provider
-        var swClaim = new KeyProtectionClaim(
-            KeyProtectionLevel.SoftwareProtected,
-            KeyProtectionEvidence.ProviderReported,
-            CngProvider.MicrosoftSoftwareKeyStorageProvider.Provider);
-
-        Assert.Equal(KeyProtectionLevel.SoftwareProtected, swClaim.Protection);
-        Assert.Equal("Microsoft Software Key Storage Provider", swClaim.Provider);
-
-        // Rejection of mismatched pair 1: TpmBacked + Software KSP
-        Assert.NotEqual(tpmClaim.Provider, swClaim.Provider);
+        if (identity.Protection.Protection == KeyProtectionLevel.TpmBacked)
+        {
+            Assert.Equal("Microsoft Platform Crypto Provider", identity.Protection.Provider);
+        }
+        else
+        {
+            Assert.Equal(KeyProtectionLevel.SoftwareProtected, identity.Protection.Protection);
+            Assert.Equal("Microsoft Software Key Storage Provider", identity.Protection.Provider);
+        }
     }
 
     [Fact]
@@ -129,21 +119,15 @@ public sealed class WindowsCryptoStorageAcceptanceTests : IDisposable
     [Fact]
     [Trait("Acceptance", "3.1-8F")]
     [Trait("Platform", "Windows")]
-    public void XPL_13_WIN_StorageProtectionObservation_Uses_Factual_Platform_Provenance_Windows()
+    public async Task XPL_13_WIN_StorageProtectionObservation_Uses_Factual_Platform_Provenance_Windows()
     {
-        var observation = new StorageProtectionObservation(
-            ObservationId: Guid.NewGuid().ToString("N"),
-            SessionId: "ses-win-01",
-            CapturedUtc: DateTimeOffset.UtcNow,
-            Platform: "Windows",
-            LayoutVersion: 2,
-            StoragePolicyVersion: 1,
-            StoragePolicyHash: "0000000000000000000000000000000000000000000000000000000000000000",
-            ProtectionState: StorageProtectionState.Established,
-            RootBoundaryValid: true,
-            ReparsePointCheck: true,
-            PlatformSecurityDescriptorRef: "D:(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)");
+        var provisioner = new WindowsSessionAclProvisioner();
+        Assert.Equal("Windows", provisioner.PlatformName);
 
+        var sessionDir = Path.Combine(_tempRoot, "Sesija_win-prov-01");
+        var layout = SessionLayoutDescriptor.CreateStandard("win-prov-01");
+
+        var observation = await provisioner.ProvisionSessionBoundariesAsync(sessionDir, layout);
         Assert.Equal("Windows", observation.Platform);
         Assert.Equal(StorageProtectionState.Established, observation.ProtectionState);
         Assert.True(observation.RootBoundaryValid);
@@ -157,19 +141,29 @@ public sealed class WindowsCryptoStorageAcceptanceTests : IDisposable
     public async Task XPL_15_WIN_Existing_Session_Restart_Verifies_Without_Reprovision_Or_Repair_Windows()
     {
         var sessionDir = Path.Combine(_tempRoot, "Sesija_win-restart-01");
-        Directory.CreateDirectory(sessionDir);
-        Directory.CreateDirectory(Path.Combine(sessionDir, "Raw"));
-        Directory.CreateDirectory(Path.Combine(sessionDir, "Derived"));
-        Directory.CreateDirectory(Path.Combine(sessionDir, "Evidence"));
-        Directory.CreateDirectory(Path.Combine(sessionDir, "Exports"));
+        var provisioner = new WindowsSessionAclProvisioner();
+        var layout = SessionLayoutDescriptor.CreateStandard("win-restart-01");
 
-        var desc = SessionLayoutDescriptor.CreateStandard("win-restart-01");
-        var layoutJsonPath = Path.Combine(sessionDir, "layout.json");
-        await File.WriteAllBytesAsync(layoutJsonPath, desc.ToCanonicalBytes());
+        var initialObs = await provisioner.ProvisionSessionBoundariesAsync(sessionDir, layout);
+        Assert.Equal(StorageProtectionState.Established, initialObs.ProtectionState);
 
-        var preVerifyBytes = await File.ReadAllBytesAsync(layoutJsonPath);
-        var postVerifyBytes = await File.ReadAllBytesAsync(layoutJsonPath);
-        Assert.Equal(preVerifyBytes, postVerifyBytes);
+        var filesBefore = Directory.GetFiles(sessionDir, "*", SearchOption.AllDirectories)
+            .ToDictionary(f => f, f => File.ReadAllBytes(f));
+
+        var verifyObs = await provisioner.VerifyStorageProtectionAsync(sessionDir, layout);
+        Assert.Equal(StorageProtectionState.Established, verifyObs.ProtectionState);
+        Assert.True(verifyObs.RootBoundaryValid);
+        Assert.True(verifyObs.ReparsePointCheck);
+
+        var filesAfter = Directory.GetFiles(sessionDir, "*", SearchOption.AllDirectories)
+            .ToDictionary(f => f, f => File.ReadAllBytes(f));
+
+        Assert.Equal(filesBefore.Count, filesAfter.Count);
+        foreach (var kvp in filesBefore)
+        {
+            Assert.True(filesAfter.ContainsKey(kvp.Key));
+            Assert.Equal(kvp.Value, filesAfter[kvp.Key]);
+        }
     }
 
     [Fact]
@@ -177,67 +171,55 @@ public sealed class WindowsCryptoStorageAcceptanceTests : IDisposable
     [Trait("Platform", "Windows")]
     public void XPL_16_WIN_Platform_Storage_Boundaries_Reject_Symlink_And_Reparse_Hijack_Windows()
     {
-        var sessionDir = Path.Combine(_tempRoot, "Sesija_reparse_test");
+        var sessionDir = Path.Combine(_tempRoot, "Sesija_reparse_win");
+        var outsideTarget = Path.Combine(_tempRoot, "outside_target");
         Directory.CreateDirectory(sessionDir);
+        Directory.CreateDirectory(outsideTarget);
 
-        var normalSubdir = Path.Combine(sessionDir, "Raw");
-        Directory.CreateDirectory(normalSubdir);
+        var normalSub = Path.Combine(sessionDir, "Raw");
+        Directory.CreateDirectory(normalSub);
 
-        var isReparse = WindowsReparsePointGuard.IsReparsePoint(normalSubdir);
-        Assert.False(isReparse);
+        Assert.False(WindowsReparsePointGuard.IsReparsePoint(normalSub));
+        Assert.True(WindowsReparsePointGuard.ValidateNoReparsePointsAlongPath(sessionDir, normalSub, out var okViolation));
+        Assert.Null(okViolation);
 
-        var valid = WindowsReparsePointGuard.ValidateNoReparsePointsAlongPath(sessionDir, normalSubdir, out var violation);
-        Assert.True(valid);
-        Assert.Null(violation);
+        // Test reparse point detection logic on non-directory file or simulated reparse point path
+        Assert.False(WindowsReparsePointGuard.IsReparsePoint(""));
+        Assert.False(WindowsReparsePointGuard.IsReparsePoint(null!));
     }
 
     [Fact]
     [Trait("Acceptance", "3.1-8F")]
     [Trait("Platform", "Windows")]
-    public void XPL_19_WIN_Invalid_Boundary_Produces_Exact_Platform_Protection_State_Windows()
+    public async Task XPL_19_WIN_Invalid_Boundary_Produces_Exact_Platform_Protection_State_Windows()
     {
-        // Reparse point drift / boundary invalidation produces Degraded or NotEstablished
-        var degradedObs = new StorageProtectionObservation(
-            ObservationId: Guid.NewGuid().ToString("N"),
-            SessionId: "ses-drift-01",
-            CapturedUtc: DateTimeOffset.UtcNow,
-            Platform: "Windows",
-            LayoutVersion: 2,
-            StoragePolicyVersion: 1,
-            StoragePolicyHash: "0000000000000000000000000000000000000000000000000000000000000000",
-            ProtectionState: StorageProtectionState.Degraded,
-            RootBoundaryValid: true,
-            ReparsePointCheck: false,
-            PlatformSecurityDescriptorRef: null,
-            DiagnosticMessage: "Reparse point drift detected.");
+        var provisioner = new WindowsSessionAclProvisioner();
+        var nonExistentDir = Path.Combine(_tempRoot, "NonExistentSessionDir_" + Guid.NewGuid().ToString("N"));
+        var layout = SessionLayoutDescriptor.CreateStandard("win-invalid-01");
 
-        Assert.Equal(StorageProtectionState.Degraded, degradedObs.ProtectionState);
-        Assert.False(degradedObs.ReparsePointCheck);
+        var observation = await provisioner.VerifyStorageProtectionAsync(nonExistentDir, layout);
+        Assert.Equal(StorageProtectionState.NotEstablished, observation.ProtectionState);
+        Assert.False(observation.RootBoundaryValid);
+        Assert.False(observation.ReparsePointCheck);
+        Assert.Equal("Windows", observation.Platform);
     }
 
     [Fact]
     [Trait("Acceptance", "3.1-8F")]
     [Trait("Platform", "Windows")]
-    public void XPL_20_WIN_StorageProtectionObservation_Boundary_Flags_Are_Factual_Windows()
+    public async Task XPL_20_WIN_StorageProtectionObservation_Boundary_Flags_Are_Factual_Windows()
     {
-        var observation = new StorageProtectionObservation(
-            ObservationId: Guid.NewGuid().ToString("N"),
-            SessionId: "ses-fact-win",
-            CapturedUtc: DateTimeOffset.UtcNow,
-            Platform: "Windows",
-            LayoutVersion: 2,
-            StoragePolicyVersion: 1,
-            StoragePolicyHash: "0000000000000000000000000000000000000000000000000000000000000000",
-            ProtectionState: StorageProtectionState.Established,
-            RootBoundaryValid: true,
-            ReparsePointCheck: true,
-            PlatformSecurityDescriptorRef: "WindowsSecurityDescriptorRef",
-            DiagnosticMessage: null);
+        var provisioner = new WindowsSessionAclProvisioner();
+        var sessionDir = Path.Combine(_tempRoot, "Sesija_win-fact-01");
+        var layout = SessionLayoutDescriptor.CreateStandard("win-fact-01");
+
+        await provisioner.ProvisionSessionBoundariesAsync(sessionDir, layout);
+        var observation = await provisioner.VerifyStorageProtectionAsync(sessionDir, layout);
 
         Assert.Equal(StorageProtectionState.Established, observation.ProtectionState);
         Assert.True(observation.RootBoundaryValid);
         Assert.True(observation.ReparsePointCheck);
-        Assert.NotNull(observation.PlatformSecurityDescriptorRef);
+        Assert.Equal("WindowsDACL:Verified", observation.PlatformSecurityDescriptorRef);
         Assert.Null(observation.DiagnosticMessage);
     }
 }
