@@ -1,5 +1,5 @@
-using System.Security.Cryptography;
 using IEM.Core.Hosting;
+using IEM.Core.Ipc;
 using IEM.Core.Model;
 using IEM.Core.Probes;
 using IEM.Evidence.Crypto;
@@ -10,6 +10,7 @@ using IEM.Linux.Installation;
 using IEM.Linux.Network;
 using IEM.Linux.Storage;
 using IEM.Service.Linux.Composition;
+using IEM.Service.Linux.Installation;
 using IEM.Storage;
 using IEM.Storage.Layout;
 using Microsoft.Extensions.DependencyInjection;
@@ -406,28 +407,22 @@ public sealed class LinuxProductionCompositionTests
     [Fact]
     public void COM_24_Production_Host_Uses_Approved_Composition_Root_Only()
     {
-        var programPath = Path.Combine(AppContext.BaseDirectory, "../../../../../src/IEM.Service.Linux/Program.cs");
-        if (!File.Exists(programPath))
-        {
-            programPath = @"d:\ProjektiApp\testneta\src\IEM.Service.Linux\Program.cs";
-        }
+        var repoRoot = GetRepositoryRoot();
+        var programPath = Path.Combine(repoRoot, "src", "IEM.Service.Linux", "Program.cs");
+        Assert.True(File.Exists(programPath), $"Program.cs must exist at {programPath}");
 
-        if (File.Exists(programPath))
-        {
-            var content = File.ReadAllText(programPath);
-            Assert.Contains("builder.Services.AddLinuxSystemServices();", content);
-            Assert.DoesNotContain("new LinuxEvidenceKeyProvider", content);
-            Assert.DoesNotContain("new LinuxSessionModeProvisioner", content);
-            Assert.DoesNotContain("new LinuxSymlinkGuard", content);
-            Assert.DoesNotContain("new LinuxNativePosixStorageApi", content);
-        }
+        var content = File.ReadAllText(programPath);
+        Assert.Contains("builder.Services.AddLinuxSystemServices();", content);
+        Assert.DoesNotContain("new LinuxEvidenceKeyProvider", content);
+        Assert.DoesNotContain("new LinuxSessionModeProvisioner", content);
+        Assert.DoesNotContain("new LinuxSymlinkGuard", content);
+        Assert.DoesNotContain("new LinuxNativePosixStorageApi", content);
     }
 
     [Fact]
     public void COM_25_StateRoot_Existence_Never_Determines_InstallationPresence()
     {
         // Scenario A: Stale StateRoot exists on disk, but systemd service is absent
-        var mock = CreateMockStorage("/var/lib/internet-evidence-monitor");
         var presenceSourceA = new MockPresenceSource(InstallationPresence.PortableOnly);
         var reachabilitySourceA = new MockReachabilitySource(ServiceReachability.NotApplicable);
 
@@ -473,7 +468,7 @@ public sealed class LinuxProductionCompositionTests
     public void COM_28_PortableOnly_Does_Not_Require_Reachability_Probe()
     {
         var presenceSource = new MockPresenceSource(InstallationPresence.PortableOnly);
-        var reachabilitySource = new MockReachabilitySource(ServiceReachability.Unreachable); // Reachability probe shouldn't mutate portable truth
+        var reachabilitySource = new MockReachabilitySource(ServiceReachability.Unreachable);
 
         var probe = new LinuxInstallationProbe(presenceSource, reachabilitySource);
         var state = probe.Probe();
@@ -498,15 +493,350 @@ public sealed class LinuxProductionCompositionTests
         Assert.NotEqual(InstallationPresence.Unknown, state.Presence);
     }
 
+    // ==========================================
+    // R1-C: CONCRETE PRESENCE TESTS (SYS-01..07)
+    // ==========================================
+
+    [Fact]
+    public async Task SYS_01_Loaded_Unit_Is_InstalledSystemService()
+    {
+        var mockDbus = new MockSystemdDbusManager
+        {
+            GetUnitFunc = _ => Task.FromResult<string?>("/org/freedesktop/systemd1/unit/internet_2devidence_2dmonitor_2eservice")
+        };
+
+        var source = new SystemdServicePresenceSource(dbusManager: mockDbus);
+        var presence = await source.ProbePresenceAsync();
+
+        Assert.Equal(InstallationPresence.InstalledSystemService, presence);
+    }
+
+    [Fact]
+    public async Task SYS_02_Disabled_UnitFile_Is_Still_InstalledSystemService()
+    {
+        var mockDbus = new MockSystemdDbusManager
+        {
+            GetUnitFunc = _ => Task.FromResult<string?>(null),
+            GetUnitFileStateFunc = _ => Task.FromResult<string?>("disabled")
+        };
+
+        var source = new SystemdServicePresenceSource(dbusManager: mockDbus);
+        var presence = await source.ProbePresenceAsync();
+
+        Assert.Equal(InstallationPresence.InstalledSystemService, presence);
+    }
+
+    [Fact]
+    public async Task SYS_03_Static_UnitFile_Is_Still_InstalledSystemService()
+    {
+        var mockDbus = new MockSystemdDbusManager
+        {
+            GetUnitFunc = _ => Task.FromResult<string?>(null),
+            GetUnitFileStateFunc = _ => Task.FromResult<string?>("static")
+        };
+
+        var source = new SystemdServicePresenceSource(dbusManager: mockDbus);
+        var presence = await source.ProbePresenceAsync();
+
+        Assert.Equal(InstallationPresence.InstalledSystemService, presence);
+    }
+
+    [Fact]
+    public async Task SYS_04_Explicit_NoSuchUnit_And_NoSuchUnitFile_Is_PortableOnly()
+    {
+        var mockDbus = new MockSystemdDbusManager
+        {
+            GetUnitFunc = _ => Task.FromResult<string?>(null),
+            GetUnitFileStateFunc = _ => Task.FromResult<string?>(null)
+        };
+
+        var source = new SystemdServicePresenceSource(dbusManager: mockDbus);
+        var presence = await source.ProbePresenceAsync();
+
+        Assert.Equal(InstallationPresence.PortableOnly, presence);
+    }
+
+    [Fact]
+    public async Task SYS_05_Systemd_Bus_Unavailable_Is_Unknown_Not_Portable()
+    {
+        var mockDbus = new MockSystemdDbusManager
+        {
+            GetUnitFunc = _ => throw new InvalidOperationException("System bus connection failed.")
+        };
+
+        var source = new SystemdServicePresenceSource(dbusManager: mockDbus);
+        var presence = await source.ProbePresenceAsync();
+
+        Assert.Equal(InstallationPresence.Unknown, presence);
+        Assert.NotEqual(InstallationPresence.PortableOnly, presence);
+    }
+
+    [Fact]
+    public async Task SYS_06_Systemd_Protocol_Error_Is_Unknown_Not_Portable()
+    {
+        var mockDbus = new MockSystemdDbusManager
+        {
+            GetUnitFunc = _ => throw new FormatException("Malformed D-Bus message.")
+        };
+
+        var source = new SystemdServicePresenceSource(dbusManager: mockDbus);
+        var presence = await source.ProbePresenceAsync();
+
+        Assert.Equal(InstallationPresence.Unknown, presence);
+        Assert.NotEqual(InstallationPresence.PortableOnly, presence);
+    }
+
+    [Fact]
+    public async Task SYS_07_StateRoot_Existence_Is_Irrelevant_To_Systemd_Presence()
+    {
+        // Even if StateRoot directory exists on disk, systemd D-Bus returning null must yield PortableOnly
+        var mockDbus = new MockSystemdDbusManager
+        {
+            GetUnitFunc = _ => Task.FromResult<string?>(null),
+            GetUnitFileStateFunc = _ => Task.FromResult<string?>(null)
+        };
+
+        var source = new SystemdServicePresenceSource(dbusManager: mockDbus);
+        var presence = await source.ProbePresenceAsync();
+
+        Assert.Equal(InstallationPresence.PortableOnly, presence);
+    }
+
+    // ============================================
+    // R1-D: CONCRETE REACHABILITY TESTS (IPC-01..07)
+    // ============================================
+
+    [Fact]
+    public async Task IPC_01_Connect_And_Valid_IEM_Response_Is_Reachable()
+    {
+        var source = new LinuxControlSocketReachabilitySource(streamFactory: async ct =>
+        {
+            var memoryStream = new MemoryDuplexServerStream(async (requestBytes, outStream) =>
+            {
+                var reqJson = System.Text.Encoding.UTF8.GetString(requestBytes);
+                var req = System.Text.Json.JsonSerializer.Deserialize<IpcRequestEnvelope>(reqJson)!;
+
+                var resp = IpcResponseEnvelope.CreateSuccess(req.RequestId, "service-instance-123", "{}");
+                var respJson = System.Text.Json.JsonSerializer.Serialize(resp);
+                await IpcMessageFraming.WriteFrameAsync(outStream, System.Text.Encoding.UTF8.GetBytes(respJson), ct);
+            });
+            return memoryStream;
+        });
+
+        var reachability = await source.ProbeReachabilityAsync();
+        Assert.Equal(ServiceReachability.Reachable, reachability);
+    }
+
+    [Fact]
+    public async Task IPC_02_Socket_Accepts_But_Sends_Garbage_Is_Unreachable()
+    {
+        var source = new LinuxControlSocketReachabilitySource(streamFactory: async ct =>
+        {
+            var memoryStream = new MemoryDuplexServerStream(async (_, outStream) =>
+            {
+                await IpcMessageFraming.WriteFrameAsync(outStream, "NOT_JSON_GARBAGE"u8.ToArray(), ct);
+            });
+            return memoryStream;
+        });
+
+        var reachability = await source.ProbeReachabilityAsync();
+        Assert.Equal(ServiceReachability.Unreachable, reachability);
+    }
+
+    [Fact]
+    public async Task IPC_03_Socket_Accepts_But_Response_RequestId_Mismatch_Is_Unreachable()
+    {
+        var source = new LinuxControlSocketReachabilitySource(streamFactory: async ct =>
+        {
+            var memoryStream = new MemoryDuplexServerStream(async (_, outStream) =>
+            {
+                var resp = IpcResponseEnvelope.CreateSuccess("WRONG_REQUEST_ID", "service-instance-123");
+                var respJson = System.Text.Json.JsonSerializer.Serialize(resp);
+                await IpcMessageFraming.WriteFrameAsync(outStream, System.Text.Encoding.UTF8.GetBytes(respJson), ct);
+            });
+            return memoryStream;
+        });
+
+        var reachability = await source.ProbeReachabilityAsync();
+        Assert.Equal(ServiceReachability.Unreachable, reachability);
+    }
+
+    [Fact]
+    public async Task IPC_04_Socket_Accepts_But_Protocol_Mismatch_Is_Unreachable()
+    {
+        var source = new LinuxControlSocketReachabilitySource(streamFactory: async ct =>
+        {
+            var memoryStream = new MemoryDuplexServerStream(async (requestBytes, outStream) =>
+            {
+                var reqJson = System.Text.Encoding.UTF8.GetString(requestBytes);
+                var req = System.Text.Json.JsonSerializer.Deserialize<IpcRequestEnvelope>(reqJson)!;
+
+                var resp = new IpcResponseEnvelope
+                {
+                    ProtocolVersion = 999, // Incompatible future protocol
+                    RequestId = req.RequestId,
+                    Status = IpcResponseStatus.Success,
+                    ServiceInstanceId = "service-instance-123"
+                };
+                var respJson = System.Text.Json.JsonSerializer.Serialize(resp);
+                await IpcMessageFraming.WriteFrameAsync(outStream, System.Text.Encoding.UTF8.GetBytes(respJson), ct);
+            });
+            return memoryStream;
+        });
+
+        var reachability = await source.ProbeReachabilityAsync();
+        Assert.Equal(ServiceReachability.Unreachable, reachability);
+    }
+
+    [Fact]
+    public async Task IPC_05_Socket_Accepts_But_No_Response_Times_Out_Unreachable()
+    {
+        var source = new LinuxControlSocketReachabilitySource(
+            probeTimeout: TimeSpan.FromMilliseconds(50),
+            streamFactory: _ =>
+            {
+                var memoryStream = new MemoryDuplexServerStream((_, _) => Task.CompletedTask);
+                return Task.FromResult<Stream>(memoryStream);
+            });
+
+        var reachability = await source.ProbeReachabilityAsync();
+        Assert.Equal(ServiceReachability.Unreachable, reachability);
+    }
+
+    [Fact]
+    public async Task IPC_06_Socket_Missing_Is_Unreachable()
+    {
+        var source = new LinuxControlSocketReachabilitySource(
+            socketPath: "/nonexistent/socket/path/iem.sock");
+
+        var reachability = await source.ProbeReachabilityAsync();
+        Assert.Equal(ServiceReachability.Unreachable, reachability);
+    }
+
+    [Fact]
+    public async Task IPC_07_Connection_Refused_Is_Unreachable()
+    {
+        var source = new LinuxControlSocketReachabilitySource(streamFactory: _ =>
+            throw new System.Net.Sockets.SocketException((int)System.Net.Sockets.SocketError.ConnectionRefused));
+
+        var reachability = await source.ProbeReachabilityAsync();
+        Assert.Equal(ServiceReachability.Unreachable, reachability);
+    }
+
+    // ===========================================
+    // R1-E: REAL ARCHITECTURE GATE ACCEPTANCE
+    // ===========================================
+
     [Fact]
     public void Architecture_Invariant_Linux_Security_Primitives_Only_Instantiated_In_Approved_Roots()
     {
-        // Verified across the solution: IEM.Service.Linux and external hosts consume through composition
-        var compositionPath = @"d:\ProjektiApp\testneta\src\IEM.Linux\Composition";
-        if (Directory.Exists(compositionPath))
+        var repoRoot = GetRepositoryRoot();
+        var serviceLinuxDir = Path.Combine(repoRoot, "src", "IEM.Service.Linux");
+        Assert.True(Directory.Exists(serviceLinuxDir), $"Directory {serviceLinuxDir} must exist.");
+
+        var csFiles = Directory.GetFiles(serviceLinuxDir, "*.cs", SearchOption.AllDirectories);
+        Assert.NotEmpty(csFiles);
+
+        foreach (var file in csFiles)
         {
-            Assert.True(File.Exists(Path.Combine(compositionPath, "LinuxProductionCompositionFactory.cs")));
+            var text = File.ReadAllText(file);
+            Assert.DoesNotContain("new LinuxEvidenceKeyProvider", text);
+            Assert.DoesNotContain("new LinuxSessionModeProvisioner", text);
+            Assert.DoesNotContain("new LinuxSymlinkGuard", text);
+            Assert.DoesNotContain("new LinuxNativePosixStorageApi", text);
         }
+    }
+
+    [Fact]
+    public void Architecture_Invariant_IEM_Linux_Has_No_Host_Framework_Dependencies()
+    {
+        var repoRoot = GetRepositoryRoot();
+        var linuxCsproj = Path.Combine(repoRoot, "src", "IEM.Linux", "IEM.Linux.csproj");
+        Assert.True(File.Exists(linuxCsproj), $"Project file {linuxCsproj} must exist.");
+
+        var text = File.ReadAllText(linuxCsproj);
+        Assert.DoesNotContain("Microsoft.Extensions.DependencyInjection", text);
+        Assert.DoesNotContain("Microsoft.Extensions.Hosting.Systemd", text);
+        Assert.DoesNotContain("Tmds.DBus.Protocol", text);
+    }
+
+    private static string GetRepositoryRoot()
+    {
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        while (dir != null)
+        {
+            if (File.Exists(Path.Combine(dir.FullName, "InternetEvidenceMonitor.slnx")) ||
+                File.Exists(Path.Combine(dir.FullName, "Directory.Build.props")) ||
+                Directory.Exists(Path.Combine(dir.FullName, ".git")))
+            {
+                return dir.FullName;
+            }
+            dir = dir.Parent;
+        }
+        throw new InvalidOperationException("Repository root directory could not be discovered.");
+    }
+
+    private sealed class MockSystemdDbusManager : ISystemdDbusManager
+    {
+        public Func<string, Task<string?>>? GetUnitFunc { get; set; }
+        public Func<string, Task<string?>>? GetUnitFileStateFunc { get; set; }
+
+        public Task<string?> GetUnitAsync(string unitName, CancellationToken ct = default) =>
+            GetUnitFunc != null ? GetUnitFunc(unitName) : Task.FromResult<string?>(null);
+
+        public Task<string?> GetUnitFileStateAsync(string unitName, CancellationToken ct = default) =>
+            GetUnitFileStateFunc != null ? GetUnitFileStateFunc(unitName) : Task.FromResult<string?>(null);
+    }
+
+    private sealed class MemoryDuplexServerStream : Stream
+    {
+        private readonly Func<byte[], Stream, Task> _serverHandler;
+        private readonly MemoryStream _clientToServer = new();
+        private readonly MemoryStream _serverToClient = new();
+        private bool _serverExecuted;
+
+        public MemoryDuplexServerStream(Func<byte[], Stream, Task> serverHandler)
+        {
+            _serverHandler = serverHandler;
+        }
+
+        public override bool CanRead => true;
+        public override bool CanSeek => false;
+        public override bool CanWrite => true;
+        public override long Length => _serverToClient.Length;
+        public override long Position { get => _serverToClient.Position; set => throw new NotSupportedException(); }
+        public override void Flush() { }
+
+        public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+        {
+            if (!_serverExecuted)
+            {
+                _serverExecuted = true;
+                _clientToServer.Position = 0;
+                var requestBytes = await IpcMessageFraming.ReadFrameAsync(_clientToServer, cancellationToken);
+                var responseMemStream = new MemoryStream();
+                await _serverHandler(requestBytes, responseMemStream);
+                var responseBytes = responseMemStream.ToArray();
+                _serverToClient.Write(responseBytes, 0, responseBytes.Length);
+                _serverToClient.Position = 0;
+            }
+
+            return await _serverToClient.ReadAsync(buffer, cancellationToken);
+        }
+
+        public override int Read(byte[] buffer, int offset, int count) =>
+            ReadAsync(buffer.AsMemory(offset, count)).GetAwaiter().GetResult();
+
+        public override ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default)
+        {
+            return _clientToServer.WriteAsync(buffer, cancellationToken);
+        }
+
+        public override void Write(byte[] buffer, int offset, int count) =>
+            _clientToServer.Write(buffer, offset, count);
+
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+        public override void SetLength(long value) => throw new NotSupportedException();
     }
 
     private sealed class MockPresenceSource : ILinuxSystemServicePresenceSource

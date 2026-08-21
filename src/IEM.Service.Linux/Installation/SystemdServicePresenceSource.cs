@@ -5,59 +5,88 @@ using IEM.Storage;
 namespace IEM.Service.Linux.Installation;
 
 /// <summary>
-/// Authoritative Linux system service presence source inspecting systemd unit registration.
-/// Invariant 8E-J: Determines presence strictly from systemd unit installation, never from StateRoot or socket existence.
+/// Authoritative Linux system service presence source inspecting systemd Manager D-Bus truth.
+/// Invariants 8E-J, 8E-R1-A:
+/// - Determines presence strictly from systemd unit/file registration truth via D-Bus.
+/// - StateRoot and socket existence MUST NOT determine InstallationPresence.
+/// - D-Bus failure / protocol error falls closed to Unknown, NEVER to PortableOnly.
 /// </summary>
 public sealed class SystemdServicePresenceSource : ILinuxSystemServicePresenceSource
 {
     public const string DefaultServiceName = "internet-evidence-monitor.service";
 
     private readonly string _serviceName;
-    private readonly string[] _unitSearchPaths;
+    private readonly ISystemdDbusManager? _dbusManager;
 
     public SystemdServicePresenceSource(
         string serviceName = DefaultServiceName,
-        string[]? unitSearchPaths = null)
+        ISystemdDbusManager? dbusManager = null)
     {
         _serviceName = serviceName;
-        _unitSearchPaths = unitSearchPaths ?? new[]
-        {
-            "/etc/systemd/system",
-            "/lib/systemd/system",
-            "/usr/lib/systemd/system"
-        };
+        _dbusManager = dbusManager;
     }
 
     public static readonly SystemdServicePresenceSource Default = new();
 
-    public InstallationPresence ProbePresence()
+    public async Task<InstallationPresence> ProbePresenceAsync(CancellationToken ct = default)
     {
-        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Linux) && _dbusManager == null)
         {
             return InstallationPresence.PortableOnly;
         }
 
         try
         {
-            foreach (var path in _unitSearchPaths)
+            var manager = _dbusManager ?? new SystemdDbusManagerClient();
+
+            // 1. Check if unit is actively loaded in systemd
+            try
             {
-                var unitFilePath = Path.Combine(path, _serviceName);
-                if (File.Exists(unitFilePath))
+                var unitPath = await manager.GetUnitAsync(_serviceName, ct).ConfigureAwait(false);
+                if (!string.IsNullOrEmpty(unitPath))
                 {
                     return InstallationPresence.InstalledSystemService;
                 }
             }
+            catch (Exception ex) when (SystemdDbusManagerClient.IsNoSuchUnitError(ex.Message))
+            {
+                // NoSuchUnit -> fall through to inspect unit file registry
+            }
 
-            return InstallationPresence.PortableOnly;
+            // 2. Check if unit file is registered/known in systemd unit search paths
+            try
+            {
+                var unitFileState = await manager.GetUnitFileStateAsync(_serviceName, ct).ConfigureAwait(false);
+                if (!string.IsNullOrEmpty(unitFileState))
+                {
+                    // Valid unit file state (e.g. enabled, disabled, static, indirect, masked, generated, transient)
+                    return InstallationPresence.InstalledSystemService;
+                }
+
+                // Explicit null / no-such-file from systemd manager
+                return InstallationPresence.PortableOnly;
+            }
+            catch (Exception ex) when (SystemdDbusManagerClient.IsNoSuchUnitError(ex.Message))
+            {
+                return InstallationPresence.PortableOnly;
+            }
+        }
+        catch
+        {
+            // D-Bus unavailable, permission denied, or protocol error -> Unknown (fail closed)
+            return InstallationPresence.Unknown;
+        }
+    }
+
+    public InstallationPresence ProbePresence()
+    {
+        try
+        {
+            return ProbePresenceAsync().GetAwaiter().GetResult();
         }
         catch
         {
             return InstallationPresence.Unknown;
         }
-    }
-
-    public Task<InstallationPresence> ProbePresenceAsync(CancellationToken ct = default)
-    {
-        return Task.FromResult(ProbePresence());
     }
 }
