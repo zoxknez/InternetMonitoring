@@ -112,8 +112,12 @@ public static partial class LinuxAtomicFilePublisher
 
         try
         {
-            // Acquire exclusive advisory lock to mark this temp file as actively owned
-            posix.Flock(tempFd, LinuxPosixStorageConstants.LOCK_EX | LinuxPosixStorageConstants.LOCK_NB);
+            // R2-A: Acquire exclusive advisory lock and FAIL CLOSED on failure
+            if (posix.Flock(tempFd, LinuxPosixStorageConstants.LOCK_EX | LinuxPosixStorageConstants.LOCK_NB) != 0)
+            {
+                int flockErrno = posix.GetLastErrno();
+                throw new InvalidOperationException($"Failed to acquire exclusive publication lock for '{tempName}' (errno {flockErrno}).");
+            }
 
             // 3. Write all content
             if (!WriteAll(posix, tempFd, content))
@@ -155,40 +159,42 @@ public static partial class LinuxAtomicFilePublisher
             {
                 throw new InvalidOperationException($"fsync failed on temporary file '{tempName}'.");
             }
+
+            // R2-B: 7. Atomic publication via RENAME_NOREPLACE with flock STILL held on open tempFd
+            int ren = posix.RenameAt2(parentFd, tempName, parentFd, targetFileName, LinuxPosixStorageConstants.RENAME_NOREPLACE);
+            if (ren != 0)
+            {
+                int renErrno = posix.GetLastErrno();
+                posix.UnlinkAt(parentFd, tempName, 0);
+
+                // If and ONLY if EEXIST, treat as legitimate race collision with winner
+                if (renErrno == LinuxPosixStorageConstants.EEXIST)
+                {
+                    if (posix.FstatAt(parentFd, targetFileName, out var winnerStat, LinuxPosixStorageConstants.AT_SYMLINK_NOFOLLOW) == 0)
+                    {
+                        return new AtomicPublishResult(AtomicPublishStatus.Collision, -1, winnerStat, posix);
+                    }
+                }
+
+                throw new InvalidOperationException($"renameat2 failed to publish '{targetFileName}' (errno {renErrno}).");
+            }
+
+            // R2-B: 8. Parent directory durability fsync while flock is STILL held
+            if (posix.Fsync(parentFd) != 0)
+            {
+                throw new InvalidOperationException(
+                    $"File '{targetFileName}' was published but parent directory durability could not be established.");
+            }
         }
         catch
         {
-            posix.Close(tempFd);
             posix.UnlinkAt(parentFd, tempName, 0);
             throw;
         }
-
-        posix.Close(tempFd);
-
-        // 7. Atomic publication via RENAME_NOREPLACE
-        int ren = posix.RenameAt2(parentFd, tempName, parentFd, targetFileName, LinuxPosixStorageConstants.RENAME_NOREPLACE);
-        if (ren != 0)
+        finally
         {
-            int renErrno = posix.GetLastErrno();
-            posix.UnlinkAt(parentFd, tempName, 0);
-
-            // If and ONLY if EEXIST, treat as legitimate race collision with winner
-            if (renErrno == LinuxPosixStorageConstants.EEXIST)
-            {
-                if (posix.FstatAt(parentFd, targetFileName, out var winnerStat, LinuxPosixStorageConstants.AT_SYMLINK_NOFOLLOW) == 0)
-                {
-                    return new AtomicPublishResult(AtomicPublishStatus.Collision, -1, winnerStat, posix);
-                }
-            }
-
-            throw new InvalidOperationException($"renameat2 failed to publish '{targetFileName}' (errno {renErrno}).");
-        }
-
-        // 8. Parent directory durability fsync
-        if (posix.Fsync(parentFd) != 0)
-        {
-            throw new InvalidOperationException(
-                $"File '{targetFileName}' was published but parent directory durability could not be established.");
+            // Close tempFd releasing flock only after rename + parent fsync or after catch cleanup
+            posix.Close(tempFd);
         }
 
         // 9. Re-open final file via openat2 for same-FD validation
@@ -277,24 +283,25 @@ public static partial class LinuxAtomicFilePublisher
             {
                 return false; // Mode drift: NEVER delete blindly
             }
-        }
-        finally
-        {
-            posix.Close(tempFd);
-        }
 
-        // R1-E: Safe app-owned orphan temp file confirmed: unlink and check parent fsync durability
-        if (posix.UnlinkAt(parentFd, tempFileName, 0) == 0)
-        {
+            // R2-C: Unlink while flock is STILL held on open tempFd
+            if (posix.UnlinkAt(parentFd, tempFileName, 0) != 0)
+            {
+                return false;
+            }
+
             if (posix.Fsync(parentFd) != 0)
             {
                 throw new InvalidOperationException(
                     $"Temporary file '{tempFileName}' was unlinked but cleanup durability could not be established.");
             }
+
             return true;
         }
-
-        return false;
+        finally
+        {
+            posix.Close(tempFd);
+        }
     }
 
     private static bool WriteAll(ILinuxPosixStorageApi posix, int fd, ReadOnlySpan<byte> data)

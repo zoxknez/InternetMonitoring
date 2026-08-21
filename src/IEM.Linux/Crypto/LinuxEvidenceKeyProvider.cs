@@ -236,7 +236,7 @@ public sealed class LinuxEvidenceKeyProvider : IEvidenceKeyProvider
         {
             pkcs8 = ecdsa.ExportPkcs8PrivateKey();
 
-            var pubResult = LinuxAtomicFilePublisher.PublishAtomically(
+            using var pubResult = LinuxAtomicFilePublisher.PublishAtomically(
                 _posix,
                 keysFd,
                 LinuxStoragePaths.SigningKeyFileName,
@@ -249,11 +249,6 @@ public sealed class LinuxEvidenceKeyProvider : IEvidenceKeyProvider
             {
                 ecdsa.Dispose();
                 return OpenAndVerifyExistingKey(keysFd, ownership, protection);
-            }
-
-            if (pubResult.FinalFd >= 0)
-            {
-                _posix.Close(pubResult.FinalFd);
             }
 
             // Re-open and verify final published key to guarantee complete provenance
