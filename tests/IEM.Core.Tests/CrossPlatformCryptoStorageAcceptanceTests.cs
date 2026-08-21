@@ -1093,20 +1093,43 @@ public sealed class CrossPlatformCryptoStorageAcceptanceTests : IDisposable
         // Outside file contains EXACT SAME bytes and SHA256 as legitimate package file
         await File.WriteAllBytesAsync(Path.Combine(outsideJuncTarget, "flapping.bin"), canonicalData);
 
-        // Step 1: Replace intermediate directory with junction pointing outside
-        Directory.Delete(flappingTarget, recursive: true);
-        bool created17J = TryCreateDirectoryJunctionOrSymlink(flappingTarget, outsideJuncTarget);
-        Assert.True(created17J, "XPL-17J PRECONDITION FAILED: directory link/junction could not be created.");
+        // Step 1: Use test barrier hook to replace directory with junction AFTER lexical/pre-check succeeds, BEFORE native open
+        bool barrierFired = false;
+        ConfinedPackageFileReader.OnPreCheckCompletedForTesting = (pkg, rel) =>
+        {
+            if (rel.Replace('\\', '/').Contains("flapping/flapping.bin"))
+            {
+                barrierFired = true;
+                // Pre-check passed on regular directory; now swap regular directory into junction before native open begins!
+                if (Directory.Exists(flappingTarget))
+                {
+                    Directory.Delete(flappingTarget, recursive: true);
+                }
+                bool juncCreated = TryCreateDirectoryJunctionOrSymlink(flappingTarget, outsideJuncTarget);
+                Assert.True(juncCreated, "XPL-17J PRECONDITION FAILED: barrier directory link/junction could not be created.");
+            }
+        };
 
-        // Step 2: Deterministic verification - even with IDENTICAL bytes, verifier MUST reject junction at handle boundary
-        var reportJunc17J = await PackageVerifier.VerifyPackageAsync(pkg17J, new VerificationOptions { Offline = true });
-        Assert.Equal(OverallStatus.Invalid, reportJunc17J.Overall);
-        Assert.Equal(IntegrityStatus.Invalid, reportJunc17J.Integrity);
-        Assert.NotNull(reportJunc17J.Layers.Manifest);
-        Assert.Equal(LayerStatus.Invalid, reportJunc17J.Layers.Manifest.Status);
+        try
+        {
+            // Step 2: Deterministic verification - even with IDENTICAL bytes and passing pre-check, native open MUST reject junction
+            var reportJunc17J = await PackageVerifier.VerifyPackageAsync(pkg17J, new VerificationOptions { Offline = true });
+            Assert.True(barrierFired, "XPL-17J PRECONDITION FAILED: test barrier hook was not invoked.");
+            Assert.Equal(OverallStatus.Invalid, reportJunc17J.Overall);
+            Assert.Equal(IntegrityStatus.Invalid, reportJunc17J.Integrity);
+            Assert.NotNull(reportJunc17J.Layers.Manifest);
+            Assert.Equal(LayerStatus.Invalid, reportJunc17J.Layers.Manifest.Status);
+        }
+        finally
+        {
+            ConfinedPackageFileReader.OnPreCheckCompletedForTesting = null;
+        }
 
         // Step 3: Restore legitimate local directory
-        Directory.Delete(flappingTarget, recursive: true);
+        if (Directory.Exists(flappingTarget))
+        {
+            Directory.Delete(flappingTarget, recursive: true);
+        }
         Create0700Directory(flappingTarget);
         await File.WriteAllBytesAsync(Path.Combine(flappingTarget, "flapping.bin"), canonicalData);
 

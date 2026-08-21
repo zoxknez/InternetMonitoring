@@ -1,7 +1,9 @@
 using System.Reflection;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using IEM.Verification.Safety;
 
 namespace IEM.Core.Tests;
 
@@ -315,10 +317,11 @@ public sealed class ArchitectureBoundaryTests
         Assert.True(File.Exists(readerFile), $"ConfinedPackageFileReader.cs not found at {readerFile}");
 
         var readerSource = File.ReadAllText(readerFile);
-        Assert.Contains("OBJ_DONT_REPARSE", readerSource, StringComparison.Ordinal);
+        Assert.Contains("Attributes = NativePackageConfinementInterop.OBJ_CASE_INSENSITIVE", readerSource, StringComparison.Ordinal);
         Assert.Contains("FILE_FLAG_OPEN_REPARSE_POINT", readerSource, StringComparison.Ordinal);
         Assert.Contains("FILE_ATTRIBUTE_REPARSE_POINT", readerSource, StringComparison.Ordinal);
         Assert.Contains("!NativePackageConfinementInterop.GetFileInformationByHandle(hRootDir", readerSource, StringComparison.Ordinal);
+        Assert.Contains("len >= (uint)sbFinal.Capacity", readerSource, StringComparison.Ordinal);
         Assert.Contains("GetFinalPathNameByHandle", readerSource, StringComparison.Ordinal);
     }
 }
