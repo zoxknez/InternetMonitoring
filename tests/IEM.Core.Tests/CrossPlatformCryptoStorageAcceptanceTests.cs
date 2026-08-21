@@ -1067,18 +1067,21 @@ public sealed class CrossPlatformCryptoStorageAcceptanceTests : IDisposable
         // =========================================================================
         // Sub-Scenario 17J: Intermediate Directory Replacement Race Stress Test
         // =========================================================================
+        // =========================================================================
+        // Sub-Scenario 17J: Deterministic TOCTOU Reparse Gate & Identical Byte Proof
+        // =========================================================================
         var (pkg17J, _, _) = await CreateValidBasePackageAsync("xpl-17j-race");
         var raceEvidence = Path.Combine(pkg17J, "Evidence");
-        var realSubdir = Path.Combine(raceEvidence, "flapping_real");
+        var realSubdir = Path.Combine(raceEvidence, "flapping");
         Create0700Directory(realSubdir);
         var realFile = Path.Combine(realSubdir, "flapping.bin");
-        var realData = "FLAPPING_REGULAR_PAYLOAD_SAFE"u8.ToArray();
-        await File.WriteAllBytesAsync(realFile, realData);
+        var canonicalData = "IDENTICAL_CANONICAL_PAYLOAD_EVIDENCE_BYTES_12345"u8.ToArray();
+        await File.WriteAllBytesAsync(realFile, canonicalData);
 
         var mObj17J = JsonSerializer.Deserialize<EvidenceManifest>(await File.ReadAllBytesAsync(Path.Combine(pkg17J, EvidenceManifest.FileName)), TestJsonOptions)!;
         var newFiles17J = new List<ManifestFileEntry>(mObj17J.Files)
         {
-            new ManifestFileEntry("Evidence/flapping/flapping.bin", realData.Length, Convert.ToHexStringLower(SHA256.HashData(realData)))
+            new ManifestFileEntry("Evidence/flapping/flapping.bin", canonicalData.Length, Convert.ToHexStringLower(SHA256.HashData(canonicalData)))
         };
         var updatedM17J = mObj17J with { Files = newFiles17J };
         await File.WriteAllBytesAsync(Path.Combine(pkg17J, EvidenceManifest.FileName), updatedM17J.ToCanonicalBytes());
@@ -1087,10 +1090,33 @@ public sealed class CrossPlatformCryptoStorageAcceptanceTests : IDisposable
         var flappingTarget = Path.Combine(raceEvidence, "flapping");
         var outsideJuncTarget = Path.Combine(outsideDir, "flapping_outside");
         Create0700Directory(outsideJuncTarget);
-        var outsideData = "FLAPPING_MALICIOUS_OUTSIDE_DATA"u8.ToArray();
-        await File.WriteAllBytesAsync(Path.Combine(outsideJuncTarget, "flapping.bin"), outsideData);
+        // Outside file contains EXACT SAME bytes and SHA256 as legitimate package file
+        await File.WriteAllBytesAsync(Path.Combine(outsideJuncTarget, "flapping.bin"), canonicalData);
 
-        // Run multi-threaded race: flapper task switches directory between real and junction
+        // Step 1: Replace intermediate directory with junction pointing outside
+        Directory.Delete(flappingTarget, recursive: true);
+        bool created17J = TryCreateDirectoryJunctionOrSymlink(flappingTarget, outsideJuncTarget);
+        Assert.True(created17J, "XPL-17J PRECONDITION FAILED: directory link/junction could not be created.");
+
+        // Step 2: Deterministic verification - even with IDENTICAL bytes, verifier MUST reject junction at handle boundary
+        var reportJunc17J = await PackageVerifier.VerifyPackageAsync(pkg17J, new VerificationOptions { Offline = true });
+        Assert.Equal(OverallStatus.Invalid, reportJunc17J.Overall);
+        Assert.Equal(IntegrityStatus.Invalid, reportJunc17J.Integrity);
+        Assert.NotNull(reportJunc17J.Layers.Manifest);
+        Assert.Equal(LayerStatus.Invalid, reportJunc17J.Layers.Manifest.Status);
+
+        // Step 3: Restore legitimate local directory
+        Directory.Delete(flappingTarget, recursive: true);
+        Create0700Directory(flappingTarget);
+        await File.WriteAllBytesAsync(Path.Combine(flappingTarget, "flapping.bin"), canonicalData);
+
+        var reportClean17J = await PackageVerifier.VerifyPackageAsync(pkg17J, new VerificationOptions { Offline = true });
+        Assert.Equal(OverallStatus.ValidTrustNotEstablished, reportClean17J.Overall);
+        Assert.Equal(IntegrityStatus.Verified, reportClean17J.Integrity);
+        Assert.NotNull(reportClean17J.Layers.Manifest);
+        Assert.Equal(LayerStatus.Verified, reportClean17J.Layers.Manifest.Status);
+
+        // Step 4: Multi-threaded race stress test (background flapper + concurrent verifier)
         using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(500));
         var flapperTask = Task.Run(async () =>
         {
@@ -1120,7 +1146,6 @@ public sealed class CrossPlatformCryptoStorageAcceptanceTests : IDisposable
         while (!cts.IsCancellationRequested)
         {
             var r = await PackageVerifier.VerifyPackageAsync(pkg17J, new VerificationOptions { Offline = true });
-            // Must NEVER verify successfully when junction is active (only Valid when regular file is intact)
             Assert.True(
                 r.Overall == OverallStatus.ValidTrustNotEstablished || r.Overall == OverallStatus.Invalid,
                 $"Verification during race returned unexpected overall status: {r.Overall}");

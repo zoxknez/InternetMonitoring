@@ -306,4 +306,19 @@ public sealed class ArchitectureBoundaryTests
             if (Directory.Exists(tempDir)) Directory.Delete(tempDir, recursive: true);
         }
     }
+
+    [Fact]
+    public void ConfinedPackageFileReader_SourceCode_Enforces_ObjDontReparse_And_FailClosed_Checks()
+    {
+        var repoRoot = FindRepoRoot();
+        var readerFile = Path.Combine(repoRoot, "src", "IEM.Verification", "Safety", "ConfinedPackageFileReader.cs");
+        Assert.True(File.Exists(readerFile), $"ConfinedPackageFileReader.cs not found at {readerFile}");
+
+        var readerSource = File.ReadAllText(readerFile);
+        Assert.Contains("OBJ_DONT_REPARSE", readerSource, StringComparison.Ordinal);
+        Assert.Contains("FILE_FLAG_OPEN_REPARSE_POINT", readerSource, StringComparison.Ordinal);
+        Assert.Contains("FILE_ATTRIBUTE_REPARSE_POINT", readerSource, StringComparison.Ordinal);
+        Assert.Contains("!NativePackageConfinementInterop.GetFileInformationByHandle(hRootDir", readerSource, StringComparison.Ordinal);
+        Assert.Contains("GetFinalPathNameByHandle", readerSource, StringComparison.Ordinal);
+    }
 }

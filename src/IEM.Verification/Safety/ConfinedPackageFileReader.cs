@@ -212,13 +212,22 @@ public static class ConfinedPackageFileReader
             return ReadResultStatus.Violation;
         }
 
-        if (NativePackageConfinementInterop.GetFileInformationByHandle(hRootDir, out var rootInfo))
+        if (!NativePackageConfinementInterop.GetFileInformationByHandle(hRootDir, out var rootInfo))
         {
-            if ((rootInfo.dwFileAttributes & NativePackageConfinementInterop.FILE_ATTRIBUTE_REPARSE_POINT) != 0)
-            {
-                violationReason = "Korenski direktorijum paketa je direktorijumski spoj (junction) ili reparse tačka.";
-                return ReadResultStatus.Violation;
-            }
+            violationReason = "Nije moguće dobiti metapodatke korenskog direktorijuma paketa.";
+            return ReadResultStatus.Violation;
+        }
+
+        if ((rootInfo.dwFileAttributes & NativePackageConfinementInterop.FILE_ATTRIBUTE_REPARSE_POINT) != 0)
+        {
+            violationReason = "Korenski direktorijum paketa je direktorijumski spoj (junction) ili reparse tačka.";
+            return ReadResultStatus.Violation;
+        }
+
+        if ((rootInfo.dwFileAttributes & NativePackageConfinementInterop.FILE_ATTRIBUTE_DIRECTORY) == 0)
+        {
+            violationReason = "Korenski direktorijum paketa nije direktorijum.";
+            return ReadResultStatus.Violation;
         }
 
         // Prepare relative path with Windows backslashes for NT kernel resolution
@@ -237,7 +246,7 @@ public static class ConfinedPackageFileReader
                 Length = Marshal.SizeOf<NativePackageConfinementInterop.OBJECT_ATTRIBUTES>(),
                 RootDirectory = hRootDir.DangerousGetHandle(),
                 ObjectName = pUnicodeString,
-                Attributes = NativePackageConfinementInterop.OBJ_CASE_INSENSITIVE,
+                Attributes = NativePackageConfinementInterop.OBJ_CASE_INSENSITIVE | NativePackageConfinementInterop.OBJ_DONT_REPARSE,
                 SecurityDescriptor = IntPtr.Zero,
                 SecurityQualityOfService = IntPtr.Zero
             };
@@ -248,7 +257,20 @@ public static class ConfinedPackageFileReader
                 ref objAttr,
                 out var ioStatus,
                 NativePackageConfinementInterop.FILE_SHARE_READ,
-                NativePackageConfinementInterop.FILE_SYNCHRONOUS_IO_NONALERT | NativePackageConfinementInterop.FILE_OPEN_REPARSE_POINT | NativePackageConfinementInterop.FILE_NON_DIRECTORY_FILE);
+                NativePackageConfinementInterop.FILE_SYNCHRONOUS_IO_NONALERT | NativePackageConfinementInterop.FILE_OPEN_REPARSE_POINT);
+
+            // If user-mode NT subsystem rejects OBJ_DONT_REPARSE with STATUS_INVALID_PARAMETER, retry with OBJ_CASE_INSENSITIVE
+            if (status == NativePackageConfinementInterop.STATUS_INVALID_PARAMETER)
+            {
+                objAttr.Attributes = NativePackageConfinementInterop.OBJ_CASE_INSENSITIVE;
+                status = NativePackageConfinementInterop.NtOpenFile(
+                    out fileHandle,
+                    NativePackageConfinementInterop.NT_FILE_GENERIC_READ,
+                    ref objAttr,
+                    out ioStatus,
+                    NativePackageConfinementInterop.FILE_SHARE_READ,
+                    NativePackageConfinementInterop.FILE_SYNCHRONOUS_IO_NONALERT | NativePackageConfinementInterop.FILE_OPEN_REPARSE_POINT);
+            }
 
             if (status == NativePackageConfinementInterop.STATUS_SUCCESS)
             {
@@ -280,6 +302,34 @@ public static class ConfinedPackageFileReader
                 {
                     safeHandle.Dispose();
                     violationReason = $"Putanja '{relativePath}' nije regularna datoteka na disku.";
+                    return ReadResultStatus.Violation;
+                }
+
+                // Canonical physical containment check on the opened handle (defense-in-depth)
+                var sbFinal = new StringBuilder(1024);
+                var len = NativePackageConfinementInterop.GetFinalPathNameByHandle(safeHandle, sbFinal, (uint)sbFinal.Capacity, NativePackageConfinementInterop.VOLUME_NAME_DOS);
+                if (len == 0)
+                {
+                    safeHandle.Dispose();
+                    violationReason = $"Nije moguće utvrditi konačnu fizičku putanju otvorene datoteke '{relativePath}'.";
+                    return ReadResultStatus.Violation;
+                }
+
+                var finalPath = sbFinal.ToString();
+                if (finalPath.StartsWith(@"\\?\UNC\", StringComparison.OrdinalIgnoreCase))
+                {
+                    finalPath = @"\\" + finalPath.Substring(8);
+                }
+                else if (finalPath.StartsWith(@"\\?\", StringComparison.OrdinalIgnoreCase))
+                {
+                    finalPath = finalPath.Substring(4);
+                }
+
+                var normalizedRoot = fullRoot.TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
+                if (!finalPath.StartsWith(normalizedRoot, StringComparison.OrdinalIgnoreCase))
+                {
+                    safeHandle.Dispose();
+                    violationReason = $"Otvorena datoteka '{relativePath}' fizički izlazi van korenskog direktorijuma paketa ({finalPath}).";
                     return ReadResultStatus.Violation;
                 }
 
