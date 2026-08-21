@@ -97,7 +97,7 @@ public sealed class LinuxAtomicProvisioningAndRecoveryTests
     }
 
     // ==========================================
-    // 8D-C: Atomic File Publisher & Ownership Contract (R1-G)
+    // 8D-C & 8D-R3: Atomic File Publisher & Namespace Lock (R3-A to R3-G)
     // ==========================================
 
     [Fact]
@@ -120,6 +120,10 @@ public sealed class LinuxAtomicProvisioningAndRecoveryTests
 
         Assert.True(mock.TryGetEntry("/var/lib/internet-evidence-monitor/keys/evidence-signing-v1.p8", out var entry));
         Assert.Equal(content, entry.Content);
+
+        // Namespace lock exists and is released
+        Assert.True(mock.TryGetEntry($"/var/lib/internet-evidence-monitor/keys/{LinuxStoragePaths.NamespaceLockFileName}", out var lockEntry));
+        Assert.Equal(0x180, (int)(lockEntry.Stat.Mode & 0xFFF)); // 0600
     }
 
     [Fact]
@@ -136,7 +140,7 @@ public sealed class LinuxAtomicProvisioningAndRecoveryTests
         var ex = Assert.Throws<InvalidOperationException>(() =>
             LinuxAtomicFilePublisher.PublishAtomically(mock, keysFd, "evidence-signing-v1.p8", "DATA"u8.ToArray(), LinuxPosixStorageConstants.Mode0600, policy));
 
-        Assert.Contains("exclusive publication lock", ex.Message);
+        Assert.Contains("exclusive namespace lock", ex.Message);
         Assert.False(mock.TryGetEntry("/var/lib/internet-evidence-monitor/keys/evidence-signing-v1.p8", out _));
         Assert.Equal(0, mock.WriteCallCount); // Zero writes after flock failure!
     }
@@ -254,12 +258,17 @@ public sealed class LinuxAtomicProvisioningAndRecoveryTests
     {
         var mock = new MockPosixStorageApi();
         mock.AddEntry("/var/lib/internet-evidence-monitor/keys", isDir: true, isSymlink: false, mode: 0x1C0, uid: 1000, gid: 1000);
+        mock.AddEntry($"/var/lib/internet-evidence-monitor/keys/{LinuxStoragePaths.NamespaceLockFileName}", isDir: false, isSymlink: false, mode: 0x180, uid: 1000, gid: 1000);
         int keysFd = mock.Open("/var/lib/internet-evidence-monitor/keys", 0, 0);
         var policy = LinuxStorageOwnershipPolicy.CreateSystem(uid: 1000, gid: 1000);
         var content = "SAMPLE_KEY_BYTES"u8.ToArray();
 
         // 1. First publish: rename succeeds, but parent fsync fails
-        mock.FailParentDirFsync = true;
+        mock.BeforeRenameAt2Hook = () =>
+        {
+            mock.FailParentDirFsync = true;
+            return true;
+        };
         Assert.Throws<InvalidOperationException>(() =>
             LinuxAtomicFilePublisher.PublishAtomically(mock, keysFd, "evidence-signing-v1.p8", content, LinuxPosixStorageConstants.Mode0600, policy, "key"));
 
@@ -268,6 +277,7 @@ public sealed class LinuxAtomicProvisioningAndRecoveryTests
         Assert.Equal(content, publishedEntry.Content);
 
         // 2. Second call: detected as existing collision, caller verifies and confirms parent durability
+        mock.BeforeRenameAt2Hook = null;
         mock.FailParentDirFsync = false;
         using var secondResult = LinuxAtomicFilePublisher.PublishAtomically(
             mock, keysFd, "evidence-signing-v1.p8", content, LinuxPosixStorageConstants.Mode0600, policy, "key");
@@ -364,8 +374,14 @@ public sealed class LinuxAtomicProvisioningAndRecoveryTests
     [Fact]
     public void Crash_Point_CP07_Failure_After_Rename_Before_Parent_Fsync_Leaves_Final_File_For_Recovery()
     {
-        var mock = new MockPosixStorageApi { FailParentDirFsync = true };
+        var mock = new MockPosixStorageApi();
+        mock.BeforeRenameAt2Hook = () =>
+        {
+            mock.FailParentDirFsync = true;
+            return true;
+        };
         mock.AddEntry("/var/lib/internet-evidence-monitor/keys", isDir: true, isSymlink: false, mode: 0x1C0, uid: 1000, gid: 1000);
+        mock.AddEntry($"/var/lib/internet-evidence-monitor/keys/{LinuxStoragePaths.NamespaceLockFileName}", isDir: false, isSymlink: false, mode: 0x180, uid: 1000, gid: 1000);
         int keysFd = mock.Open("/var/lib/internet-evidence-monitor/keys", 0, 0);
         var policy = LinuxStorageOwnershipPolicy.CreateSystem(uid: 1000, gid: 1000);
 
@@ -419,7 +435,7 @@ public sealed class LinuxAtomicProvisioningAndRecoveryTests
     }
 
     // ==========================================
-    // 8D-E: Stale Temp Recovery & Concurrency (R1-C, R1-D, R1-E, R1-F, R2-E)
+    // 8D-E: Stale Temp Recovery & Concurrency (R1-C, R1-D, R1-E, R1-F, R2-E, R3-F)
     // ==========================================
 
     [Fact]
@@ -474,6 +490,7 @@ public sealed class LinuxAtomicProvisioningAndRecoveryTests
     {
         var mock = new MockPosixStorageApi { FailParentDirFsync = true };
         mock.AddEntry("/var/lib/internet-evidence-monitor/keys", isDir: true, isSymlink: false, mode: 0x1C0, uid: 1000, gid: 1000);
+        mock.AddEntry($"/var/lib/internet-evidence-monitor/keys/{LinuxStoragePaths.NamespaceLockFileName}", isDir: false, isSymlink: false, mode: 0x180, uid: 1000, gid: 1000);
         var validTempName = $".tmp.key.{Guid.NewGuid():N}";
         mock.AddEntry($"/var/lib/internet-evidence-monitor/keys/{validTempName}", isDir: false, isSymlink: false, mode: 0x180, uid: 1000, gid: 1000);
         int keysFd = mock.Open("/var/lib/internet-evidence-monitor/keys", 0, 0);
@@ -495,8 +512,9 @@ public sealed class LinuxAtomicProvisioningAndRecoveryTests
         mock.AddEntry($"/var/lib/internet-evidence-monitor/keys/{validTempName}", isDir: false, isSymlink: false, mode: 0x180, uid: 1000, gid: 1000);
         int keysFd = mock.Open("/var/lib/internet-evidence-monitor/keys", 0, 0);
 
-        // Simulate Process A holding active lock
-        mock.FailFlockErrno = LinuxPosixStorageConstants.EWOULDBLOCK;
+        // Simulate Process A holding active lock on the temp file
+        int tempFd = mock.Open($"/var/lib/internet-evidence-monitor/keys/{validTempName}", 0, 0);
+        mock.Flock(tempFd, LinuxPosixStorageConstants.LOCK_EX | LinuxPosixStorageConstants.LOCK_NB);
 
         var policy = LinuxStorageOwnershipPolicy.CreateSystem(uid: 1000, gid: 1000);
 
@@ -507,44 +525,38 @@ public sealed class LinuxAtomicProvisioningAndRecoveryTests
     }
 
     [Fact]
-    public void R2_E_Interleaving_Recovery_Cannot_Delete_Temp_Held_By_Publisher_Before_Rename()
+    public void R3_F_Create_To_Flock_Window_Recovery_Cannot_Delete_Active_Temp()
     {
         var mock = new MockPosixStorageApi();
         mock.AddEntry("/var/lib/internet-evidence-monitor/keys", isDir: true, isSymlink: false, mode: 0x1C0, uid: 1000, gid: 1000);
         int keysFd = mock.Open("/var/lib/internet-evidence-monitor/keys", 0, 0);
         var policy = LinuxStorageOwnershipPolicy.CreateSystem(uid: 1000, gid: 1000);
 
-        string? capturedTempName = null;
+        bool recoveryInterleavingAttemptExecuted = false;
         bool recoveryAttemptSucceeded = true;
 
-        mock.BeforeRenameAt2Hook = () =>
-        {
-            // At this point, publisher is right before renameat2 and holds flock on capturedTempName
-            if (capturedTempName != null)
-            {
-                // Simulate flock collision on active temp
-                mock.FailFlockErrno = LinuxPosixStorageConstants.EWOULDBLOCK;
-                recoveryAttemptSucceeded = LinuxAtomicFilePublisher.CleanupStaleTempFile(
-                    mock, keysFd, capturedTempName, "key", policy);
-                mock.FailFlockErrno = null;
-            }
-            return true;
-        };
-
-        // Listen for temp creation to capture its name
+        // Hook fires immediately when Publisher creates .tmp.key.<guid>, before Publisher even calls Flock(tempFd)
         mock.OnEntryCreated = path =>
         {
-            if (path.Contains(".tmp.key."))
+            if (path.Contains(".tmp.key.") && !recoveryInterleavingAttemptExecuted)
             {
-                capturedTempName = path.Substring(path.LastIndexOf('/') + 1);
+                recoveryInterleavingAttemptExecuted = true;
+                string tempName = path.Substring(path.LastIndexOf('/') + 1);
+
+                // Recovery attempts cleanup while publisher holds namespace lock
+                int recoveryKeysFd = mock.Open("/var/lib/internet-evidence-monitor/keys", 0, 0);
+                recoveryAttemptSucceeded = LinuxAtomicFilePublisher.CleanupStaleTempFile(
+                    mock, recoveryKeysFd, tempName, "key", policy);
+                mock.Close(recoveryKeysFd);
             }
         };
 
         using var result = LinuxAtomicFilePublisher.PublishAtomically(
-            mock, keysFd, "evidence-signing-v1.p8", "CONTENT"u8.ToArray(), LinuxPosixStorageConstants.Mode0600, policy, "key");
+            mock, keysFd, "evidence-signing-v1.p8", "PUBLISHED_KEY_CONTENT"u8.ToArray(), LinuxPosixStorageConstants.Mode0600, policy, "key");
 
         Assert.True(result.IsSuccess);
-        Assert.False(recoveryAttemptSucceeded); // Recovery correctly refused to delete publisher's active temp
+        Assert.True(recoveryInterleavingAttemptExecuted);
+        Assert.False(recoveryAttemptSucceeded); // Recovery CANNOT delete active temp because Publisher holds namespace lock!
         Assert.True(mock.TryGetEntry("/var/lib/internet-evidence-monitor/keys/evidence-signing-v1.p8", out _));
     }
 
@@ -614,6 +626,7 @@ public sealed class LinuxAtomicProvisioningAndRecoveryTests
         }
 
         private readonly Dictionary<string, FileEntry> _entries = new(StringComparer.Ordinal);
+        private readonly Dictionary<string, (int ownerFd, int lockType)> _fileLocks = new(StringComparer.Ordinal);
         private int _fdCounter = 100;
         private readonly Dictionary<int, string> _openFds = new();
 
@@ -914,12 +927,50 @@ public sealed class LinuxAtomicProvisioningAndRecoveryTests
                 LastErrno = FailFlockErrno.Value;
                 return -1;
             }
+
+            if (!_openFds.TryGetValue(fd, out var path))
+            {
+                LastErrno = LinuxPosixStorageConstants.EBADF;
+                return -1;
+            }
+
+            int opType = operation & (LinuxPosixStorageConstants.LOCK_SH | LinuxPosixStorageConstants.LOCK_EX | LinuxPosixStorageConstants.LOCK_UN);
+
+            if (opType == LinuxPosixStorageConstants.LOCK_UN)
+            {
+                if (_fileLocks.TryGetValue(path, out var lockInfo) && lockInfo.ownerFd == fd)
+                {
+                    _fileLocks.Remove(path);
+                }
+                return 0;
+            }
+
+            if (opType == LinuxPosixStorageConstants.LOCK_EX || opType == LinuxPosixStorageConstants.LOCK_SH)
+            {
+                if (_fileLocks.TryGetValue(path, out var currentLock) && currentLock.ownerFd != fd)
+                {
+                    // True lock contention between two independently opened FDs!
+                    LastErrno = LinuxPosixStorageConstants.EWOULDBLOCK;
+                    return -1;
+                }
+
+                _fileLocks[path] = (fd, operation);
+                return 0;
+            }
+
             return 0;
         }
 
         public int Close(int fd)
         {
-            _openFds.Remove(fd);
+            if (_openFds.TryGetValue(fd, out var path))
+            {
+                if (_fileLocks.TryGetValue(path, out var lockInfo) && lockInfo.ownerFd == fd)
+                {
+                    _fileLocks.Remove(path);
+                }
+                _openFds.Remove(fd);
+            }
             return 0;
         }
 

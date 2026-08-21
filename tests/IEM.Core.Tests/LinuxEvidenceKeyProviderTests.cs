@@ -294,9 +294,11 @@ public sealed class LinuxEvidenceKeyProviderTests
     [Fact]
     public async Task R1_A_Directory_Fsync_Failure_After_Rename_Throws_SigningIdentityUnavailableException()
     {
-        var mock = new MockPosixStorageApi
+        var mock = new MockPosixStorageApi();
+        mock.BeforeRenameAt2Hook = () =>
         {
-            FailKeysDirFsyncAfterCallNumber = 4 // Fails on parent fsync after file rename
+            mock.FailKeysDirFsync = true; // Keys directory fsync fails immediately after publish rename
+            return true;
         };
         mock.AddEntry("/var/lib/internet-evidence-monitor", isDir: true, isSymlink: false, mode: 0x1C0, uid: 1000, gid: 1000);
         mock.AddEntry("/var/lib/internet-evidence-monitor/keys", isDir: true, isSymlink: false, mode: 0x1C0, uid: 1000, gid: 1000);

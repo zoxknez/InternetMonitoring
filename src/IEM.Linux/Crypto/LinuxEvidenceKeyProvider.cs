@@ -258,7 +258,7 @@ public sealed class LinuxEvidenceKeyProvider : IEvidenceKeyProvider
         catch (Exception ex) when (ex is not SigningIdentityUnavailableException)
         {
             ecdsa.Dispose();
-            if (ex is InvalidOperationException && ex.Message.Contains("durability"))
+            if (ex is InvalidOperationException && (ex.Message.Contains("durability") || ex.Message.Contains("fsync")))
             {
                 throw new SigningIdentityUnavailableException(ex.Message, ex);
             }

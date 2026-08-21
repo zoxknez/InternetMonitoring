@@ -28,6 +28,7 @@ public static class LinuxStoragePaths
     public const string CasesDirName = "cases";
     public const string StateDirName = "state";
     public const string SigningKeyFileName = "evidence-signing-v1.p8";
+    public const string NamespaceLockFileName = ".iem-storage.lock";
 
     /// <summary>
     /// Joins POSIX path segments deterministically using '/' separator across all operating systems.

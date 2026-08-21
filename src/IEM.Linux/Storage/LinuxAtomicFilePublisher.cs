@@ -53,14 +53,189 @@ public sealed class AtomicPublishResult : IDisposable
     }
 }
 
+public sealed class LinuxNamespaceLockScope : IDisposable
+{
+    private readonly ILinuxPosixStorageApi _posix;
+    private int _lockFd;
+
+    public int LockFd => _lockFd;
+
+    public LinuxNamespaceLockScope(ILinuxPosixStorageApi posix, int lockFd)
+    {
+        _posix = posix;
+        _lockFd = lockFd;
+    }
+
+    public void Dispose()
+    {
+        if (_lockFd >= 0)
+        {
+            _posix.Flock(_lockFd, LinuxPosixStorageConstants.LOCK_UN);
+            _posix.Close(_lockFd);
+            _lockFd = -1;
+        }
+    }
+}
+
 /// <summary>
 /// Domain-agnostic, crash-safe atomic file publisher using POSIX O_CREAT|O_EXCL, Fchmod,
 /// Fstat verification, Fsync, RENAME_NOREPLACE, flock concurrency guard, and directory durability.
+/// Phase 3.1-8D-R3: Namespace-level transaction serialization via .iem-storage.lock.
 /// </summary>
 public static partial class LinuxAtomicFilePublisher
 {
     [GeneratedRegex(@"^\.tmp\.([a-zA-Z0-9_-]+)\.([0-9a-f]{32})$")]
     private static partial Regex TempFileNameRegex();
+
+    public static LinuxNamespaceLockScope? AcquireNamespaceLock(
+        ILinuxPosixStorageApi posix,
+        int parentFd,
+        LinuxStorageOwnershipPolicy ownership,
+        string lockFileName = LinuxStoragePaths.NamespaceLockFileName,
+        bool failClosedOnContention = true)
+    {
+        ArgumentNullException.ThrowIfNull(posix);
+        ArgumentException.ThrowIfNullOrWhiteSpace(lockFileName);
+
+        var resolve = LinuxPosixStorageConstants.RESOLVE_BENEATH |
+                      LinuxPosixStorageConstants.RESOLVE_NO_SYMLINKS |
+                      LinuxPosixStorageConstants.RESOLVE_NO_XDEV |
+                      LinuxPosixStorageConstants.RESOLVE_NO_MAGICLINKS;
+
+        int statRes = posix.FstatAt(parentFd, lockFileName, out var existingStat, LinuxPosixStorageConstants.AT_SYMLINK_NOFOLLOW);
+        int lockFd;
+
+        if (statRes == 0)
+        {
+            // Existing lock file: verify-only (NO REPAIR)
+            var openHow = new OpenHow
+            {
+                Flags = (ulong)(LinuxPosixStorageConstants.O_RDWR | LinuxPosixStorageConstants.O_CLOEXEC),
+                Mode = 0,
+                Resolve = resolve
+            };
+
+            lockFd = posix.OpenAt2(parentFd, lockFileName, ref openHow);
+            if (lockFd < 0)
+            {
+                throw new InvalidOperationException($"Failed to open existing namespace lock file '{lockFileName}' securely via openat2.");
+            }
+
+            try
+            {
+                if (posix.Fstat(lockFd, out var stat) != 0 || !stat.IsRegularFile)
+                {
+                    throw new InvalidOperationException($"Namespace lock '{lockFileName}' is not a regular file.");
+                }
+
+                if ((stat.PermissionBits & 0xFFF) != LinuxPosixStorageConstants.Mode0600)
+                {
+                    throw new InvalidOperationException(
+                        $"Namespace lock '{lockFileName}' permissions 0{Convert.ToString(stat.PermissionBits, 8)} are invalid (must be exact 0600).");
+                }
+
+                if (!CheckOwnership(stat, ownership, out var ownerErr))
+                {
+                    throw new InvalidOperationException($"Namespace lock '{lockFileName}' {ownerErr}");
+                }
+            }
+            catch
+            {
+                posix.Close(lockFd);
+                throw;
+            }
+        }
+        else
+        {
+            int errno = posix.GetLastErrno();
+            if (errno != LinuxPosixStorageConstants.ENOENT)
+            {
+                throw new InvalidOperationException(
+                    $"Authoritative lookup of namespace lock '{lockFileName}' failed with errno {errno} (not ENOENT).");
+            }
+
+            // Authoritative ENOENT: create new lock file
+            var createHow = new OpenHow
+            {
+                Flags = (ulong)(LinuxPosixStorageConstants.O_CREAT | LinuxPosixStorageConstants.O_EXCL | LinuxPosixStorageConstants.O_RDWR | LinuxPosixStorageConstants.O_CLOEXEC),
+                Mode = (ulong)LinuxPosixStorageConstants.Mode0600,
+                Resolve = resolve
+            };
+
+            lockFd = posix.OpenAt2(parentFd, lockFileName, ref createHow);
+            if (lockFd < 0)
+            {
+                int openErrno = posix.GetLastErrno();
+                if (openErrno == LinuxPosixStorageConstants.EEXIST)
+                {
+                    var openExistingHow = new OpenHow
+                    {
+                        Flags = (ulong)(LinuxPosixStorageConstants.O_RDWR | LinuxPosixStorageConstants.O_CLOEXEC),
+                        Mode = 0,
+                        Resolve = resolve
+                    };
+                    lockFd = posix.OpenAt2(parentFd, lockFileName, ref openExistingHow);
+                    if (lockFd < 0)
+                    {
+                        throw new InvalidOperationException($"Failed to open newly created namespace lock file '{lockFileName}' after race collision.");
+                    }
+                }
+                else
+                {
+                    throw new InvalidOperationException($"Failed to create namespace lock file '{lockFileName}' via openat2 (errno {openErrno}).");
+                }
+            }
+
+            try
+            {
+                if (posix.Fchmod(lockFd, LinuxPosixStorageConstants.Mode0600) != 0)
+                {
+                    throw new InvalidOperationException($"Failed to set permissions 0600 on namespace lock '{lockFileName}'.");
+                }
+
+                if (posix.Fstat(lockFd, out var stat) != 0 || !stat.IsRegularFile)
+                {
+                    throw new InvalidOperationException($"Newly created namespace lock '{lockFileName}' is not a valid regular file.");
+                }
+
+                if ((stat.PermissionBits & 0xFFF) != LinuxPosixStorageConstants.Mode0600)
+                {
+                    throw new InvalidOperationException(
+                        $"Newly created namespace lock '{lockFileName}' has invalid mode 0{Convert.ToString(stat.PermissionBits, 8)}.");
+                }
+
+                if (!CheckOwnership(stat, ownership, out var ownerErr))
+                {
+                    throw new InvalidOperationException($"Newly created namespace lock '{lockFileName}' {ownerErr}");
+                }
+
+                if (posix.Fsync(lockFd) != 0 || posix.Fsync(parentFd) != 0)
+                {
+                    throw new InvalidOperationException($"fsync failed during namespace lock '{lockFileName}' creation.");
+                }
+            }
+            catch
+            {
+                posix.Close(lockFd);
+                throw;
+            }
+        }
+
+        // Acquire exclusive non-blocking advisory lock
+        if (posix.Flock(lockFd, LinuxPosixStorageConstants.LOCK_EX | LinuxPosixStorageConstants.LOCK_NB) != 0)
+        {
+            int flockErrno = posix.GetLastErrno();
+            posix.Close(lockFd);
+            if (failClosedOnContention)
+            {
+                throw new InvalidOperationException(
+                    $"Failed to acquire exclusive namespace lock for '{lockFileName}' (errno {flockErrno}).");
+            }
+            return null;
+        }
+
+        return new LinuxNamespaceLockScope(posix, lockFd);
+    }
 
     public static AtomicPublishResult PublishAtomically(
         ILinuxPosixStorageApi posix,
@@ -74,6 +249,9 @@ public static partial class LinuxAtomicFilePublisher
         ArgumentNullException.ThrowIfNull(posix);
         ArgumentException.ThrowIfNullOrWhiteSpace(targetFileName);
         ArgumentException.ThrowIfNullOrWhiteSpace(tempPrefix);
+
+        // R3-B: Acquire namespace-level transaction lock BEFORE target lookup and temp creation
+        using var nsLock = AcquireNamespaceLock(posix, parentFd, ownership, LinuxStoragePaths.NamespaceLockFileName, failClosedOnContention: true);
 
         var resolve = LinuxPosixStorageConstants.RESOLVE_BENEATH |
                       LinuxPosixStorageConstants.RESOLVE_NO_SYMLINKS |
@@ -112,7 +290,7 @@ public static partial class LinuxAtomicFilePublisher
 
         try
         {
-            // R2-A: Acquire exclusive advisory lock and FAIL CLOSED on failure
+            // R2-A: Acquire exclusive advisory lock on tempFd (defense-in-depth)
             if (posix.Flock(tempFd, LinuxPosixStorageConstants.LOCK_EX | LinuxPosixStorageConstants.LOCK_NB) != 0)
             {
                 int flockErrno = posix.GetLastErrno();
@@ -160,7 +338,7 @@ public static partial class LinuxAtomicFilePublisher
                 throw new InvalidOperationException($"fsync failed on temporary file '{tempName}'.");
             }
 
-            // R2-B: 7. Atomic publication via RENAME_NOREPLACE with flock STILL held on open tempFd
+            // R2-B & R3-D: Atomic publication via RENAME_NOREPLACE with locks held
             int ren = posix.RenameAt2(parentFd, tempName, parentFd, targetFileName, LinuxPosixStorageConstants.RENAME_NOREPLACE);
             if (ren != 0)
             {
@@ -179,7 +357,7 @@ public static partial class LinuxAtomicFilePublisher
                 throw new InvalidOperationException($"renameat2 failed to publish '{targetFileName}' (errno {renErrno}).");
             }
 
-            // R2-B: 8. Parent directory durability fsync while flock is STILL held
+            // R2-B & R3-D: Parent directory durability fsync while locks are held
             if (posix.Fsync(parentFd) != 0)
             {
                 throw new InvalidOperationException(
@@ -193,7 +371,6 @@ public static partial class LinuxAtomicFilePublisher
         }
         finally
         {
-            // Close tempFd releasing flock only after rename + parent fsync or after catch cleanup
             posix.Close(tempFd);
         }
 
@@ -241,6 +418,13 @@ public static partial class LinuxAtomicFilePublisher
             return false;
         }
 
+        // R3-C: Acquire namespace lock first. If held by active publisher -> NEVER scavenge!
+        using var nsLock = AcquireNamespaceLock(posix, parentFd, ownership, LinuxStoragePaths.NamespaceLockFileName, failClosedOnContention: false);
+        if (nsLock == null)
+        {
+            return false; // Active publisher holds namespace lock
+        }
+
         var resolve = LinuxPosixStorageConstants.RESOLVE_BENEATH |
                       LinuxPosixStorageConstants.RESOLVE_NO_SYMLINKS |
                       LinuxPosixStorageConstants.RESOLVE_NO_XDEV |
@@ -261,7 +445,7 @@ public static partial class LinuxAtomicFilePublisher
 
         try
         {
-            // R1-F: Staleness / concurrency check via exclusive non-blocking lock
+            // R1-F: Staleness / concurrency check via exclusive non-blocking lock on tempFd
             if (posix.Flock(tempFd, LinuxPosixStorageConstants.LOCK_EX | LinuxPosixStorageConstants.LOCK_NB) != 0)
             {
                 // Lock held by active concurrent publisher -> NEVER delete
@@ -284,7 +468,7 @@ public static partial class LinuxAtomicFilePublisher
                 return false; // Mode drift: NEVER delete blindly
             }
 
-            // R2-C: Unlink while flock is STILL held on open tempFd
+            // R2-C & R3-D: Unlink while locks are STILL held
             if (posix.UnlinkAt(parentFd, tempFileName, 0) != 0)
             {
                 return false;
