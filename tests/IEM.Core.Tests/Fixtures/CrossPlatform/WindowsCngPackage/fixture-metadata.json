@@ -1,10 +1,15 @@
 {
   "fixtureVersion": 1,
   "sourcePlatform": "Windows",
+  "sourceOS": "Windows",
   "sourceProvider": "Microsoft Platform Crypto Provider",
+  "generator": "WindowsCngKeyProvider",
+  "generatorCommit": "677c642873ae3ff8f9eec8fdc9d9b39dbbef59a9",
   "signingScope": "WindowsUserOrMachine",
+  "keyProtectionLevel": "TpmBacked",
+  "keyProtectionDetails": "NCRYPT_PROV:Microsoft Platform Crypto Provider:TPM:ExportPolicy=Blocked",
   "keyId": "sha256:b3c86a30ff2beadb4cc37e005c03d57024c9a0f9bd6c15769148eb4c76e0ce30",
-  "generatedFromCommit": "0087a74657400d8ff9897c59ee39a09b2fc3270a",
+  "generatedFromCommit": "677c642873ae3ff8f9eec8fdc9d9b39dbbef59a9",
   "expectedOverall": "ValidTrustNotEstablished",
   "expectedIntegrity": "Verified",
   "expectedTrust": "NotEstablished"

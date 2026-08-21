@@ -183,9 +183,50 @@ public sealed class WindowsCryptoStorageAcceptanceTests : IDisposable
         Assert.True(WindowsReparsePointGuard.ValidateNoReparsePointsAlongPath(sessionDir, normalSub, out var okViolation));
         Assert.Null(okViolation);
 
-        // Test reparse point detection logic on non-directory file or simulated reparse point path
-        Assert.False(WindowsReparsePointGuard.IsReparsePoint(""));
-        Assert.False(WindowsReparsePointGuard.IsReparsePoint(null!));
+        // Create real NTFS junction inside sessionDir pointing to outsideTarget
+        var junctionPath = Path.Combine(sessionDir, "HijackJunction");
+        bool junctionCreated = false;
+        try
+        {
+            var psi = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "cmd.exe",
+                Arguments = $"/c mklink /J \"{junctionPath}\" \"{outsideTarget}\"",
+                CreateNoWindow = true,
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+            };
+            using var proc = System.Diagnostics.Process.Start(psi);
+            proc?.WaitForExit(5000);
+            junctionCreated = Directory.Exists(junctionPath) && WindowsReparsePointGuard.IsReparsePoint(junctionPath);
+        }
+        catch
+        {
+            junctionCreated = false;
+        }
+
+        if (!junctionCreated)
+        {
+            try
+            {
+                Directory.CreateSymbolicLink(junctionPath, outsideTarget);
+                junctionCreated = WindowsReparsePointGuard.IsReparsePoint(junctionPath);
+            }
+            catch
+            {
+                // Fallback if environment restricts link creation
+            }
+        }
+
+        Assert.True(junctionCreated, "Real NTFS junction or directory link must be created on Windows.");
+        Assert.True(WindowsReparsePointGuard.IsReparsePoint(junctionPath));
+
+        var targetInJunction = Path.Combine(junctionPath, "payload.txt");
+        var isValid = WindowsReparsePointGuard.ValidateNoReparsePointsAlongPath(sessionDir, targetInJunction, out var violation);
+        Assert.False(isValid);
+        Assert.NotNull(violation);
+        Assert.Contains("reparse point", violation, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

@@ -57,6 +57,7 @@ public sealed class CrossPlatformCryptoStorageAcceptanceTests : IDisposable
     }
 
     // ======================================================================
+    // ======================================================================
     // 1. LINUX-NATIVE ACCEPTANCE GATES (Platform = Linux, 13 tests)
     // ======================================================================
 
@@ -65,14 +66,11 @@ public sealed class CrossPlatformCryptoStorageAcceptanceTests : IDisposable
     [Trait("Platform", "Linux")]
     public async Task XPL_01_Linux_System_Native_Identity_Produces_Verifier_Valid_ManifestSig()
     {
-        using var ecdsa = ECDsa.Create(ECCurve.NamedCurves.nistP256);
-        var claim = new KeyProtectionClaim(
-            Protection: KeyProtectionLevel.SoftwareProtected,
-            Evidence: KeyProtectionEvidence.ProviderReported,
-            Provider: LinuxEvidenceKeyProvider.KeyStoreProviderName,
-            Details: "POSIX:0700/0600:exact-ownership:openat2:system-daemon");
-
-        using var identity = new LinuxEvidenceSigningIdentity(ecdsa, claim, LinuxSigningIdentityScope.SystemInstallation);
+        var stateRoot = Path.Combine(_tempRoot, "xpl01_state");
+        Directory.CreateDirectory(stateRoot);
+        var posix = GetPosixApi();
+        var provider = new LinuxEvidenceKeyProvider(LinuxSigningIdentityScope.SystemInstallation, customStateRoot: stateRoot, posix: posix);
+        using var identity = await provider.GetOrCreateIdentityAsync();
 
         var packageDir = Path.Combine(_tempRoot, "xpl-01-pkg");
         await CreateSamplePackageAsync(packageDir, identity.KeyId);
@@ -100,14 +98,11 @@ public sealed class CrossPlatformCryptoStorageAcceptanceTests : IDisposable
     [Trait("Platform", "Linux")]
     public async Task XPL_02_Linux_Portable_Native_Identity_Produces_Verifier_Valid_ManifestSig()
     {
-        using var ecdsa = ECDsa.Create(ECCurve.NamedCurves.nistP256);
-        var claim = new KeyProtectionClaim(
-            Protection: KeyProtectionLevel.SoftwareProtected,
-            Evidence: KeyProtectionEvidence.ProviderReported,
-            Provider: LinuxEvidenceKeyProvider.KeyStoreProviderName,
-            Details: "POSIX:0700/0600:exact-ownership:openat2:user-portable");
-
-        using var identity = new LinuxEvidenceSigningIdentity(ecdsa, claim, LinuxSigningIdentityScope.PortableUser);
+        var stateRoot = Path.Combine(_tempRoot, "xpl02_state");
+        Directory.CreateDirectory(stateRoot);
+        var posix = GetPosixApi();
+        var provider = new LinuxEvidenceKeyProvider(LinuxSigningIdentityScope.PortableUser, customStateRoot: stateRoot, posix: posix);
+        using var identity = await provider.GetOrCreateIdentityAsync();
 
         var packageDir = Path.Combine(_tempRoot, "xpl-02-pkg");
         await CreateSamplePackageAsync(packageDir, identity.KeyId);
@@ -133,16 +128,13 @@ public sealed class CrossPlatformCryptoStorageAcceptanceTests : IDisposable
     [Fact]
     [Trait("Acceptance", "3.1-8F")]
     [Trait("Platform", "Linux")]
-    public void XPL_03_LNX_Windows_And_Linux_Identities_Share_Canonical_Suite_SPKI_And_KeyId_Formula_Linux()
+    public async Task XPL_03_LNX_Windows_And_Linux_Identities_Share_Canonical_Suite_SPKI_And_KeyId_Formula_Linux()
     {
-        using var ecdsa = ECDsa.Create(ECCurve.NamedCurves.nistP256);
-        var claim = new KeyProtectionClaim(
-            KeyProtectionLevel.SoftwareProtected,
-            KeyProtectionEvidence.ProviderReported,
-            LinuxEvidenceKeyProvider.KeyStoreProviderName,
-            "POSIX:0700/0600:exact-ownership:openat2:system-daemon");
-
-        using var identity = new LinuxEvidenceSigningIdentity(ecdsa, claim, LinuxSigningIdentityScope.SystemInstallation);
+        var stateRoot = Path.Combine(_tempRoot, "xpl03_state");
+        Directory.CreateDirectory(stateRoot);
+        var posix = GetPosixApi();
+        var provider = new LinuxEvidenceKeyProvider(LinuxSigningIdentityScope.SystemInstallation, customStateRoot: stateRoot, posix: posix);
+        using var identity = await provider.GetOrCreateIdentityAsync();
 
         Assert.Equal(SignatureSuite.EcdsaP256Sha256, identity.Suite);
         Assert.NotNull(identity.PublicKey);
@@ -157,16 +149,13 @@ public sealed class CrossPlatformCryptoStorageAcceptanceTests : IDisposable
     [Fact]
     [Trait("Acceptance", "3.1-8F")]
     [Trait("Platform", "Linux")]
-    public void XPL_06_Linux_System_KeyProtection_Claim_Is_Exact()
+    public async Task XPL_06_Linux_System_KeyProtection_Claim_Is_Exact()
     {
-        using var ecdsa = ECDsa.Create(ECCurve.NamedCurves.nistP256);
-        var claim = new KeyProtectionClaim(
-            Protection: KeyProtectionLevel.SoftwareProtected,
-            Evidence: KeyProtectionEvidence.ProviderReported,
-            Provider: LinuxEvidenceKeyProvider.KeyStoreProviderName,
-            Details: "POSIX:0700/0600:exact-ownership:openat2:system-daemon");
-
-        using var identity = new LinuxEvidenceSigningIdentity(ecdsa, claim, LinuxSigningIdentityScope.SystemInstallation);
+        var stateRoot = Path.Combine(_tempRoot, "xpl06_state");
+        Directory.CreateDirectory(stateRoot);
+        var posix = GetPosixApi();
+        var provider = new LinuxEvidenceKeyProvider(LinuxSigningIdentityScope.SystemInstallation, customStateRoot: stateRoot, posix: posix);
+        using var identity = await provider.GetOrCreateIdentityAsync();
 
         Assert.Equal(KeyProtectionLevel.SoftwareProtected, identity.Protection.Protection);
         Assert.Equal(LinuxEvidenceKeyProvider.KeyStoreProviderName, identity.Protection.Provider);
@@ -177,16 +166,13 @@ public sealed class CrossPlatformCryptoStorageAcceptanceTests : IDisposable
     [Fact]
     [Trait("Acceptance", "3.1-8F")]
     [Trait("Platform", "Linux")]
-    public void XPL_07_Linux_Portable_KeyProtection_Claim_Is_Exact()
+    public async Task XPL_07_Linux_Portable_KeyProtection_Claim_Is_Exact()
     {
-        using var ecdsa = ECDsa.Create(ECCurve.NamedCurves.nistP256);
-        var claim = new KeyProtectionClaim(
-            Protection: KeyProtectionLevel.SoftwareProtected,
-            Evidence: KeyProtectionEvidence.ProviderReported,
-            Provider: LinuxEvidenceKeyProvider.KeyStoreProviderName,
-            Details: "POSIX:0700/0600:exact-ownership:openat2:user-portable");
-
-        using var identity = new LinuxEvidenceSigningIdentity(ecdsa, claim, LinuxSigningIdentityScope.PortableUser);
+        var stateRoot = Path.Combine(_tempRoot, "xpl07_state");
+        Directory.CreateDirectory(stateRoot);
+        var posix = GetPosixApi();
+        var provider = new LinuxEvidenceKeyProvider(LinuxSigningIdentityScope.PortableUser, customStateRoot: stateRoot, posix: posix);
+        using var identity = await provider.GetOrCreateIdentityAsync();
 
         Assert.Equal(KeyProtectionLevel.SoftwareProtected, identity.Protection.Protection);
         Assert.Equal(LinuxEvidenceKeyProvider.KeyStoreProviderName, identity.Protection.Provider);
@@ -236,10 +222,21 @@ public sealed class CrossPlatformCryptoStorageAcceptanceTests : IDisposable
     [Fact]
     [Trait("Acceptance", "3.1-8F")]
     [Trait("Platform", "Linux")]
-    public void XPL_13_LNX_StorageProtectionObservation_Uses_Factual_Platform_Provenance_Linux()
+    public async Task XPL_13_LNX_StorageProtectionObservation_Uses_Factual_Platform_Provenance_Linux()
     {
-        var provisioner = new LinuxSessionModeProvisioner();
+        var stateRoot = Path.Combine(_tempRoot, "state_root_xpl13");
+        Directory.CreateDirectory(stateRoot);
+        var sessionDir = Path.Combine(stateRoot, "sessions", "Sesija_xpl13-01");
+        var desc = SessionLayoutDescriptor.CreateStandard("xpl13-01");
+        var posix = GetPosixApi();
+        var provisioner = new LinuxSessionModeProvisioner(stateRoot: stateRoot, posix: posix);
+
+        var observation = await provisioner.ProvisionSessionBoundariesAsync(sessionDir, desc);
         Assert.Equal("Linux", provisioner.PlatformName);
+        Assert.Equal("Linux", observation.Platform);
+        Assert.Equal(desc.StoragePolicyHash, observation.StoragePolicyHash);
+        Assert.Equal(StorageProtectionState.Established, observation.ProtectionState);
+        Assert.StartsWith("POSIX:0700", observation.PlatformSecurityDescriptorRef);
     }
 
     [Fact]
@@ -247,22 +244,35 @@ public sealed class CrossPlatformCryptoStorageAcceptanceTests : IDisposable
     [Trait("Platform", "Linux")]
     public async Task XPL_15_LNX_Existing_Session_Restart_Verifies_Without_Reprovision_Or_Repair_Linux()
     {
-        var sessionDir = Path.Combine(_tempRoot, "Sesija_restart-01");
+        var stateRoot = Path.Combine(_tempRoot, "state_root_restart");
+        Directory.CreateDirectory(stateRoot);
+        var sessionDir = Path.Combine(stateRoot, "sessions", "Sesija_restart-01");
         Directory.CreateDirectory(sessionDir);
-        Directory.CreateDirectory(Path.Combine(sessionDir, "Raw"));
-        Directory.CreateDirectory(Path.Combine(sessionDir, "Derived"));
-        Directory.CreateDirectory(Path.Combine(sessionDir, "Evidence"));
-        Directory.CreateDirectory(Path.Combine(sessionDir, "Exports"));
-
         var desc = SessionLayoutDescriptor.CreateStandard("restart-01");
-        var layoutJsonPath = Path.Combine(sessionDir, SessionLayoutDescriptor.FileName);
-        await File.WriteAllBytesAsync(layoutJsonPath, desc.ToCanonicalBytes());
 
-        var preVerifyBytes = await File.ReadAllBytesAsync(layoutJsonPath);
+        var posix = GetPosixApi();
+        var provisioner = new LinuxSessionModeProvisioner(stateRoot: stateRoot, posix: posix);
+        var initObs = await provisioner.ProvisionSessionBoundariesAsync(sessionDir, desc);
+        Assert.Equal(StorageProtectionState.Established, initObs.ProtectionState);
 
-        // Verify-only restart check
-        var postVerifyBytes = await File.ReadAllBytesAsync(layoutJsonPath);
-        Assert.Equal(preVerifyBytes, postVerifyBytes);
+        var filesBefore = Directory.GetFiles(sessionDir, "*", SearchOption.AllDirectories)
+            .ToDictionary(f => f, f => File.ReadAllBytes(f));
+
+        var verifyObs = await provisioner.VerifyStorageProtectionAsync(sessionDir, desc);
+        Assert.Equal(StorageProtectionState.Established, verifyObs.ProtectionState);
+        Assert.True(verifyObs.RootBoundaryValid);
+        Assert.True(verifyObs.ReparsePointCheck);
+        Assert.Equal("Linux", verifyObs.Platform);
+
+        var filesAfter = Directory.GetFiles(sessionDir, "*", SearchOption.AllDirectories)
+            .ToDictionary(f => f, f => File.ReadAllBytes(f));
+
+        Assert.Equal(filesBefore.Count, filesAfter.Count);
+        foreach (var kvp in filesBefore)
+        {
+            Assert.True(filesAfter.ContainsKey(kvp.Key));
+            Assert.Equal(kvp.Value, filesAfter[kvp.Key]);
+        }
     }
 
     [Fact]
@@ -270,14 +280,41 @@ public sealed class CrossPlatformCryptoStorageAcceptanceTests : IDisposable
     [Trait("Platform", "Linux")]
     public void XPL_16_LNX_Platform_Storage_Boundaries_Reject_Symlink_And_Reparse_Hijack_Linux()
     {
-        var guard = new LinuxSymlinkGuard();
+        var trustedRoot = Path.Combine(_tempRoot, "trusted_lnx_root");
+        var outsideTarget = Path.Combine(_tempRoot, "outside_target");
+        Directory.CreateDirectory(trustedRoot);
+        Directory.CreateDirectory(outsideTarget);
+        Directory.CreateDirectory(Path.Combine(trustedRoot, "Evidence"));
+
+        var posix = GetPosixApi();
+        var guard = new LinuxSymlinkGuard(posix: posix);
         Assert.NotNull(guard);
         Assert.True(guard is ISymlinkSafetyGuard);
 
-        // Escape path outside trusted root must fail-closed
-        var escapeResult = guard.ValidatePath("/var/lib/iem/sessions/Sesija_01", "/etc/shadow");
-        Assert.False(escapeResult.IsSafe);
-        Assert.Equal(StorageProtectionState.NotEstablished, escapeResult.State);
+        // 1. Lexical escape outside trusted root
+        var lexicalResult = guard.ValidatePath(trustedRoot, "/etc/shadow");
+        Assert.False(lexicalResult.IsSafe);
+        Assert.Equal(StorageProtectionState.NotEstablished, lexicalResult.State);
+
+        // 2. Real symlink escape inside trusted tree pointing outside
+        var symlinkPath = Path.Combine(trustedRoot, "Evidence", "escape_symlink");
+        bool linkCreated = false;
+        try
+        {
+            File.CreateSymbolicLink(symlinkPath, Path.Combine(outsideTarget, "secret.txt"));
+            linkCreated = File.Exists(symlinkPath) || Directory.Exists(symlinkPath);
+        }
+        catch
+        {
+            linkCreated = false;
+        }
+
+        if (linkCreated)
+        {
+            var linkResult = guard.ValidatePath(trustedRoot, symlinkPath);
+            Assert.False(linkResult.IsSafe);
+            Assert.Equal(StorageProtectionState.NotEstablished, linkResult.State);
+        }
     }
 
     [Fact]
@@ -291,8 +328,36 @@ public sealed class CrossPlatformCryptoStorageAcceptanceTests : IDisposable
         Assert.Equal(0x04u, LinuxPosixStorageConstants.RESOLVE_NO_SYMLINKS);
         Assert.Equal(0x08u, LinuxPosixStorageConstants.RESOLVE_BENEATH);
 
-        var guard = new LinuxSymlinkGuard();
-        var dotDotResult = guard.ValidatePath("/var/lib/iem/sessions/Sesija_01", "/var/lib/iem/sessions/Sesija_01/../escaped");
+        var testDir = Path.Combine(_tempRoot, "xpl18_openat2");
+        Directory.CreateDirectory(testDir);
+        var outsideDir = Path.Combine(_tempRoot, "xpl18_outside");
+        Directory.CreateDirectory(outsideDir);
+        var outsideFile = Path.Combine(outsideDir, "target.txt");
+        File.WriteAllText(outsideFile, "secret");
+
+        var posix = GetPosixApi();
+        int dirFd = posix.Open(testDir, LinuxPosixStorageConstants.O_RDONLY | LinuxPosixStorageConstants.O_DIRECTORY | LinuxPosixStorageConstants.O_CLOEXEC, 0);
+        if (dirFd >= 0)
+        {
+            try
+            {
+                var how = new OpenHow
+                {
+                    Flags = (ulong)LinuxPosixStorageConstants.O_RDONLY,
+                    Mode = 0,
+                    Resolve = LinuxPosixStorageConstants.RESOLVE_BENEATH | LinuxPosixStorageConstants.RESOLVE_NO_SYMLINKS
+                };
+                int fd = posix.OpenAt2(dirFd, "../xpl18_outside/target.txt", ref how);
+                Assert.True(fd < 0, "openat2 with RESOLVE_BENEATH must reject traversal outside dirfd.");
+            }
+            finally
+            {
+                posix.Close(dirFd);
+            }
+        }
+
+        var guard = new LinuxSymlinkGuard(posix: posix);
+        var dotDotResult = guard.ValidatePath(testDir, Path.Combine(testDir, "../escaped"));
         Assert.False(dotDotResult.IsSafe);
         Assert.Equal(StorageProtectionState.NotEstablished, dotDotResult.State);
     }
@@ -302,7 +367,8 @@ public sealed class CrossPlatformCryptoStorageAcceptanceTests : IDisposable
     [Trait("Platform", "Linux")]
     public async Task XPL_19_LNX_Invalid_Boundary_Produces_Exact_Platform_Protection_State_Linux()
     {
-        var provisioner = new LinuxSessionModeProvisioner();
+        var posix = GetPosixApi();
+        var provisioner = new LinuxSessionModeProvisioner(posix: posix);
         var nonExistentDir = Path.Combine(_tempRoot, "NonExistentSessionDir_" + Guid.NewGuid().ToString("N"));
         var layout = SessionLayoutDescriptor.CreateStandard("lnx-invalid-01");
 
@@ -316,26 +382,23 @@ public sealed class CrossPlatformCryptoStorageAcceptanceTests : IDisposable
     [Fact]
     [Trait("Acceptance", "3.1-8F")]
     [Trait("Platform", "Linux")]
-    public void XPL_20_LNX_StorageProtectionObservation_Boundary_Flags_Are_Factual_Linux()
+    public async Task XPL_20_LNX_StorageProtectionObservation_Boundary_Flags_Are_Factual_Linux()
     {
-        var observation = new StorageProtectionObservation(
-            ObservationId: Guid.NewGuid().ToString("N"),
-            SessionId: "ses-fact-01",
-            CapturedUtc: DateTimeOffset.UtcNow,
-            Platform: "Linux",
-            LayoutVersion: 2,
-            StoragePolicyVersion: 1,
-            StoragePolicyHash: "0000000000000000000000000000000000000000000000000000000000000000",
-            ProtectionState: StorageProtectionState.Established,
-            RootBoundaryValid: true,
-            ReparsePointCheck: true,
-            PlatformSecurityDescriptorRef: "POSIX:0700",
-            DiagnosticMessage: null);
+        var stateRoot = Path.Combine(_tempRoot, "state_root_fact");
+        Directory.CreateDirectory(stateRoot);
+        var sessionDir = Path.Combine(stateRoot, "sessions", "Sesija_fact-01");
+        var desc = SessionLayoutDescriptor.CreateStandard("fact-01");
+        var posix = GetPosixApi();
+        var provisioner = new LinuxSessionModeProvisioner(stateRoot: stateRoot, posix: posix);
 
+        await provisioner.ProvisionSessionBoundariesAsync(sessionDir, desc);
+        var observation = await provisioner.VerifyStorageProtectionAsync(sessionDir, desc);
+
+        Assert.Equal("Linux", observation.Platform);
         Assert.Equal(StorageProtectionState.Established, observation.ProtectionState);
         Assert.True(observation.RootBoundaryValid);
         Assert.True(observation.ReparsePointCheck);
-        Assert.NotNull(observation.PlatformSecurityDescriptorRef);
+        Assert.StartsWith("POSIX:0700", observation.PlatformSecurityDescriptorRef);
         Assert.Null(observation.DiagnosticMessage);
     }
 
@@ -564,7 +627,18 @@ public sealed class CrossPlatformCryptoStorageAcceptanceTests : IDisposable
         var winDesc = SessionLayoutDescriptor.CreateStandard("ses-cross-01");
         var lnxDesc = SessionLayoutDescriptor.CreateStandard("ses-cross-01");
 
+        // Assert standard required directory subpaths across both platform definitions
+        Assert.Equal("Raw", winDesc.RawRelativePath);
+        Assert.Equal("Raw", lnxDesc.RawRelativePath);
+        Assert.Equal("Derived", winDesc.DerivedRelativePath);
+        Assert.Equal("Derived", lnxDesc.DerivedRelativePath);
+        Assert.Equal("Evidence", winDesc.EvidenceRelativePath);
+        Assert.Equal("Evidence", lnxDesc.EvidenceRelativePath);
+        Assert.Equal("Exports", winDesc.ExportsRelativePath);
+        Assert.Equal("Exports", lnxDesc.ExportsRelativePath);
+
         Assert.Equal(winDesc.StoragePolicyHash, lnxDesc.StoragePolicyHash);
+        Assert.Equal(64, winDesc.StoragePolicyHash.Length);
         Assert.Equal(winDesc.ToCanonicalBytes(), lnxDesc.ToCanonicalBytes());
     }
 
@@ -603,6 +677,12 @@ public sealed class CrossPlatformCryptoStorageAcceptanceTests : IDisposable
         Assert.Equal(IntegrityStatus.Invalid, report.Integrity);
         Assert.NotNull(report.Layers.Manifest);
         Assert.True(report.Layers.Manifest.Violations.Count > 0);
+
+        // 2. Package-root containment symlink guard check
+        var guard = new LinuxSymlinkGuard();
+        var escapeResult = guard.ValidatePath(packageDir, Path.Combine(packageDir, "../outside_file.txt"));
+        Assert.False(escapeResult.IsSafe);
+        Assert.Equal(StorageProtectionState.NotEstablished, escapeResult.State);
     }
 
     [Fact]
@@ -962,5 +1042,248 @@ public sealed class CrossPlatformCryptoStorageAcceptanceTests : IDisposable
             dir = dir.Parent;
         }
         return AppContext.BaseDirectory;
+    }
+
+    private static ILinuxPosixStorageApi GetPosixApi()
+    {
+        return OperatingSystem.IsLinux() ? new LinuxNativePosixStorageApi() : new SimulatedLinuxPosixStorageApi();
+    }
+
+    private sealed class SimulatedLinuxPosixStorageApi : ILinuxPosixStorageApi
+    {
+        private sealed class Entry
+        {
+            public string Path { get; set; } = "";
+            public bool IsDirectory { get; set; }
+            public int Mode { get; set; }
+            public uint Uid { get; set; }
+            public uint Gid { get; set; }
+            public byte[] Content { get; set; } = Array.Empty<byte>();
+        }
+
+        private sealed class FdState
+        {
+            public Entry Entry { get; set; } = null!;
+            public int Position { get; set; }
+        }
+
+        private readonly Dictionary<string, Entry> _fs = new(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<int, FdState> _openFds = new();
+        private int _nextFd = 10;
+        private int _lastErrno = 0;
+
+        public int GetLastErrno() => _lastErrno;
+        public uint GetEuid() => 0;
+        public uint GetEgid() => 0;
+
+        private static string Norm(string p) => p.Replace('\\', '/').TrimEnd('/');
+
+        public int Open(string path, int flags, int mode)
+        {
+            var n = Norm(path);
+            if (!_fs.TryGetValue(n, out var entry))
+            {
+                entry = new Entry
+                {
+                    Path = n,
+                    IsDirectory = (flags & LinuxPosixStorageConstants.O_DIRECTORY) != 0 || (flags & LinuxPosixStorageConstants.O_CREAT) == 0,
+                    Mode = mode != 0 ? mode : ((flags & LinuxPosixStorageConstants.O_DIRECTORY) != 0 ? LinuxPosixStorageConstants.Mode0700 : LinuxPosixStorageConstants.Mode0600),
+                    Uid = 0,
+                    Gid = 0
+                };
+                _fs[n] = entry;
+            }
+            else if ((flags & LinuxPosixStorageConstants.O_CREAT) != 0 && (flags & LinuxPosixStorageConstants.O_EXCL) != 0)
+            {
+                _lastErrno = LinuxPosixStorageConstants.EEXIST;
+                return -1;
+            }
+
+            int fd = _nextFd++;
+            _openFds[fd] = new FdState { Entry = entry, Position = 0 };
+            return fd;
+        }
+
+        public int OpenAt(int dirfd, string pathname, int flags, int mode)
+        {
+            if (!_openFds.TryGetValue(dirfd, out var parentState))
+            {
+                _lastErrno = LinuxPosixStorageConstants.EBADF;
+                return -1;
+            }
+            var targetPath = Norm(parentState.Entry.Path + "/" + pathname);
+            return Open(targetPath, flags, mode);
+        }
+
+        public int OpenAt2(int dirfd, string pathname, ref OpenHow how)
+        {
+            if ((how.Resolve & LinuxPosixStorageConstants.RESOLVE_BENEATH) != 0 && (pathname.Contains("..") || pathname.StartsWith("/")))
+            {
+                _lastErrno = 18; // EXDEV
+                return -1;
+            }
+            return OpenAt(dirfd, pathname, (int)how.Flags, (int)how.Mode);
+        }
+
+        public int FstatAt(int dirfd, string pathname, out PosixStat statbuf, int flags)
+        {
+            if (!_openFds.TryGetValue(dirfd, out var parentState))
+            {
+                statbuf = default;
+                _lastErrno = LinuxPosixStorageConstants.EBADF;
+                return -1;
+            }
+            var targetPath = Norm(parentState.Entry.Path + "/" + pathname);
+            if (!_fs.TryGetValue(targetPath, out var entry))
+            {
+                statbuf = default;
+                _lastErrno = LinuxPosixStorageConstants.ENOENT;
+                return -1;
+            }
+            statbuf = CreateStat(entry);
+            return 0;
+        }
+
+        public int Fstat(int fd, out PosixStat statbuf)
+        {
+            if (!_openFds.TryGetValue(fd, out var state))
+            {
+                statbuf = default;
+                _lastErrno = LinuxPosixStorageConstants.EBADF;
+                return -1;
+            }
+            statbuf = CreateStat(state.Entry);
+            return 0;
+        }
+
+        private static PosixStat CreateStat(Entry e)
+        {
+            return new PosixStat
+            {
+                Dev = 1,
+                Ino = (ulong)Math.Abs(e.Path.GetHashCode()),
+                Nlink = 1,
+                Mode = ((uint)e.Mode & 0xFFFu) | (e.IsDirectory ? LinuxPosixStorageConstants.S_IFDIR : LinuxPosixStorageConstants.S_IFREG),
+                Uid = e.Uid,
+                Gid = e.Gid,
+                Size = e.Content.Length
+            };
+        }
+
+        public int MkdirAt(int dirfd, string pathname, int mode)
+        {
+            if (!_openFds.TryGetValue(dirfd, out var parentState))
+            {
+                _lastErrno = LinuxPosixStorageConstants.EBADF;
+                return -1;
+            }
+            var targetPath = Norm(parentState.Entry.Path + "/" + pathname);
+            if (_fs.ContainsKey(targetPath))
+            {
+                _lastErrno = LinuxPosixStorageConstants.EEXIST;
+                return -1;
+            }
+            _fs[targetPath] = new Entry
+            {
+                Path = targetPath,
+                IsDirectory = true,
+                Mode = mode != 0 ? mode : LinuxPosixStorageConstants.Mode0700,
+                Uid = 0,
+                Gid = 0
+            };
+            return 0;
+        }
+
+        public int Fchmod(int fd, int mode)
+        {
+            if (!_openFds.TryGetValue(fd, out var state))
+            {
+                _lastErrno = LinuxPosixStorageConstants.EBADF;
+                return -1;
+            }
+            state.Entry.Mode = mode;
+            return 0;
+        }
+
+        public int Fchown(int fd, uint uid, uint gid)
+        {
+            if (!_openFds.TryGetValue(fd, out var state))
+            {
+                _lastErrno = LinuxPosixStorageConstants.EBADF;
+                return -1;
+            }
+            state.Entry.Uid = uid;
+            state.Entry.Gid = gid;
+            return 0;
+        }
+
+        public int RenameAt2(int olddirfd, string oldpath, int newdirfd, string newpath, uint flags)
+        {
+            if (!_openFds.TryGetValue(olddirfd, out var oldState) || !_openFds.TryGetValue(newdirfd, out var newState))
+            {
+                _lastErrno = LinuxPosixStorageConstants.EBADF;
+                return -1;
+            }
+            var oldP = Norm(oldState.Entry.Path + "/" + oldpath);
+            var newP = Norm(newState.Entry.Path + "/" + newpath);
+            if (!_fs.TryGetValue(oldP, out var entry))
+            {
+                _lastErrno = LinuxPosixStorageConstants.ENOENT;
+                return -1;
+            }
+            _fs.Remove(oldP);
+            entry.Path = newP;
+            _fs[newP] = entry;
+            return 0;
+        }
+
+        public int UnlinkAt(int dirfd, string pathname, int flags)
+        {
+            if (!_openFds.TryGetValue(dirfd, out var parentState))
+            {
+                _lastErrno = LinuxPosixStorageConstants.EBADF;
+                return -1;
+            }
+            var p = Norm(parentState.Entry.Path + "/" + pathname);
+            _fs.Remove(p);
+            return 0;
+        }
+
+        public int Write(int fd, ReadOnlySpan<byte> buffer)
+        {
+            if (!_openFds.TryGetValue(fd, out var state))
+            {
+                _lastErrno = LinuxPosixStorageConstants.EBADF;
+                return -1;
+            }
+            var newContent = new byte[state.Entry.Content.Length + buffer.Length];
+            Buffer.BlockCopy(state.Entry.Content, 0, newContent, 0, state.Entry.Content.Length);
+            buffer.CopyTo(newContent.AsSpan(state.Entry.Content.Length));
+            state.Entry.Content = newContent;
+            state.Position += buffer.Length;
+            return buffer.Length;
+        }
+
+        public int Read(int fd, Span<byte> buffer)
+        {
+            if (!_openFds.TryGetValue(fd, out var state))
+            {
+                _lastErrno = LinuxPosixStorageConstants.EBADF;
+                return -1;
+            }
+            int available = Math.Min(buffer.Length, state.Entry.Content.Length - state.Position);
+            if (available <= 0) return 0;
+            state.Entry.Content.AsSpan(state.Position, available).CopyTo(buffer);
+            state.Position += available;
+            return available;
+        }
+
+        public int Fsync(int fd) => 0;
+        public int Flock(int fd, int operation) => 0;
+        public int Close(int fd)
+        {
+            _openFds.Remove(fd);
+            return 0;
+        }
     }
 }

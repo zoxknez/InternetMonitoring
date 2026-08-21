@@ -1,10 +1,15 @@
 {
   "fixtureVersion": 1,
   "sourcePlatform": "Linux",
+  "sourceOS": "Linux",
   "sourceProvider": "LinuxFileSystemKeyStore",
+  "generator": "LinuxEvidenceKeyProvider",
+  "generatorCommit": "677c642873ae3ff8f9eec8fdc9d9b39dbbef59a9",
   "signingScope": "PortableUser",
+  "keyProtectionLevel": "SoftwareProtected",
+  "keyProtectionDetails": "POSIX:0700/0600:exact-ownership:openat2:user-portable",
   "keyId": "sha256:fc3988462087930b35e09800a1003dd117e77287f5b1e94f794f9f6ecf04c10b",
-  "generatedFromCommit": "dad549a0253d828e38b194072324e9d7efcfffb8",
+  "generatedFromCommit": "677c642873ae3ff8f9eec8fdc9d9b39dbbef59a9",
   "expectedOverall": "ValidTrustNotEstablished",
   "expectedIntegrity": "Verified",
   "expectedTrust": "NotEstablished"
