@@ -413,7 +413,7 @@ Sadrzaj:
                 foreach ($pkgProp in $targetFramework.PSObject.Properties) {
                     $pkgName = $pkgProp.Name
                     $pkgDetails = $pkgProp.Value
-                    $key = "$pkgName:$($pkgDetails.resolved)"
+                    $key = "$($pkgName):$($pkgDetails.resolved)"
                     if (-not $seenPackages.Contains($key)) {
                         $seenPackages.Add($key) | Out-Null
                         $sbomComponents.Add([PSCustomObject]@{
