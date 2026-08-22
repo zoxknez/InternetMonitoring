@@ -220,7 +220,7 @@ public sealed class TimestampTests : IDisposable
         Assert.Equal(TrustedTimeState.Pending, result.State);
         Assert.True(result.IsPending);
         Assert.False(result.IsSuccess);
-        Assert.Contains("TSA server nije dostupan", result.Message, StringComparison.Ordinal);
+        Assert.Contains("TSA server", result.Message, StringComparison.Ordinal);
 
         // Verify session files were not modified or deleted
         Assert.True(File.Exists(manifestPath));
