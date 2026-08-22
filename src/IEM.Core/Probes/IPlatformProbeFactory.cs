@@ -1,3 +1,6 @@
+using IEM.Core.Hosting;
+using IEM.Core.Model;
+
 namespace IEM.Core.Probes;
 
 /// <summary>
@@ -6,6 +9,8 @@ namespace IEM.Core.Probes;
 /// </summary>
 public interface IPlatformLinkInspectionScope : IAsyncDisposable
 {
+    MonitoredInterfaceIdentity Identity { get; }
+
     ILinkInspector Inspector { get; }
 }
 
@@ -15,9 +20,23 @@ public interface IPlatformLinkInspectionScope : IAsyncDisposable
 /// </summary>
 public interface IPlatformProbeFactory
 {
-    ValueTask<IPlatformLinkInspectionScope> CreateLinkInspectionAsync(string? interfaceName = null);
-    IRouteResolver CreateRouteResolver();
-    IRouteResolver CreateRouteResolver(INetworkChangeObserver observer) => CreateRouteResolver();
+    ValueTask<IPlatformLinkInspectionScope> CreateLinkInspectionAsync(InterfaceSelectionRequest request);
+
+    ValueTask<IPlatformLinkInspectionScope> CreateLinkInspectionAsync(string? interfaceName = null) =>
+        CreateLinkInspectionAsync(new InterfaceSelectionRequest(
+            InterfaceId: null,
+            InterfaceName: interfaceName,
+            Mode: string.IsNullOrWhiteSpace(interfaceName) ? InterfaceSelectionMode.Auto : InterfaceSelectionMode.Explicit));
+
+    IRouteResolver CreateRouteResolver(MonitoredInterfaceIdentity monitoredInterface, INetworkChangeObserver observer);
+
+    IRouteResolver CreateRouteResolver() =>
+        CreateRouteResolver(new MonitoredInterfaceIdentity(string.Empty, string.Empty), NullNetworkChangeObserver.Instance);
+
+    IRouteResolver CreateRouteResolver(INetworkChangeObserver observer) =>
+        CreateRouteResolver(new MonitoredInterfaceIdentity(string.Empty, string.Empty), observer);
+
     IBoundIcmp CreateBoundIcmp();
+
     INetworkChangeObserver CreateObserver() => NullNetworkChangeObserver.Instance;
 }

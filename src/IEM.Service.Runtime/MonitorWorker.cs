@@ -105,11 +105,11 @@ public sealed class MonitorWorker(
     private async Task RunSessionAsync(CancellationToken stoppingToken)
     {
         var outputRoot = _settings.ResolveOutputRoot(storageLayout.DefaultOutputRoot);
+        var now = DateTimeOffset.UtcNow;
 
-        await using var linkInspection = await probeFactory.CreateLinkInspectionAsync(_settings.Interface).ConfigureAwait(false);
-
-        var plan = await DecideSessionAsync(outputRoot, linkInspection.Inspector, stoppingToken).ConfigureAwait(false);
-        if (plan is null)
+        // Stage A: Session Intent
+        var intent = ResolveSessionIntent(outputRoot, now);
+        if (intent.Kind == SessionIntentKind.Idle)
         {
             logger.LogInformation(
                 "Nema aktivne sesije. Servis je pokrenut i čeka u stanju mirovanja.");
@@ -127,11 +127,61 @@ public sealed class MonitorWorker(
             return;
         }
 
+        // Stage B: Platform Resolution via Factory Scope
+        await using var linkInspection = await probeFactory.CreateLinkInspectionAsync(intent.SelectionRequest).ConfigureAwait(false);
+        var identity = linkInspection.Identity;
+        var inspector = linkInspection.Inspector;
+
+        // Stage C: Pinned Session Construction
+        SessionPlan plan;
+        if (intent.Kind == SessionIntentKind.Resumable)
+        {
+            var analysis = intent.Analysis!;
+            var layoutDesc = SessionLayoutDescriptor.CreateStandard(analysis.Start!.SessionId);
+            var verObs = await storageProtection.VerifyStorageProtectionAsync(analysis.Paths!.Directory, layoutDesc, stoppingToken).ConfigureAwait(false);
+            if (verObs.ProtectionState != StorageProtectionState.Established)
+            {
+                logger.LogError("Nastavak sesije '{SessionId}' je odbijen jer granica zaštite nije Established: {Error}",
+                    analysis.Start.SessionId, verObs.DiagnosticMessage);
+                return;
+            }
+
+            plan = new SessionPlan(
+                analysis.Paths!,
+                analysis.Start!.SessionId,
+                analysis.Start.StartedUtc,
+                analysis.Start.PlannedDuration,
+                analysis.Remaining,
+                analysis.Context,
+                Start: null);
+        }
+        else
+        {
+            var req = intent.Request!;
+            var paths = SessionPaths.ForNewSession(outputRoot, now.ToLocalTime());
+            var link = inspector.Inspect();
+            var sessionId = $"S{now.ToLocalTime():yyyyMMddHHmmss}";
+
+            var start = new SessionStartPayload(
+                sessionId,
+                typeof(MonitorWorker).Assembly.GetName().Version?.ToString(3) ?? "0.0.0",
+                now,
+                req.Duration,
+                Environment.MachineName,
+                !string.IsNullOrWhiteSpace(identity.InterfaceName) ? identity.InterfaceName : link.InterfaceName,
+                link.Medium,
+                link.LinkSpeedBitsPerSecond,
+                link.GatewayAddress,
+                identity.InterfaceId);
+
+            plan = new SessionPlan(paths, sessionId, now, req.Duration, req.Duration, Resume: null, Start: start);
+        }
+
         // Invariant 81: Storage boundary must be Established before creating probes or recorder
-        var layoutDesc = SessionLayoutDescriptor.CreateStandard(plan.SessionId);
+        var sessionLayout = SessionLayoutDescriptor.CreateStandard(plan.SessionId);
         if (plan.Resume is null)
         {
-            var provObs = await storageProtection.ProvisionSessionBoundariesAsync(plan.Paths.Directory, layoutDesc, stoppingToken).ConfigureAwait(false);
+            var provObs = await storageProtection.ProvisionSessionBoundariesAsync(plan.Paths.Directory, sessionLayout, stoppingToken).ConfigureAwait(false);
             if (provObs.ProtectionState != StorageProtectionState.Established)
             {
                 logger.LogCritical("Sigurnosna granica sesije nije uspostavljena (Provision): {Error}", provObs.DiagnosticMessage);
@@ -139,22 +189,22 @@ public sealed class MonitorWorker(
             }
         }
 
-        var verObs = await storageProtection.VerifyStorageProtectionAsync(plan.Paths.Directory, layoutDesc, stoppingToken).ConfigureAwait(false);
-        if (verObs.ProtectionState != StorageProtectionState.Established)
+        var boundaryCheck = await storageProtection.VerifyStorageProtectionAsync(plan.Paths.Directory, sessionLayout, stoppingToken).ConfigureAwait(false);
+        if (boundaryCheck.ProtectionState != StorageProtectionState.Established)
         {
-            logger.LogCritical("Sigurnosna granica sesije nije verifikovana (Verify): {Error}", verObs.DiagnosticMessage);
-            throw new InvalidOperationException($"Storage boundary verification failed: {verObs.DiagnosticMessage}");
+            logger.LogCritical("Sigurnosna granica sesije nije verifikovana (Verify): {Error}", boundaryCheck.DiagnosticMessage);
+            throw new InvalidOperationException($"Storage boundary verification failed: {boundaryCheck.DiagnosticMessage}");
         }
 
         MeasurementMarker.Clear(outputRoot);
 
         await using var observer = probeFactory.CreateObserver();
-        var routes = probeFactory.CreateRouteResolver(observer);
+        var routes = probeFactory.CreateRouteResolver(identity, observer);
         var boundIcmp = probeFactory.CreateBoundIcmp();
 
         await using var probeSource = new NetworkProbeSource(
             ProbeOptions.Default,
-            linkInspection.Inspector,
+            inspector,
             clock: null,
             routes,
             boundIcmp,
@@ -264,10 +314,16 @@ public sealed class MonitorWorker(
             SerbianText.Duration(observation.Skew.Duration()));
     }
 
-    private async Task<SessionPlan?> DecideSessionAsync(string outputRoot, ILinkInspector linkInspector, CancellationToken ct)
-    {
-        var now = DateTimeOffset.UtcNow;
+    private enum SessionIntentKind { Idle, Resumable, NewSession }
 
+    private readonly record struct SessionIntent(
+        SessionIntentKind Kind,
+        InterfaceSelectionRequest SelectionRequest,
+        ResumeAnalysis? Analysis = null,
+        SessionRequest? Request = null);
+
+    private SessionIntent ResolveSessionIntent(string outputRoot, DateTimeOffset now)
+    {
         if (_settings.ResumeUnfinished)
         {
             var analysis = SessionResumeAnalyzer.Analyze(outputRoot, now);
@@ -275,37 +331,15 @@ public sealed class MonitorWorker(
             switch (analysis.Decision)
             {
                 case ResumeDecision.Resumable:
-                    {
-                        var layoutDesc = SessionLayoutDescriptor.CreateStandard(analysis.Start!.SessionId);
-                        var verObs = await storageProtection.VerifyStorageProtectionAsync(analysis.Paths!.Directory, layoutDesc, ct).ConfigureAwait(false);
-                        if (verObs.ProtectionState != StorageProtectionState.Established)
-                        {
-                            logger.LogError("Nastavak sesije '{SessionId}' je odbijen jer granica zaštite nije Established: {Error}",
-                                analysis.Start.SessionId, verObs.DiagnosticMessage);
-                            break;
-                        }
-                    }
-
-                    return new SessionPlan(
-                        analysis.Paths!,
-                        analysis.Start!.SessionId,
-                        analysis.Start.StartedUtc,
-                        analysis.Start.PlannedDuration,
-                        analysis.Remaining,
-                        analysis.Context,
-                        Start: null);
+                    return new SessionIntent(
+                        SessionIntentKind.Resumable,
+                        InterfaceSelectionRequest.ForResume(
+                            analysis.Start?.InterfaceId,
+                            analysis.Start?.InterfaceName,
+                            analysis.Start?.SchemaVersion ?? IEM.Core.Model.EvidenceModelVersion.LegacySchemaVersion),
+                        Analysis: analysis);
 
                 case ResumeDecision.Expired:
-                    {
-                        var layoutDesc = SessionLayoutDescriptor.CreateStandard(analysis.Start!.SessionId);
-                        var verObs = await storageProtection.VerifyStorageProtectionAsync(analysis.Paths!.Directory, layoutDesc, ct).ConfigureAwait(false);
-                        if (verObs.ProtectionState != StorageProtectionState.Established)
-                        {
-                            logger.LogWarning("Zatvaranje istekle sesije '{SessionId}' je odbijeno jer granica zaštite nije Established: {Error}",
-                                analysis.Start.SessionId, verObs.DiagnosticMessage);
-                            break;
-                        }
-                    }
                     CloseExpiredSession(analysis);
                     SessionRequest.Clear(outputRoot);
                     break;
@@ -320,8 +354,16 @@ public sealed class MonitorWorker(
         }
 
         var request = SessionRequest.Read(outputRoot) ?? AutoRequest(outputRoot, now);
+        if (request is not null)
+        {
+            var sel = string.IsNullOrWhiteSpace(request.Interface)
+                ? InterfaceSelectionRequest.ForAuto()
+                : InterfaceSelectionRequest.ForExplicit(request.Interface);
 
-        return request is null ? null : NewSession(outputRoot, linkInspector, request.Duration, now);
+            return new SessionIntent(SessionIntentKind.NewSession, sel, Request: request);
+        }
+
+        return new SessionIntent(SessionIntentKind.Idle, InterfaceSelectionRequest.ForAuto());
     }
 
     private SessionRequest? AutoRequest(string outputRoot, DateTimeOffset now)
@@ -336,26 +378,6 @@ public sealed class MonitorWorker(
 
         logger.LogInformation("Sesija je zatražena automatski, prema podešavanju AutoStart.");
         return request;
-    }
-
-    private SessionPlan NewSession(string outputRoot, ILinkInspector linkInspector, TimeSpan duration, DateTimeOffset now)
-    {
-        var paths = SessionPaths.ForNewSession(outputRoot, now.ToLocalTime());
-        var link = linkInspector.Inspect();
-        var sessionId = $"S{now.ToLocalTime():yyyyMMddHHmmss}";
-
-        var start = new SessionStartPayload(
-            sessionId,
-            typeof(MonitorWorker).Assembly.GetName().Version?.ToString(3) ?? "0.0.0",
-            now,
-            duration,
-            Environment.MachineName,
-            link.InterfaceName,
-            link.Medium,
-            link.LinkSpeedBitsPerSecond,
-            link.GatewayAddress);
-
-        return new SessionPlan(paths, sessionId, now, duration, duration, Resume: null, Start: start);
     }
 
     private void CloseExpiredSession(ResumeAnalysis analysis)

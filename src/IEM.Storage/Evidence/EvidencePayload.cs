@@ -1,4 +1,4 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 using IEM.Core;
 using IEM.Core.Classification;
 using IEM.Core.Incidents;
@@ -51,7 +51,8 @@ public sealed record SessionStartPayload(
     string InterfaceName,
     LinkMedium Medium,
     long? LinkSpeedBitsPerSecond,
-    string? GatewayAddress) : IEvidencePayload
+    string? GatewayAddress,
+    string? InterfaceId = null) : IEvidencePayload
 {
     public EvidenceKind Kind => EvidenceKind.SessionStart;
 
@@ -82,6 +83,10 @@ public sealed record SessionStartPayload(
         writer.WriteString("plannedDuration", PlannedDuration == Timeout.InfiniteTimeSpan ? "infinite" : PlannedDuration.ToString("c"));
         writer.WriteString("machine", MachineName);
         writer.WriteString("interface", InterfaceName);
+        if (!string.IsNullOrWhiteSpace(InterfaceId))
+        {
+            writer.WriteString("interfaceId", InterfaceId);
+        }
         writer.WriteString("medium", Medium.ToString());
         WriteNullableNumber(writer, "linkSpeedBps", LinkSpeedBitsPerSecond);
         writer.WriteString("gateway", GatewayAddress);

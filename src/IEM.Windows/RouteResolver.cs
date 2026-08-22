@@ -4,6 +4,7 @@ using System.Net;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Runtime.InteropServices;
+using System.Runtime.Versioning;
 using IEM.Core.Model;
 using IEM.Core.Probes;
 
@@ -13,32 +14,32 @@ namespace IEM.Windows;
 /// Answers the routing question the way Windows answers it, by asking Windows.
 /// <para>
 /// <c>GetBestRoute2</c> is the same lookup the stack performs when a socket connects, so its
-/// answer is not an approximation of the choice - it is the choice. That matters because the
-/// alternative on offer is guesswork: pick the adapter with the best metric, or the one the
-/// user selected in the interface, and hope. On a laptop with Wi-Fi, a docking-station
-/// Ethernet and a corporate VPN, that guess is wrong often enough to put a fabricated
-/// attribution into someone's complaint.
+/// answer is not an approximation of the choice - it is the choice.
 /// </para>
 /// <para>
-/// Answers are cached briefly. The route table does change - that is the whole point of
-/// P0-8 - but not between two probes fired a hundred milliseconds apart, and the lookup is
-/// a system call that would otherwise run several times per sample.
+/// Invariants:
+/// WIN_SESSION_INTERFACE_IMMUTABLE: Target interface is pinned.
+/// WIN_PROBE_PATH_NEVER_ESCAPES_PINNED_INTERFACE: Lookups are constrained to pinned interface index.
 /// </para>
 /// </summary>
+[SupportedOSPlatform("windows")]
 public sealed class RouteResolver : IRouteResolver
 {
-    /// <summary>
-    /// How long a resolved route is reused.
-    /// <para>
-    /// Short enough that a failover from Wi-Fi to Ethernet is noticed within a second or two
-    /// - which is what makes a route change during an incident detectable at all - and long
-    /// enough that the lookup does not run on every probe of every sample.
-    /// </para>
-    /// </summary>
     private static readonly TimeSpan CacheLifetime = TimeSpan.FromSeconds(2);
 
     private readonly ConcurrentDictionary<IPAddress, CachedPath> _cache = new();
     private readonly InterfaceIndexMap _interfaces = new();
+    private readonly string? _pinnedInterfaceId;
+
+    public RouteResolver(string? pinnedInterfaceId = null)
+    {
+        _pinnedInterfaceId = pinnedInterfaceId;
+    }
+
+    public RouteResolver(MonitoredInterfaceIdentity monitoredInterface)
+    {
+        _pinnedInterfaceId = monitoredInterface?.InterfaceId;
+    }
 
     public ProbePath Resolve(IPAddress destination)
     {
@@ -70,9 +71,19 @@ public sealed class RouteResolver : IRouteResolver
             return ProbePath.Unresolved;
         }
 
-        // The row is read only for its first twelve bytes - the interface LUID and index.
-        // Over-allocating avoids having to reproduce the exact layout of a struct whose
-        // tail has grown across Windows versions.
+        uint targetInterfaceIndex = 0;
+        if (!string.IsNullOrWhiteSpace(_pinnedInterfaceId))
+        {
+            var isIpv4 = destination.AddressFamily == AddressFamily.InterNetwork;
+            var index = _interfaces.LookupIndex(_pinnedInterfaceId, isIpv4);
+            if (index is null or 0)
+            {
+                return ProbePath.Unresolved;
+            }
+
+            targetInterfaceIndex = index.Value;
+        }
+
         Span<byte> row = stackalloc byte[MibIpForwardRow2Size];
         Span<byte> bestSource = stackalloc byte[SockaddrInetSize];
 
@@ -81,7 +92,7 @@ public sealed class RouteResolver : IRouteResolver
 
         var status = GetBestRoute2(
             IntPtr.Zero,
-            0,
+            targetInterfaceIndex,
             IntPtr.Zero,
             MemoryMarshal.GetReference(destinationSockaddr),
             0,
@@ -101,7 +112,15 @@ public sealed class RouteResolver : IRouteResolver
             return ProbePath.Unresolved;
         }
 
-        return new ProbePath(_interfaces.Lookup(interfaceIndex), source.ToString(), Resolved: true);
+        var resolvedId = _interfaces.Lookup(interfaceIndex);
+
+        if (!string.IsNullOrWhiteSpace(_pinnedInterfaceId) &&
+            !WindowsInterfaceResolver.MatchesGuid(resolvedId, _pinnedInterfaceId))
+        {
+            return ProbePath.Unresolved;
+        }
+
+        return new ProbePath(resolvedId, source.ToString(), Resolved: true);
     }
 
     // ---- SOCKADDR_INET -------------------------------------------------------
@@ -176,14 +195,36 @@ public sealed class RouteResolver : IRouteResolver
         {
             lock (_gate)
             {
-                if (!_built || Stopwatch.GetElapsedTime(_builtAtTicks) > Lifetime)
+                EnsureBuilt();
+                return _byIndex.TryGetValue(index, out var id) ? id : null;
+            }
+        }
+
+        public uint? LookupIndex(string? interfaceId, bool ipv4)
+        {
+            if (string.IsNullOrWhiteSpace(interfaceId))
+            {
+                return null;
+            }
+
+            lock (_gate)
+            {
+                EnsureBuilt();
+
+                foreach (var adapter in NetworkInterface.GetAllNetworkInterfaces())
                 {
-                    _byIndex = Build();
-                    _builtAtTicks = Stopwatch.GetTimestamp();
-                    _built = true;
+                    if (WindowsInterfaceResolver.MatchesGuid(adapter.Id, interfaceId) ||
+                        string.Equals(adapter.Name, interfaceId, StringComparison.OrdinalIgnoreCase))
+                    {
+                        var idx = IndexOf(adapter, ipv4);
+                        if (idx is > 0)
+                        {
+                            return (uint)idx.Value;
+                        }
+                    }
                 }
 
-                return _byIndex.TryGetValue(index, out var id) ? id : null;
+                return null;
             }
         }
 
@@ -195,15 +236,22 @@ public sealed class RouteResolver : IRouteResolver
             }
         }
 
+        private void EnsureBuilt()
+        {
+            if (!_built || Stopwatch.GetElapsedTime(_builtAtTicks) > Lifetime)
+            {
+                _byIndex = Build();
+                _builtAtTicks = Stopwatch.GetTimestamp();
+                _built = true;
+            }
+        }
+
         private static Dictionary<uint, string> Build()
         {
             var map = new Dictionary<uint, string>();
 
             foreach (var adapter in NetworkInterface.GetAllNetworkInterfaces())
             {
-                // Each family is read separately. An adapter with IPv4 configured and IPv6
-                // not will throw on the second lookup, and one try block around both would
-                // then lose the index that did work.
                 Add(IndexOf(adapter, IPv4: true), adapter.Id);
                 Add(IndexOf(adapter, IPv4: false), adapter.Id);
             }
@@ -231,8 +279,6 @@ public sealed class RouteResolver : IRouteResolver
             }
             catch (Exception exception) when (exception is NetworkInformationException or PlatformNotSupportedException)
             {
-                // The family is not configured on this adapter, or the adapter went away
-                // mid-enumeration. Neither is worth failing the whole map over.
                 return null;
             }
         }

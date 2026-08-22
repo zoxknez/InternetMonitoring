@@ -1001,18 +1001,28 @@ public sealed class LinuxSessionModeProvisionerTests : IDisposable
 
     private sealed class LinuxProbeFactoryStub : IPlatformProbeFactory
     {
+        public ValueTask<IPlatformLinkInspectionScope> CreateLinkInspectionAsync(InterfaceSelectionRequest request)
+        {
+            var inspector = new MockLinkInspector(LinkStatus.Up, "eth0", "00:11:22:33:44:55");
+            var identity = new MonitoredInterfaceIdentity(request.InterfaceId ?? "eth0", request.InterfaceName ?? "eth0");
+            return ValueTask.FromResult<IPlatformLinkInspectionScope>(new StubLinkInspectionScope(identity, inspector));
+        }
+
         public ValueTask<IPlatformLinkInspectionScope> CreateLinkInspectionAsync(string? interfaceName = null)
         {
             var inspector = new MockLinkInspector(LinkStatus.Up, "eth0", "00:11:22:33:44:55");
-            return ValueTask.FromResult<IPlatformLinkInspectionScope>(new StubLinkInspectionScope(inspector));
+            var identity = new MonitoredInterfaceIdentity(interfaceName ?? "eth0", interfaceName ?? "eth0");
+            return ValueTask.FromResult<IPlatformLinkInspectionScope>(new StubLinkInspectionScope(identity, inspector));
         }
 
+        public IRouteResolver CreateRouteResolver(MonitoredInterfaceIdentity monitoredInterface, INetworkChangeObserver observer) => NullRouteResolver.Instance;
         public IRouteResolver CreateRouteResolver() => NullRouteResolver.Instance;
         public IBoundIcmp CreateBoundIcmp() => new MockBoundIcmp();
     }
 
-    private sealed class StubLinkInspectionScope(ILinkInspector inspector) : IPlatformLinkInspectionScope
+    private sealed class StubLinkInspectionScope(MonitoredInterfaceIdentity identity, ILinkInspector inspector) : IPlatformLinkInspectionScope
     {
+        public MonitoredInterfaceIdentity Identity { get; } = identity;
         public ILinkInspector Inspector { get; } = inspector;
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }

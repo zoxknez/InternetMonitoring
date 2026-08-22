@@ -1,6 +1,7 @@
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using IEM.Core.Hosting;
+using IEM.Core.Model;
 using IEM.Core.Probes;
 using IEM.Linux.Storage;
 using IEM.Service.Linux.Lifecycle;
@@ -330,7 +331,7 @@ public sealed class LinuxHostSystemdTests312
         var failingProbeFactory = new FailingProbeFactory();
         var storageLayout = new LinuxSystemStorageLayout(stateDir: Path.Combine(Path.GetTempPath(), "iem_fail_test_" + Guid.NewGuid().ToString("N")));
 
-        services.Configure<MonitorSettings>(_ => { });
+        services.Configure<MonitorSettings>(o => o.AutoStart = true);
         services.AddLogging();
         services.AddSingleton<IHostApplicationLifetime>(lifetime);
         services.AddSingleton<IPlatformProbeFactory>(failingProbeFactory);
@@ -472,8 +473,11 @@ public sealed class LinuxHostSystemdTests312
 
     private sealed class FailingProbeFactory : IPlatformProbeFactory
     {
+        public ValueTask<IPlatformLinkInspectionScope> CreateLinkInspectionAsync(InterfaceSelectionRequest request) =>
+            throw new InvalidOperationException("Simulated fatal probe hardware failure.");
         public ValueTask<IPlatformLinkInspectionScope> CreateLinkInspectionAsync(string? interfaceName = null) =>
             throw new InvalidOperationException("Simulated fatal probe hardware failure.");
+        public IRouteResolver CreateRouteResolver(MonitoredInterfaceIdentity monitoredInterface, INetworkChangeObserver observer) => NullRouteResolver.Instance;
         public IRouteResolver CreateRouteResolver() => NullRouteResolver.Instance;
         public IBoundIcmp CreateBoundIcmp() => throw new NotImplementedException();
     }

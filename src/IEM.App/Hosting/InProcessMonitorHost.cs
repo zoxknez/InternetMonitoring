@@ -83,7 +83,11 @@ public sealed class InProcessMonitorHost : IMonitorHost
         try
         {
             var startedAt = DateTimeOffset.Now;
-            await using var linkInspection = await _probeFactory.CreateLinkInspectionAsync(interfaceName).ConfigureAwait(false);
+            var selectionRequest = string.IsNullOrWhiteSpace(interfaceName)
+                ? InterfaceSelectionRequest.ForAuto()
+                : InterfaceSelectionRequest.ForExplicit(interfaceName);
+            await using var linkInspection = await _probeFactory.CreateLinkInspectionAsync(selectionRequest).ConfigureAwait(false);
+            var identity = linkInspection.Identity;
             var inspector = linkInspection.Inspector;
             var link = inspector.Inspect();
 
@@ -93,7 +97,7 @@ public sealed class InProcessMonitorHost : IMonitorHost
             MeasurementMarker.Clear(_outputRoot);
 
             await using var observer = _probeFactory.CreateObserver();
-            var routes = _probeFactory.CreateRouteResolver(observer);
+            var routes = _probeFactory.CreateRouteResolver(identity, observer);
             var boundIcmp = _probeFactory.CreateBoundIcmp();
 
             await using var probeSource = new NetworkProbeSource(
@@ -114,10 +118,11 @@ public sealed class InProcessMonitorHost : IMonitorHost
                 startedAt.ToUniversalTime(),
                 duration,
                 Environment.MachineName,
-                link.InterfaceName,
+                !string.IsNullOrWhiteSpace(identity.InterfaceName) ? identity.InterfaceName : link.InterfaceName,
                 link.Medium,
                 link.LinkSpeedBitsPerSecond,
-                link.GatewayAddress);
+                link.GatewayAddress,
+                identity.InterfaceId);
 
             Directory.CreateDirectory(paths.Directory);
             recorder = EvidenceRecorder.Start(paths, engine, start);

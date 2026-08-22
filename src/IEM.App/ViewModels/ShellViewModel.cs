@@ -852,7 +852,7 @@ public sealed partial class ShellViewModel : ObservableObject, IAsyncDisposable
             return;
         }
 
-        await using var linkInspection = WindowsLinkInspection.Create(null);
+        await using var linkInspection = WindowsLinkInspection.Create();
         var link = linkInspection.Inspector.Inspect();
 
         var observer = new ConnectionObserver();

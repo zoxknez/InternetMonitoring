@@ -59,7 +59,11 @@ public static class ChainReader
                     continue;
                 }
 
-                var number = root.TryGetProperty("n", out var n) ? n.GetInt64() : -1;
+                var number = root.TryGetProperty("n", out var n) &&
+                             n.ValueKind == JsonValueKind.Number &&
+                             n.TryGetInt64(out var parsed)
+                    ? parsed
+                    : -1;
 
                 // Cloned so the element outlives the JsonDocument being disposed.
                 entry = new ChainEntry(kind, number, payload.Clone());
@@ -84,6 +88,9 @@ public static class ChainReader
             }
 
             var payload = entry.Payload;
+            var schema = payload.TryGetProperty("schemaVersion", out var sv) && sv.TryGetInt32(out var v)
+                ? v
+                : IEM.Core.Model.EvidenceModelVersion.LegacySchemaVersion;
 
             return new SessionStartRecord(
                 GetString(payload, "sessionId") ?? string.Empty,
@@ -92,7 +99,9 @@ public static class ChainReader
                 ParseDuration(GetString(payload, "plannedDuration")),
                 GetString(payload, "machine") ?? string.Empty,
                 GetString(payload, "interface") ?? string.Empty,
-                GetString(payload, "gateway"));
+                GetString(payload, "gateway"),
+                GetString(payload, "interfaceId"),
+                schema);
         }
 
         return null;
@@ -174,4 +183,6 @@ public sealed record SessionStartRecord(
     TimeSpan PlannedDuration,
     string MachineName,
     string InterfaceName,
-    string? GatewayAddress);
+    string? GatewayAddress,
+    string? InterfaceId = null,
+    int SchemaVersion = IEM.Core.Model.EvidenceModelVersion.LegacySchemaVersion);

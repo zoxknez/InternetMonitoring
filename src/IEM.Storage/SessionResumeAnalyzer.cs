@@ -409,7 +409,11 @@ public static class SessionResumeAnalyzer
     }
 
     private static int ReadInt(JsonElement element, string name) =>
-        element.TryGetProperty(name, out var value) && value.TryGetInt32(out var parsed) ? parsed : 0;
+        element.TryGetProperty(name, out var value) &&
+        value.ValueKind == JsonValueKind.Number &&
+        value.TryGetInt32(out var parsed)
+            ? parsed
+            : 0;
 
     private static DateTimeOffset? ReadDate(JsonElement element, string name) =>
         element.TryGetProperty(name, out var value) &&

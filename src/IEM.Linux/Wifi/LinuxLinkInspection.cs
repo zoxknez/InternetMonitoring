@@ -1,5 +1,6 @@
 using System;
 using System.Threading.Tasks;
+using IEM.Core.Model;
 using IEM.Core.Probes;
 
 namespace IEM.Linux.Wifi;
@@ -21,16 +22,29 @@ public sealed class LinuxLinkInspectionScope : IPlatformLinkInspectionScope
     private readonly ILinuxNl80211Socket? _sharedQuerySocket;
 
     public LinuxLinkInspectionScope(
+        MonitoredInterfaceIdentity identity,
         LinuxWifiLinkInspector inspector,
         ILinuxNl80211EventObserver? observer = null,
         ILinuxWifiScanCompletionTracker? tracker = null,
         ILinuxNl80211Socket? sharedQuerySocket = null)
     {
+        Identity = identity ?? throw new ArgumentNullException(nameof(identity));
         _inspector = inspector ?? throw new ArgumentNullException(nameof(inspector));
         _observer = observer;
         _tracker = tracker ?? inspector.Radio.ScanCompletionTracker;
         _sharedQuerySocket = sharedQuerySocket;
     }
+
+    public LinuxLinkInspectionScope(
+        LinuxWifiLinkInspector inspector,
+        ILinuxNl80211EventObserver? observer = null,
+        ILinuxWifiScanCompletionTracker? tracker = null,
+        ILinuxNl80211Socket? sharedQuerySocket = null)
+        : this(new MonitoredInterfaceIdentity(string.Empty, string.Empty), inspector, observer, tracker, sharedQuerySocket)
+    {
+    }
+
+    public MonitoredInterfaceIdentity Identity { get; }
 
     public ILinkInspector Inspector => _inspector;
 
@@ -64,18 +78,34 @@ public static class LinuxLinkInspection
     /// complete with dedicated event observer and shared scan completion tracker.
     /// Invariant: Master composition uses one shared query fd + one dedicated event fd.
     /// </summary>
-    public static IPlatformLinkInspectionScope Create(string? interfaceName = null)
+    public static IPlatformLinkInspectionScope Create(InterfaceSelectionRequest request)
     {
-        var baseInspector = new SystemLinkInspector(interfaceName);
+        ArgumentNullException.ThrowIfNull(request);
+
+        var target = request.InterfaceId ?? request.InterfaceName;
+        var baseInspector = new SystemLinkInspector(target);
+        var initial = baseInspector.Inspect();
+        var identity = new MonitoredInterfaceIdentity(
+            !string.IsNullOrWhiteSpace(request.InterfaceId) ? request.InterfaceId : initial.InterfaceId,
+            !string.IsNullOrWhiteSpace(request.InterfaceName) ? request.InterfaceName : initial.InterfaceName);
+
         var querySocket = LinuxNl80211Socket.Create();
         var tracker = new LinuxWifiScanCompletionTracker();
         var observer = new LinuxNl80211EventObserver(tracker, querySocket: querySocket, ownsQuerySocket: false);
-        var radio = new LinuxNl80211Radio(querySocket, rfkillReader: null, boundInterfaceId: interfaceName, ownsSocket: false, scanCompletionTracker: tracker);
+        var radio = new LinuxNl80211Radio(querySocket, rfkillReader: null, boundInterfaceId: target, ownsSocket: false, scanCompletionTracker: tracker);
 
         observer.Start();
 
         var wifiInspector = new LinuxWifiLinkInspector(baseInspector, radio, ownsRadio: true, eventObserver: observer);
 
-        return new LinuxLinkInspectionScope(wifiInspector, observer, tracker, sharedQuerySocket: querySocket);
+        return new LinuxLinkInspectionScope(identity, wifiInspector, observer, tracker, sharedQuerySocket: querySocket);
     }
+
+    public static IPlatformLinkInspectionScope Create() =>
+        Create(InterfaceSelectionRequest.ForAuto());
+
+    public static IPlatformLinkInspectionScope Create(string? interfaceName) =>
+        Create(string.IsNullOrWhiteSpace(interfaceName)
+            ? InterfaceSelectionRequest.ForAuto()
+            : InterfaceSelectionRequest.ForExplicit(interfaceName));
 }

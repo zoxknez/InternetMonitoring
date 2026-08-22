@@ -1,5 +1,6 @@
 using System.Net;
 using IEM.Core.Hosting;
+using IEM.Core.Model;
 using IEM.Core.Probes;
 
 namespace IEM.Service.Linux.Lifecycle;
@@ -32,18 +33,33 @@ public sealed class LinuxProbeFactoryBaseline : IPlatformProbeFactory
 {
     public static readonly LinuxProbeFactoryBaseline Instance = new();
 
-    public ValueTask<IPlatformLinkInspectionScope> CreateLinkInspectionAsync(string? interfaceName = null)
+    public ValueTask<IPlatformLinkInspectionScope> CreateLinkInspectionAsync(InterfaceSelectionRequest request)
     {
-        var inspector = new SystemLinkInspector(interfaceName);
-        return ValueTask.FromResult<IPlatformLinkInspectionScope>(new BasicLinkInspectionScope(inspector));
+        var target = request.InterfaceId ?? request.InterfaceName;
+        var inspector = new SystemLinkInspector(target);
+        var initial = inspector.Inspect();
+        var identity = new MonitoredInterfaceIdentity(
+            !string.IsNullOrWhiteSpace(request.InterfaceId) ? request.InterfaceId : initial.InterfaceId,
+            !string.IsNullOrWhiteSpace(request.InterfaceName) ? request.InterfaceName : initial.InterfaceName);
+
+        return ValueTask.FromResult<IPlatformLinkInspectionScope>(new BasicLinkInspectionScope(identity, inspector));
     }
+
+    public ValueTask<IPlatformLinkInspectionScope> CreateLinkInspectionAsync(string? interfaceName = null) =>
+        CreateLinkInspectionAsync(string.IsNullOrWhiteSpace(interfaceName)
+            ? InterfaceSelectionRequest.ForAuto()
+            : InterfaceSelectionRequest.ForExplicit(interfaceName));
+
+    public IRouteResolver CreateRouteResolver(MonitoredInterfaceIdentity monitoredInterface, INetworkChangeObserver observer) =>
+        NullRouteResolver.Instance;
 
     public IRouteResolver CreateRouteResolver() => NullRouteResolver.Instance;
 
     public IBoundIcmp CreateBoundIcmp() => FallbackBoundIcmp.Instance;
 
-    private sealed class BasicLinkInspectionScope(ILinkInspector inspector) : IPlatformLinkInspectionScope
+    private sealed class BasicLinkInspectionScope(MonitoredInterfaceIdentity identity, ILinkInspector inspector) : IPlatformLinkInspectionScope
     {
+        public MonitoredInterfaceIdentity Identity { get; } = identity;
         public ILinkInspector Inspector { get; } = inspector;
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }

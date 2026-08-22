@@ -334,11 +334,25 @@ public sealed class ProbeScheduler : IAsyncDisposable
             // with no path at all rather than with a guess.
             ProbePath.Unresolved));
 
-        work.Add(Tag(DeepProbes.DnsAsync(
-            _options.PublicResolver, DnsResolverRole.Public, _options.DnsQueryName, _options.DnsTimeout,
-            cancellationToken, SourceOf(publicPath)), publicPath, bound: SourceOf(publicPath) is not null));
+        if (IsPathCoherent(publicPath, link))
+        {
+            work.Add(Tag(DeepProbes.DnsAsync(
+                _options.PublicResolver, DnsResolverRole.Public, _options.DnsQueryName, _options.DnsTimeout,
+                cancellationToken, SourceOf(publicPath)), publicPath, bound: SourceOf(publicPath) is not null));
+        }
+        else
+        {
+            work.Add(Task.FromResult(ProbeResult.Skip(ProbeKind.Dns, ProbeScope.External, _options.PublicResolver, "Resolved route does not belong to monitored interface")));
+        }
 
-        work.Add(Tag(DeepProbes.TlsAsync(_options.TlsTarget, _options.TlsTimeout, cancellationToken), tlsPath));
+        if (IsPathCoherent(tlsPath, link))
+        {
+            work.Add(Tag(DeepProbes.TlsAsync(_options.TlsTarget, _options.TlsTimeout, cancellationToken), tlsPath));
+        }
+        else
+        {
+            work.Add(Task.FromResult(ProbeResult.Skip(ProbeKind.TlsHandshake, ProbeScope.External, _options.TlsTarget, "Resolved route does not belong to monitored interface")));
+        }
 
         work.Add(Tag(DeepProbes.HttpAsync(
             _httpClient, _options.HttpProbeUrl, _options.ExpectedHttpBody, _options.HttpTimeout, cancellationToken),
@@ -360,9 +374,16 @@ public sealed class ProbeScheduler : IAsyncDisposable
         {
             var assignedPath = PathTo(resolver);
 
-            work.Add(Tag(DeepProbes.DnsAsync(
-                resolver, DnsResolverRole.IspAssigned, _options.DnsQueryName, _options.DnsTimeout,
-                cancellationToken, SourceOf(assignedPath)), assignedPath, bound: SourceOf(assignedPath) is not null));
+            if (IsPathCoherent(assignedPath, link))
+            {
+                work.Add(Tag(DeepProbes.DnsAsync(
+                    resolver, DnsResolverRole.IspAssigned, _options.DnsQueryName, _options.DnsTimeout,
+                    cancellationToken, SourceOf(assignedPath)), assignedPath, bound: SourceOf(assignedPath) is not null));
+            }
+            else
+            {
+                work.Add(Task.FromResult(ProbeResult.Skip(ProbeKind.Dns, ProbeScope.External, resolver, "Resolved route does not belong to monitored interface")));
+            }
         }
 
         // A public resolver on the other stack too, whenever an assigned one lives there.
@@ -372,9 +393,16 @@ public sealed class ProbeScheduler : IAsyncDisposable
         {
             var publicV6Path = PathTo(_options.PublicResolverV6);
 
-            work.Add(Tag(DeepProbes.DnsAsync(
-                _options.PublicResolverV6, DnsResolverRole.Public, _options.DnsQueryName, _options.DnsTimeout,
-                cancellationToken, SourceOf(publicV6Path)), publicV6Path, bound: SourceOf(publicV6Path) is not null));
+            if (IsPathCoherent(publicV6Path, link))
+            {
+                work.Add(Tag(DeepProbes.DnsAsync(
+                    _options.PublicResolverV6, DnsResolverRole.Public, _options.DnsQueryName, _options.DnsTimeout,
+                    cancellationToken, SourceOf(publicV6Path)), publicV6Path, bound: SourceOf(publicV6Path) is not null));
+            }
+            else
+            {
+                work.Add(Task.FromResult(ProbeResult.Skip(ProbeKind.Dns, ProbeScope.External, _options.PublicResolverV6, "Resolved route does not belong to monitored interface")));
+            }
         }
 
         var results = await Task.WhenAll(work).ConfigureAwait(false);
@@ -403,13 +431,27 @@ public sealed class ProbeScheduler : IAsyncDisposable
         CancellationToken cancellationToken)
     {
         var started = _clock.MonotonicTicks;
+        var link = _link();
 
         // Routes are resolved before the round, so every probe in it is measured against the
         // path the stack reported at the same moment.
         var planned = targets.Select(target => (Target: target, Path: PathTo(target))).ToList();
 
         var results = await Task
-            .WhenAll(planned.Select(p => probe(p.Target, p.Path, cancellationToken)))
+            .WhenAll(planned.Select(p =>
+            {
+                // Invariant: WIN_PROBE_PATH_NEVER_ESCAPES_PINNED_INTERFACE
+                if (!IsPathCoherent(p.Path, link))
+                {
+                    return Task.FromResult(ProbeResult.Skip(
+                        ProbeKind.Icmp,
+                        ProbeScope.External,
+                        p.Target,
+                        "Resolved route does not belong to monitored interface"));
+                }
+
+                return probe(p.Target, p.Path, cancellationToken);
+            }))
             .ConfigureAwait(false);
 
         var completed = _clock.MonotonicTicks;
@@ -417,6 +459,28 @@ public sealed class ProbeScheduler : IAsyncDisposable
         _store.RecordAll(results.Select((result, i) =>
             Stamp(result, started, completed, planned[i].Path,
                 bound(planned[i].Path, planned[i].Target) && result.Outcome != ProbeOutcome.Skipped)));
+    }
+
+    private static bool IsPathCoherent(ProbePath path, LinkSnapshot link)
+    {
+        if (!path.Resolved || string.IsNullOrWhiteSpace(path.InterfaceId) || string.IsNullOrWhiteSpace(link.InterfaceId))
+        {
+            return true;
+        }
+
+        if (string.Equals(path.InterfaceId, link.InterfaceId, StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        if (Guid.TryParse(path.InterfaceId.Trim().Trim('{', '}'), out var pathGuid) &&
+            Guid.TryParse(link.InterfaceId.Trim().Trim('{', '}'), out var linkGuid) &&
+            pathGuid == linkGuid)
+        {
+            return true;
+        }
+
+        return false;
     }
 
     private void SkipExternal(ProbeKind kind, IEnumerable<string> targets)

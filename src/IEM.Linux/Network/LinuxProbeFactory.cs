@@ -1,5 +1,6 @@
 using System.Threading.Tasks;
 using IEM.Core.Hosting;
+using IEM.Core.Model;
 using IEM.Core.Probes;
 using IEM.Linux.Network.Icmp;
 using IEM.Linux.Wifi;
@@ -15,21 +16,29 @@ public sealed class LinuxProbeFactory : IPlatformProbeFactory
 {
     public static LinuxProbeFactory Instance { get; } = new();
 
+    public ValueTask<IPlatformLinkInspectionScope> CreateLinkInspectionAsync(InterfaceSelectionRequest request)
+    {
+        var scope = LinuxLinkInspection.Create(request);
+        return ValueTask.FromResult(scope);
+    }
+
     public ValueTask<IPlatformLinkInspectionScope> CreateLinkInspectionAsync(string? interfaceName = null)
     {
         var scope = LinuxLinkInspection.Create(interfaceName);
         return ValueTask.FromResult(scope);
     }
 
-    public IRouteResolver CreateRouteResolver() =>
-        CreateRouteResolver(NullNetworkChangeObserver.Instance);
-
-    public IRouteResolver CreateRouteResolver(INetworkChangeObserver observer)
+    public IRouteResolver CreateRouteResolver(MonitoredInterfaceIdentity monitoredInterface, INetworkChangeObserver observer)
     {
-        // Trigger runtime capability preflight on startup / session initiation
         Preflight.LinuxNetworkCapabilityPreflight.GetOrEvaluate();
         return new LinuxRouteResolver(observer: observer);
     }
+
+    public IRouteResolver CreateRouteResolver() =>
+        CreateRouteResolver(new MonitoredInterfaceIdentity(string.Empty, string.Empty), NullNetworkChangeObserver.Instance);
+
+    public IRouteResolver CreateRouteResolver(INetworkChangeObserver observer) =>
+        CreateRouteResolver(new MonitoredInterfaceIdentity(string.Empty, string.Empty), observer);
 
     public IBoundIcmp CreateBoundIcmp() => LinuxBoundIcmp.Instance;
 

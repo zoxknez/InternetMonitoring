@@ -30,8 +30,17 @@ public static class EvidenceModelVersion
     /// computer having filled the line on its own - and the confidence signal that claimed
     /// to have ruled that out had never had anything to read.
     /// </para>
+    /// <para>
+    /// 4 adds canonical monitored <c>interfaceId</c> to <c>SessionStart</c> and locks session interface
+    /// pinning so the monitored adapter cannot silently switch to phantom adapters or alternate routes.
+    /// </para>
     /// </summary>
-    public const int SchemaVersion = 3;
+    public const int SchemaVersion = 4;
+
+    /// <summary>
+    /// Fallback schema version for legacy raw chains recorded before explicit schema versioning was stamped.
+    /// </summary>
+    public const int LegacySchemaVersion = 1;
 
     /// <summary>
     /// Rules mapping observations to a <see cref="NetworkState"/>.

@@ -1,4 +1,4 @@
-﻿using System.Globalization;
+using System.Globalization;
 using System.Text.Json;
 using IEM.Core;
 using IEM.Core.Classification;
@@ -33,12 +33,13 @@ public static class PayloadReader
                 Text(p, "interface") ?? "?",
                 Enum(p, "medium", LinkMedium.Unknown),
                 Integer(p, "linkSpeedBps"),
-                Text(p, "gateway"))
+                Text(p, "gateway"),
+                Text(p, "interfaceId"))
             {
                 // What this session was actually recorded under, so a report rebuilt by a
                 // newer build states the reasoning that produced the conclusions rather than
                 // whichever one happens to be current.
-                SchemaVersion = (int)(Integer(p, "schemaVersion") ?? EvidenceModelVersion.SchemaVersion),
+                SchemaVersion = (int)(Integer(p, "schemaVersion") ?? EvidenceModelVersion.LegacySchemaVersion),
                 ClassifierVersion = Text(p, "classifierVersion") ?? EvidenceModelVersion.ClassifierVersion,
                 AttributionModelVersion =
                     Text(p, "attributionModelVersion") ?? EvidenceModelVersion.AttributionModelVersion,
@@ -178,7 +179,10 @@ public static class PayloadReader
 
         foreach (var item in array.EnumerateArray())
         {
-            if (item.TryGetProperty("ttl", out var ttl) && ttl.TryGetInt32(out var hopTtl))
+            // TryGetInt32 throws on JSON null rather than returning false.
+            if (item.TryGetProperty("ttl", out var ttl) &&
+                ttl.ValueKind == JsonValueKind.Number &&
+                ttl.TryGetInt32(out var hopTtl))
             {
                 hops.Add(new TraceHop(hopTtl, Text(item, "address"), Milliseconds(item, "rttMs")));
             }
@@ -242,8 +246,18 @@ public static class PayloadReader
             ? value.GetDouble()
             : null;
 
+    /// <summary>
+    /// Nullable integers are written as JSON null (<see cref="SessionStartPayload.WriteNullableNumber"/>).
+    /// <c>TryGetInt64</c> throws on Null instead of returning false, so the kind is checked first.
+    /// A traceroute that nobody answered writes <c>lastAnsweringTtl: null</c>; treating that as
+    /// a parse failure used to abort the whole report.
+    /// </summary>
     private static long? Integer(JsonElement p, string name) =>
-        p.TryGetProperty(name, out var value) && value.TryGetInt64(out var parsed) ? parsed : null;
+        p.TryGetProperty(name, out var value) &&
+        value.ValueKind == JsonValueKind.Number &&
+        value.TryGetInt64(out var parsed)
+            ? parsed
+            : null;
 
     private static bool Flag(JsonElement p, string name) =>
         p.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.True;
