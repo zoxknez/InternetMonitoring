@@ -228,10 +228,10 @@ foreach ($prop in $manifest.ArtifactSha256Hashes.PSObject.Properties) {
 Write-Host "`n--- Provera SBOM semantike komponenti i spoljasnjeg heša bajtova ---" -ForegroundColor Cyan
 
 foreach ($comp in $sbom.Components) {
-    if (-not $comp.IntegrityAlgorithm -or -not $comp.IntegrityValue -or -not $comp.IntegritySource) {
+    if (-not $comp.IntegrityAlgorithm -or [string]::IsNullOrWhiteSpace($comp.IntegrityValue) -or -not $comp.IntegritySource) {
         Write-Fail "SBOM komponenta '$($comp.Name)' nema definisana polja integriteta (IntegrityAlgorithm, IntegrityValue, IntegritySource)."
-    } elseif ($comp.IntegrityValue -eq '10.0.111' -or $comp.IntegrityValue -like "*sdk*") {
-        Write-Fail "SBOM komponenta '$($comp.Name)' sadrzi nevalidnu vrednost integriteta (npr. SDK verziju umesto pravog hesa)."
+    } elseif ($comp.IntegrityValue -eq '10.0.111' -or $comp.IntegrityValue -eq '10.0.11' -or $comp.IntegrityValue.Length -lt 16) {
+        Write-Fail "SBOM komponenta '$($comp.Name)' sadrzi nevalidnu vrednost integriteta: $($comp.IntegrityValue)"
     }
 }
 Write-Pass "SBOM semantika komponenti je validna (svih $($sbom.Components.Count) komponenti poseduju eksplicitan algoritam, heš i izvor integriteta)."

@@ -457,6 +457,11 @@ Sadrzaj:
                 foreach ($pkgProp in $targetFramework.PSObject.Properties) {
                     $pkgName = $pkgProp.Name
                     $pkgDetails = $pkgProp.Value
+
+                    if ($pkgDetails.type -eq 'Project' -or $pkgDetails.type -eq 'project' -or [string]::IsNullOrWhiteSpace($pkgDetails.contentHash)) {
+                        continue
+                    }
+
                     $key = "$($pkgName):$($pkgDetails.resolved)"
                     if (-not $seenPackages.Contains($key)) {
                         $seenPackages.Add($key) | Out-Null
