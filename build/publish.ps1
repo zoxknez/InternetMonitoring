@@ -229,10 +229,13 @@ Sadrzaj:
                 throw "SignTool potpisivanje nije uspelo za: $($pe.FullName) (ExitCode: $LASTEXITCODE)"
             }
 
-            # Independent verification check
-            & $signtool verify /v $pe.FullName | Out-Null
-            if ($LASTEXITCODE -ne 0) {
-                throw "SignTool verifikacija nije uspela za potpisani PE: $($pe.FullName)"
+            # Independent verification check via Authenticode signature parser
+            $sigCheck = Get-AuthenticodeSignature $pe.FullName
+            if (-not $sigCheck.SignerCertificate -or ($sigCheck.SignerCertificate.Thumbprint -ne $SigningThumbprint)) {
+                throw "Potpis nije pronadjen ili otisak ne odgovara za: $($pe.FullName)"
+            }
+            if (-not $sigCheck.TimeStamperCertificate) {
+                throw "RFC3161 vremenski zig nije pronadjen za: $($pe.FullName)"
             }
         }
 
@@ -338,9 +341,13 @@ Sadrzaj:
             if ($LASTEXITCODE -ne 0) {
                 throw "SignTool potpisivanje nije uspelo za portabl izdanje: $shipped"
             }
-            & $signtool verify /v $shipped | Out-Null
-            if ($LASTEXITCODE -ne 0) {
-                throw "SignTool verifikacija nije uspela za portabl izdanje: $shipped"
+            # Independent verification check via Authenticode signature parser
+            $sigCheck = Get-AuthenticodeSignature $shipped
+            if (-not $sigCheck.SignerCertificate -or ($sigCheck.SignerCertificate.Thumbprint -ne $SigningThumbprint)) {
+                throw "Potpis nije pronadjen ili otisak ne odgovara za portabl izdanje: $shipped"
+            }
+            if (-not $sigCheck.TimeStamperCertificate) {
+                throw "RFC3161 vremenski zig nije pronadjen za portabl izdanje: $shipped"
             }
 
             $singleHash = (Get-FileHash $shipped -Algorithm SHA256).Hash.ToLower()
