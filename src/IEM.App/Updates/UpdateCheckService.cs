@@ -93,7 +93,11 @@ public sealed class UpdateCheckService : IUpdateCheckService
                 return UpdateCheckResult.Unknown("Neispravan format manifesta ažuriranja.");
             }
 
-            var availability = UpdatePolicy.Evaluate(_currentVersion, manifest, Preferences);
+            var currentPlatform = System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture == System.Runtime.InteropServices.Architecture.Arm64
+                ? "windows-arm64"
+                : "windows-x64";
+
+            var availability = UpdatePolicy.Evaluate(_currentVersion, manifest, Preferences, currentPlatform: currentPlatform);
 
             Preferences = Preferences with { LastCheckUtc = DateTimeOffset.UtcNow };
             SavePreferences(Preferences);

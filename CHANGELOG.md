@@ -10,6 +10,28 @@ izveštaj pravi.
 
 ---
 
+## 3.0.1-rc1 - 22.08.2026.
+
+Format zapisa 4, pravila nepromenjena.
+
+### Trajno vezivanje praćenog mrežnog interfejsa za sesiju (Pinned Session Interface)
+
+Otklonjena je mogućnost da servis tokom prekida veze ili nestanka mrežnog prolaza (gateway) privremeno prebaci praćenje na virtuelne filtere operativnog sistema (npr. WFP filtere) ili druge mrežne adaptere. Izabrani mrežni interfejs (njegov kanonski GUID) se fiksira jednom prilikom pokretanja sesije i ostaje nepromenjen tokom celog trajanja nadzora. Svi ispadi i prekidi na praćenom interfejsu se verodostojno beleže kao prekid na tom interfejsu, bez lažnog ublažavanja.
+
+### Zabrana preusmeravanja proba preko drugih interfejsa
+
+Rutiranje kontrolnih proba (ICMP/TCP/DNS) je vezano isključivo za indeks praćenog mrežnog adaptera. Ukoliko je praćeni adapter u prekidu, probe se ne preusmeravaju preko alternativnih interfejsa (npr. preko Ethernet kabla dok se meri Wi-Fi, ili preko VPN-a), već se stanje dosledno evidentira kao lokalni ispad ili nerazrešiva putanja.
+
+### Format zapisa 4 (Schema 4)
+
+U zaglavlju sesije (`SessionStartPayload`) trajno se beleži jedinstveni identifikator interfejsa (`interfaceId`). Postojeće sesije snimljene starijim verzijama formata (Schema 1, 2 i 3) ostaju u potpunosti čitljive i verifikabilne.
+
+### Zapečaćen prikaz merenja brzine
+
+Prikaz rezultata merenja protoka i brzine je formalno osiguran: uspešno završeno merenje nikada ne može proizvesti nemoguća ili protivrečna stanja u korisničkom interfejsu.
+
+---
+
 ## 2.8.0-beta.4 - 18.08.2026.
 
 Format zapisa 3, pravila nepromenjena.

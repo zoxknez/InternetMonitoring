@@ -31,7 +31,7 @@ public sealed class ReleaseAcceptanceTests : IDisposable
         BuildConfiguration: "Release",
         BuildTimestampUtc: DateTimeOffset.Parse("2026-08-19T02:00:00Z"),
         ReleaseChannel: "Stable",
-        Architecture: "x64");
+        RuntimeIdentifiers: ["win-x64", "win-arm64"]);
 
     private static ReleaseManifest CreateValidManifest(ReleaseIdentity identity)
     {

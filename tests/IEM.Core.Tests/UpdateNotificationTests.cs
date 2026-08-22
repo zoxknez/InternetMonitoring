@@ -155,6 +155,45 @@ public sealed class UpdateNotificationTests
         Assert.True(SemanticVersion.TryParse(previewManifest.Version, out _));
     }
 
+    [Fact]
+    public void Platform_guard_matches_identical_architecture()
+    {
+        var manifest = new UpdateManifest
+        {
+            Version = "3.0.1",
+            Channel = "stable",
+            Platform = "windows-x64"
+        };
+
+        var result = UpdatePolicy.Evaluate("3.0.0", manifest, currentPlatform: "windows-x64");
+        Assert.Equal(UpdateAvailability.UpdateAvailable, result);
+    }
+
+    [Fact]
+    public void Platform_guard_rejects_architecture_mismatch()
+    {
+        var manifest = new UpdateManifest
+        {
+            Version = "3.0.1",
+            Channel = "stable",
+            Platform = "windows-x64"
+        };
+
+        // Running on ARM64 against windows-x64 manifest must return UpToDate (never offered)
+        var resultArm = UpdatePolicy.Evaluate("3.0.0", manifest, currentPlatform: "windows-arm64");
+        Assert.Equal(UpdateAvailability.UpToDate, resultArm);
+
+        // Running on x64 against windows-arm64 manifest must return UpToDate
+        var manifestArm = new UpdateManifest
+        {
+            Version = "3.0.1",
+            Channel = "stable",
+            Platform = "windows-arm64"
+        };
+        var resultX64 = UpdatePolicy.Evaluate("3.0.0", manifestArm, currentPlatform: "windows-x64");
+        Assert.Equal(UpdateAvailability.UpToDate, resultX64);
+    }
+
     private static string FindRepoRoot()
     {
         var candidates = new[]

@@ -26,7 +26,7 @@ jobs:
       - name: Postavi .NET 10
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '10.0.x'
+          global-json-file: global.json
 
       # Locked mode, so a dependency that moved under us fails here rather than in somebody's
       # evidence package. The report claims the build is reproducible; this is that claim.

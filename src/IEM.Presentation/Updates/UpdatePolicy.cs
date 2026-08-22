@@ -12,11 +12,20 @@ public static class UpdatePolicy
         string currentVersionStr,
         UpdateManifest? manifest,
         UpdatePreferences? preferences = null,
-        DateTimeOffset? nowUtc = null)
+        DateTimeOffset? nowUtc = null,
+        string? currentPlatform = null)
     {
         if (manifest is null || string.IsNullOrWhiteSpace(manifest.Version))
         {
             return UpdateAvailability.Unknown;
+        }
+
+        // Platform architecture guard (Invariant WIN_UPDATE_MANIFEST_PLATFORM_MUST_MATCH_RUNTIME_ARCHITECTURE)
+        if (!string.IsNullOrWhiteSpace(manifest.Platform) &&
+            !string.IsNullOrWhiteSpace(currentPlatform) &&
+            !string.Equals(manifest.Platform, currentPlatform, StringComparison.OrdinalIgnoreCase))
+        {
+            return UpdateAvailability.UpToDate;
         }
 
         if (!SemanticVersion.TryParse(currentVersionStr, out var currentVersion))

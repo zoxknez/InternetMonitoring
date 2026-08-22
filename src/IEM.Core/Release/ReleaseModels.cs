@@ -16,8 +16,23 @@ public sealed record ReleaseIdentity(
     string BuildConfiguration,
     DateTimeOffset BuildTimestampUtc,
     string ReleaseChannel,
-    string Architecture,
-    int ReleaseManifestVersion = 1);
+    IReadOnlyList<string> RuntimeIdentifiers,
+    int ReleaseManifestVersion = 1)
+{
+    public ReleaseIdentity(
+        string productVersion,
+        string informationalVersion,
+        string gitCommit,
+        string buildId,
+        string buildConfiguration,
+        DateTimeOffset buildTimestampUtc,
+        string releaseChannel,
+        string architecture,
+        int releaseManifestVersion = 1)
+        : this(productVersion, informationalVersion, gitCommit, buildId, buildConfiguration, buildTimestampUtc, releaseChannel, [architecture], releaseManifestVersion)
+    {
+    }
+}
 
 /// <summary>
 /// Authenticode signature metadata and validation state for an executable artifact.

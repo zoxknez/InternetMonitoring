@@ -14,7 +14,7 @@ public static class SbomGenerator
     public static SoftwareBillOfMaterials Generate(
         ReleaseIdentity release,
         IReadOnlyList<SbomComponent> components,
-        string format = "SPDX-2.3")
+        string format = "IEM-SBOM-1")
     {
         ArgumentNullException.ThrowIfNull(release);
         ArgumentNullException.ThrowIfNull(components);
