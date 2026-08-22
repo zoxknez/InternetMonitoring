@@ -1445,7 +1445,7 @@ rm -rf /run/internet-evidence-monitor
 touch /run/internet-evidence-monitor # Invalid: file instead of directory
 
 set +e
-"${INSTALL_DIR}/IEM.Service.Linux" 2>/dev/null
+sudo -u iem NOTIFY_SOCKET=/tmp/test_notify.sock "${INSTALL_DIR}/IEM.Service.Linux" 2>/dev/null
 CLI_EXIT=$?
 set -e
 
