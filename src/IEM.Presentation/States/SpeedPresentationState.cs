@@ -91,7 +91,7 @@ public abstract record SpeedPresentationState
         string? ObservedPath,
         string? PathAgreement,
         string? TunnelIndication,
-        double? DownloadThroughputMbps,
+        double DownloadThroughputMbps,
         double? UploadThroughputMbps,
         string? MeasurementStatusText = null) : SpeedPresentationState
     {
@@ -99,13 +99,11 @@ public abstract record SpeedPresentationState
         public override bool Ran => true;
         public override bool IsRefused => false;
         public override bool HasTerminalOutcome => true;
-        public override string DownloadThroughputText => FormatThroughput(DownloadThroughputMbps);
-        public override string UploadThroughputText => FormatThroughput(UploadThroughputMbps);
+        public override string DownloadThroughputText => string.Format(CultureInfo.InvariantCulture, "{0:0.0} Mbps", DownloadThroughputMbps);
+        public override string UploadThroughputText => UploadThroughputMbps.HasValue
+            ? string.Format(CultureInfo.InvariantCulture, "{0:0.0} Mbps", UploadThroughputMbps.Value)
+            : "—";
         public override string MeasurementStatusText { get; } = MeasurementStatusText ?? "Merenje uspešno završeno.";
         public override SemanticTone Tone => SemanticTone.Good;
-
-        private static string FormatThroughput(double? mbps) => mbps.HasValue
-            ? string.Format(CultureInfo.InvariantCulture, "{0:0.0} Mbps", mbps.Value)
-            : "—";
     }
 }

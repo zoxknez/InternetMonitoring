@@ -55,7 +55,7 @@ public abstract record SpeedExecutionFacts
         string? ObservedPath,
         string? PathAgreement,
         string? TunnelIndication,
-        double? DownloadThroughputMbps,
+        double DownloadThroughputMbps,
         double? UploadThroughputMbps) : SpeedExecutionFacts
     {
         public override SpeedExecutionState ExecutionState => SpeedExecutionState.Succeeded;

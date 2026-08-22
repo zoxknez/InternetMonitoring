@@ -168,6 +168,21 @@ public sealed class PresentationContractTests
         Assert.Equal("95.4 Mbps", succeeded.DownloadThroughputText);
         Assert.Equal("48.2 Mbps", succeeded.UploadThroughputText);
         Assert.Equal(SemanticTone.Good, succeeded.Tone);
+
+        // 5. Succeeded variant with null upload (download completed, upload not executed):
+        var succeededNoUpload = new SpeedPresentationState.Succeeded(
+            MeasurementIntent: "Default",
+            RequestedInterface: "Ethernet",
+            ObservedPath: "Ethernet",
+            PathAgreement: "Match",
+            TunnelIndication: "NotDetected",
+            DownloadThroughputMbps: 120.0,
+            UploadThroughputMbps: null);
+
+        Assert.Equal(120.0, succeededNoUpload.DownloadThroughputMbps);
+        Assert.Null(succeededNoUpload.UploadThroughputMbps);
+        Assert.Equal("120.0 Mbps", succeededNoUpload.DownloadThroughputText);
+        Assert.Equal("—", succeededNoUpload.UploadThroughputText);
     }
 
     [Fact]
@@ -188,10 +203,15 @@ public sealed class PresentationContractTests
         Assert.Equal(SpeedExecutionState.Refused, refused.ExecutionState);
         Assert.Equal("NoRoute", refused.RefusalReason);
 
-        // Succeeded fact: cannot carry refusal reason
+        // Succeeded fact: cannot carry refusal reason, requires download, permits null upload
         var succeeded = new SpeedExecutionFacts.Succeeded("Intent", "Ethernet", "Ethernet", "Match", "NotDetected", 100.0, 50.0);
         Assert.Equal(SpeedExecutionState.Succeeded, succeeded.ExecutionState);
         Assert.Equal(100.0, succeeded.DownloadThroughputMbps);
+        Assert.Equal(50.0, succeeded.UploadThroughputMbps);
+
+        var succeededNullUpload = new SpeedExecutionFacts.Succeeded("Intent", "Ethernet", "Ethernet", "Match", "NotDetected", 100.0, null);
+        Assert.Equal(100.0, succeededNullUpload.DownloadThroughputMbps);
+        Assert.Null(succeededNullUpload.UploadThroughputMbps);
     }
 
     [Fact]
