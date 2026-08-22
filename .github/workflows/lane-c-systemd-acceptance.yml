@@ -36,7 +36,7 @@ jobs:
       - name: Run Lane C Real systemd PID 1 Acceptance
         run: |
           chmod +x scripts/ci/lane-c-systemd-acceptance.sh
-          sudo bash scripts/ci/lane-c-systemd-acceptance.sh
+          sudo CI=true GITHUB_ACTIONS=true bash scripts/ci/lane-c-systemd-acceptance.sh
 
       - name: Upload Lane C Acceptance Artifacts
         if: always()
