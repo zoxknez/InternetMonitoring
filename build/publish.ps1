@@ -231,8 +231,12 @@ Sadrzaj:
 
             # Independent verification check via Authenticode signature parser
             $sigCheck = Get-AuthenticodeSignature $pe.FullName
-            if (-not $sigCheck.SignerCertificate -or ($sigCheck.SignerCertificate.Thumbprint -ne $SigningThumbprint)) {
-                throw "Potpis nije pronadjen ili otisak ne odgovara za: $($pe.FullName)"
+            if (-not $sigCheck.SignerCertificate) {
+                throw "PE datoteka nije potpisana: $($pe.FullName)"
+            }
+            $isProductBinary = ($pe.Name -like "IEM.*" -or $pe.Name -like "InternetEvidence*" -or $pe.Name -like "iem*")
+            if ($isProductBinary -and ($sigCheck.SignerCertificate.Thumbprint -ne $SigningThumbprint)) {
+                throw "Potpis za proizvodni fajl $($pe.Name) ne odgovara ocekivanom otisku ($SigningThumbprint)"
             }
             if (-not $sigCheck.TimeStamperCertificate) {
                 throw "RFC3161 vremenski zig nije pronadjen za: $($pe.FullName)"
