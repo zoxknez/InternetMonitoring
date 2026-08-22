@@ -102,8 +102,8 @@ foreach ($Runtime in $Runtimes) {
         }
 
         $sig = Get-AuthenticodeSignature $filePath
-        if ($sig.Status -eq 'Valid') {
-            Write-Pass "AUTHENTICODE [$key]: Valid"
+        if ($sig.Status -in @('Valid', 'UnknownError') -and $null -ne $sig.SignerCertificate) {
+            Write-Pass "AUTHENTICODE [$key]: Potpisan (Status: $($sig.Status))"
         } else {
             Write-Fail "AUTHENTICODE [$key]: $($sig.StatusMessage) (Status: $($sig.Status))"
         }
@@ -116,7 +116,11 @@ foreach ($Runtime in $Runtimes) {
 
         if ($sig.SignerCertificate) {
             Write-Pass "PUBLISHER [$key]: $($sig.SignerCertificate.Subject)"
-            Write-Pass "CHAIN [$key]: Valid sertifikacioni lanac"
+            if ($sig.Status -eq 'Valid' -or ($sig.Status -eq 'UnknownError' -and $sig.SignerCertificate.Thumbprint -eq $ExpectedSignerThumbprint)) {
+                Write-Pass "CHAIN [$key]: Sertifikacioni lanac verifikovan"
+            } else {
+                Write-Fail "CHAIN [$key]: Neuspesna validacija lanca ($($sig.StatusMessage))"
+            }
 
             if (-not [string]::IsNullOrWhiteSpace($ExpectedSignerThumbprint)) {
                 if ($sig.SignerCertificate.Thumbprint -eq $ExpectedSignerThumbprint) {

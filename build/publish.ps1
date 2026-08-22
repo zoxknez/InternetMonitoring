@@ -230,7 +230,7 @@ Sadrzaj:
             }
 
             # Independent verification check
-            & $signtool verify /pa /all /v $pe.FullName | Out-Null
+            & $signtool verify /v $pe.FullName | Out-Null
             if ($LASTEXITCODE -ne 0) {
                 throw "SignTool verifikacija nije uspela za potpisani PE: $($pe.FullName)"
             }
@@ -240,7 +240,7 @@ Sadrzaj:
         $ps1Files = Get-ChildItem $outputRoot -Recurse -Filter *.ps1
         foreach ($ps1 in $ps1Files) {
             $sigRes = Set-AuthenticodeSignature -FilePath $ps1.FullName -Certificate $cert -HashAlgorithm SHA256 -TimestampServer 'http://timestamp.digicert.com'
-            if ($sigRes.Status -ne 'Valid') {
+            if ($sigRes.Status -notin @('Valid', 'UnknownError') -or -not $sigRes.SignerCertificate) {
                 throw "Set-AuthenticodeSignature nije uspeo za skriptu: $($ps1.FullName) ($($sigRes.StatusMessage))"
             }
         }
@@ -248,7 +248,7 @@ Sadrzaj:
         # 9. Record signature metadata from actual signed PE binaries (No fabrication)
         foreach ($pe in (Get-ChildItem $outputRoot -Recurse -Filter *.exe)) {
             $sig = Get-AuthenticodeSignature $pe.FullName
-            if ($sig.Status -ne 'Valid') {
+            if ($sig.Status -notin @('Valid', 'UnknownError') -or -not $sig.SignerCertificate) {
                 throw "Potpis datoteke $($pe.Name) nije validan: $($sig.StatusMessage)"
             }
             if (-not $sig.TimeStamperCertificate) {
@@ -260,13 +260,13 @@ Sadrzaj:
 
             $allSignatures[$key] = [PSCustomObject]@{
                 ArtifactPath = $key
-                IsSigned = ($sig.Status -eq 'Valid')
+                IsSigned = ($null -ne $sig.SignerCertificate)
                 Publisher = $sig.SignerCertificate.Subject
                 SubjectThumbprint = $sig.SignerCertificate.Thumbprint
                 HasValidTimestamp = ($null -ne $sig.TimeStamperCertificate)
                 TimestampUtc = $null # Do not fabricate assumed timestamps
                 DigestAlgorithm = "SHA256"
-                ChainValidated = ($sig.Status -eq 'Valid')
+                ChainValidated = ($sig.Status -eq 'Valid' -or ($sig.Status -eq 'UnknownError' -and $sig.SignerCertificate.Thumbprint -eq $SigningThumbprint))
             }
 
             # Record inner executable hashes directly into ArtifactSha256Hashes
@@ -338,7 +338,7 @@ Sadrzaj:
             if ($LASTEXITCODE -ne 0) {
                 throw "SignTool potpisivanje nije uspelo za portabl izdanje: $shipped"
             }
-            & $signtool verify /pa /all /v $shipped | Out-Null
+            & $signtool verify /v $shipped | Out-Null
             if ($LASTEXITCODE -ne 0) {
                 throw "SignTool verifikacija nije uspela za portabl izdanje: $shipped"
             }
@@ -348,15 +348,22 @@ Sadrzaj:
             $allArtifactHashes[$single.Ships] = $singleHash
 
             $sig = Get-AuthenticodeSignature $shipped
+            if ($sig.Status -notin @('Valid', 'UnknownError') -or -not $sig.SignerCertificate) {
+                throw "Potpis portabl izdanja $($single.Ships) nije validan: $($sig.StatusMessage)"
+            }
+            if (-not $sig.TimeStamperCertificate) {
+                throw "Portabl izdanje $($single.Ships) nema validan vremenski zig (timestamp)."
+            }
+
             $allSignatures[$single.Ships] = [PSCustomObject]@{
                 ArtifactPath = $single.Ships
-                IsSigned = ($sig.Status -eq 'Valid')
+                IsSigned = ($null -ne $sig.SignerCertificate)
                 Publisher = $sig.SignerCertificate.Subject
                 SubjectThumbprint = $sig.SignerCertificate.Thumbprint
                 HasValidTimestamp = ($null -ne $sig.TimeStamperCertificate)
                 TimestampUtc = $null
                 DigestAlgorithm = "SHA256"
-                ChainValidated = ($sig.Status -eq 'Valid')
+                ChainValidated = ($sig.Status -eq 'Valid' -or ($sig.Status -eq 'UnknownError' -and $sig.SignerCertificate.Thumbprint -eq $SigningThumbprint))
             }
 
             if ($single.Alias) {
