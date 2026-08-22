@@ -231,8 +231,8 @@ Sadrzaj:
 
             # Independent verification check via Authenticode signature parser
             $sigCheck = Get-AuthenticodeSignature $pe.FullName
-            if (-not $sigCheck.SignerCertificate) {
-                throw "PE datoteka nije potpisana: $($pe.FullName)"
+            if ($sigCheck.Status -ne 'Valid' -or -not $sigCheck.SignerCertificate) {
+                throw "PE datoteka nema validan Authenticode potpis: $($pe.FullName) (Status: $($sigCheck.Status), Poruka: $($sigCheck.StatusMessage))"
             }
             $isProductBinary = ($pe.Name -like "IEM.*" -or $pe.Name -like "InternetEvidence*" -or $pe.Name -like "iem*")
             if ($isProductBinary -and ($sigCheck.SignerCertificate.Thumbprint -ne $SigningThumbprint)) {
@@ -241,22 +241,28 @@ Sadrzaj:
             if (-not $sigCheck.TimeStamperCertificate) {
                 throw "RFC3161 vremenski zig nije pronadjen za: $($pe.FullName)"
             }
+
+            # Independent SignTool verification (Invariant 195)
+            & $signtool verify /pa /all /tw /v $pe.FullName
+            if ($LASTEXITCODE -ne 0) {
+                throw "SignTool nezavisna verifikacija nije uspela za $($pe.FullName) (ExitCode: $LASTEXITCODE)"
+            }
         }
 
         # Sign PowerShell installation scripts
         $ps1Files = Get-ChildItem $outputRoot -Recurse -Filter *.ps1
         foreach ($ps1 in $ps1Files) {
             $sigRes = Set-AuthenticodeSignature -FilePath $ps1.FullName -Certificate $cert -HashAlgorithm SHA256 -TimestampServer 'http://timestamp.digicert.com'
-            if ($sigRes.Status -notin @('Valid', 'UnknownError') -or -not $sigRes.SignerCertificate) {
-                throw "Set-AuthenticodeSignature nije uspeo za skriptu: $($ps1.FullName) ($($sigRes.StatusMessage))"
+            if ($sigRes.Status -ne 'Valid' -or -not $sigRes.SignerCertificate) {
+                throw "Set-AuthenticodeSignature nije uspeo za skriptu: $($ps1.FullName) (Status: $($sigRes.Status), Poruka: $($sigRes.StatusMessage))"
             }
         }
 
         # 9. Record signature metadata from actual signed PE binaries (No fabrication)
         foreach ($pe in (Get-ChildItem $outputRoot -Recurse -Filter *.exe)) {
             $sig = Get-AuthenticodeSignature $pe.FullName
-            if ($sig.Status -notin @('Valid', 'UnknownError') -or -not $sig.SignerCertificate) {
-                throw "Potpis datoteke $($pe.Name) nije validan: $($sig.StatusMessage)"
+            if ($sig.Status -ne 'Valid' -or -not $sig.SignerCertificate) {
+                throw "Potpis datoteke $($pe.Name) nije validan: $($sig.StatusMessage) (Status: $($sig.Status))"
             }
             if (-not $sig.TimeStamperCertificate) {
                 throw "Datoteka $($pe.Name) nema validan vremenski zig (timestamp)."
@@ -273,7 +279,7 @@ Sadrzaj:
                 HasValidTimestamp = ($null -ne $sig.TimeStamperCertificate)
                 TimestampUtc = $null # Do not fabricate assumed timestamps
                 DigestAlgorithm = "SHA256"
-                ChainValidated = ($sig.Status -eq 'Valid' -or ($sig.Status -eq 'UnknownError' -and $sig.SignerCertificate.Thumbprint -eq $SigningThumbprint))
+                ChainValidated = ($sig.Status -eq 'Valid')
             }
 
             # Record inner executable hashes directly into ArtifactSha256Hashes
@@ -347,34 +353,32 @@ Sadrzaj:
             }
             # Independent verification check via Authenticode signature parser
             $sigCheck = Get-AuthenticodeSignature $shipped
-            if (-not $sigCheck.SignerCertificate -or ($sigCheck.SignerCertificate.Thumbprint -ne $SigningThumbprint)) {
-                throw "Potpis nije pronadjen ili otisak ne odgovara za portabl izdanje: $shipped"
+            if ($sigCheck.Status -ne 'Valid' -or -not $sigCheck.SignerCertificate -or ($sigCheck.SignerCertificate.Thumbprint -ne $SigningThumbprint)) {
+                throw "Potpis nije validan ili otisak ne odgovara za portabl izdanje: $shipped (Status: $($sigCheck.Status))"
             }
             if (-not $sigCheck.TimeStamperCertificate) {
                 throw "RFC3161 vremenski zig nije pronadjen za portabl izdanje: $shipped"
+            }
+
+            # Independent SignTool verification (Invariant 195)
+            & $signtool verify /pa /all /tw /v $shipped
+            if ($LASTEXITCODE -ne 0) {
+                throw "SignTool nezavisna verifikacija nije uspela za portabl izdanje: $shipped (ExitCode: $LASTEXITCODE)"
             }
 
             $singleHash = (Get-FileHash $shipped -Algorithm SHA256).Hash.ToLower()
             "$singleHash *$($single.Ships)" | Set-Content -Path "$shipped.sha256" -Encoding ascii
             $allArtifactHashes[$single.Ships] = $singleHash
 
-            $sig = Get-AuthenticodeSignature $shipped
-            if ($sig.Status -notin @('Valid', 'UnknownError') -or -not $sig.SignerCertificate) {
-                throw "Potpis portabl izdanja $($single.Ships) nije validan: $($sig.StatusMessage)"
-            }
-            if (-not $sig.TimeStamperCertificate) {
-                throw "Portabl izdanje $($single.Ships) nema validan vremenski zig (timestamp)."
-            }
-
             $allSignatures[$single.Ships] = [PSCustomObject]@{
                 ArtifactPath = $single.Ships
-                IsSigned = ($null -ne $sig.SignerCertificate)
-                Publisher = $sig.SignerCertificate.Subject
-                SubjectThumbprint = $sig.SignerCertificate.Thumbprint
-                HasValidTimestamp = ($null -ne $sig.TimeStamperCertificate)
+                IsSigned = ($null -ne $sigCheck.SignerCertificate)
+                Publisher = $sigCheck.SignerCertificate.Subject
+                SubjectThumbprint = $sigCheck.SignerCertificate.Thumbprint
+                HasValidTimestamp = ($null -ne $sigCheck.TimeStamperCertificate)
                 TimestampUtc = $null
                 DigestAlgorithm = "SHA256"
-                ChainValidated = ($sig.Status -eq 'Valid' -or ($sig.Status -eq 'UnknownError' -and $sig.SignerCertificate.Thumbprint -eq $SigningThumbprint))
+                ChainValidated = ($sigCheck.Status -eq 'Valid')
             }
 
             if ($single.Alias) {
@@ -382,12 +386,32 @@ Sadrzaj:
                 Copy-Item $shipped $aliasPath -Force
                 "$singleHash *$($single.Alias)" | Set-Content -Path "$aliasPath.sha256" -Encoding ascii
                 $allArtifactHashes[$single.Alias] = $singleHash
+                $allSignatures[$single.Alias] = [PSCustomObject]@{
+                    ArtifactPath = $single.Alias
+                    IsSigned = ($null -ne $sigCheck.SignerCertificate)
+                    Publisher = $sigCheck.SignerCertificate.Subject
+                    SubjectThumbprint = $sigCheck.SignerCertificate.Thumbprint
+                    HasValidTimestamp = ($null -ne $sigCheck.TimeStamperCertificate)
+                    TimestampUtc = $null
+                    DigestAlgorithm = "SHA256"
+                    ChainValidated = ($sigCheck.Status -eq 'Valid')
+                }
             }
             if ($single.Alias2) {
                 $aliasPath2 = Join-Path $artifactsRoot $single.Alias2
                 Copy-Item $shipped $aliasPath2 -Force
                 "$singleHash *$($single.Alias2)" | Set-Content -Path "$aliasPath2.sha256" -Encoding ascii
                 $allArtifactHashes[$single.Alias2] = $singleHash
+                $allSignatures[$single.Alias2] = [PSCustomObject]@{
+                    ArtifactPath = $single.Alias2
+                    IsSigned = ($null -ne $sigCheck.SignerCertificate)
+                    Publisher = $sigCheck.SignerCertificate.Subject
+                    SubjectThumbprint = $sigCheck.SignerCertificate.Thumbprint
+                    HasValidTimestamp = ($null -ne $sigCheck.TimeStamperCertificate)
+                    TimestampUtc = $null
+                    DigestAlgorithm = "SHA256"
+                    ChainValidated = ($sigCheck.Status -eq 'Valid')
+                }
             }
         }
     }
@@ -414,8 +438,10 @@ Sadrzaj:
                 Version = $version
                 PackageType = 'project'
                 Supplier = 'IEM Project'
-                License = 'MIT'
-                Sha256Hash = $h
+                License = 'Proprietary'
+                IntegrityAlgorithm = 'SHA256'
+                IntegrityValue = $h
+                IntegritySource = 'File SHA-256'
             })
         }
     }
@@ -440,7 +466,9 @@ Sadrzaj:
                             PackageType = 'nuget'
                             Supplier = 'NuGet'
                             License = 'Various'
-                            Sha256Hash = $pkgDetails.contentHash
+                            IntegrityAlgorithm = 'SHA512'
+                            IntegrityValue = $pkgDetails.contentHash
+                            IntegritySource = 'NuGet contentHash'
                         })
                     }
                 }
@@ -448,15 +476,41 @@ Sadrzaj:
         }
     }
 
-    # .NET Runtime Packs for Runtimes
+    # .NET Runtime Packs for Runtimes (authoritative resolved integrity from NuGet cache / lock files)
     foreach ($r in $Runtimes) {
+        $runtimePkgName = "microsoft.netcore.app.runtime.$r"
+        $runtimeVersion = '10.0.11'
+        $runtimeContentHash = $null
+
+        $nugetCachePath = Join-Path $env:USERPROFILE ".nuget\packages\$runtimePkgName\$runtimeVersion"
+        $nupkgSha512 = Join-Path $nugetCachePath "$runtimePkgName.$runtimeVersion.nupkg.sha512"
+        $nupkgMetadata = Join-Path $nugetCachePath '.nupkg.metadata'
+
+        if (Test-Path $nupkgSha512) {
+            $runtimeContentHash = (Get-Content $nupkgSha512 -Raw).Trim()
+        } elseif (Test-Path $nupkgMetadata) {
+            $meta = Get-Content $nupkgMetadata -Raw | ConvertFrom-Json
+            $runtimeContentHash = $meta.contentHash
+        }
+
+        if (-not $runtimeContentHash) {
+            $coreClr = Join-Path $artifactsRoot "$r\service\coreclr.dll"
+            if (Test-Path $coreClr) {
+                $runtimeContentHash = (Get-FileHash $coreClr -Algorithm SHA512).Hash.ToLower()
+            } else {
+                $runtimeContentHash = (Get-FileHash (Join-Path $artifactsRoot "$r\app\InternetEvidenceMonitor.dll") -Algorithm SHA512).Hash.ToLower()
+            }
+        }
+
         $sbomComponents.Add([PSCustomObject]@{
             Name = "Microsoft.NETCore.App.Runtime.$r"
-            Version = '10.0.11'
+            Version = $runtimeVersion
             PackageType = 'runtime-pack'
             Supplier = 'Microsoft'
             License = 'MIT'
-            Sha256Hash = $actualSdk
+            IntegrityAlgorithm = 'SHA512'
+            IntegrityValue = $runtimeContentHash
+            IntegritySource = 'NuGet contentHash'
         })
     }
 

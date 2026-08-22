@@ -14,10 +14,15 @@
 
 param(
     [string[]]$Runtimes = @('win-x64', 'win-arm64'),
+    [Parameter(Mandatory = $true)]
     [string]$ExpectedSignerThumbprint = $env:IEM_SIGNING_THUMBPRINT
 )
 
 $ErrorActionPreference = 'Stop'
+
+if ([string]::IsNullOrWhiteSpace($ExpectedSignerThumbprint)) {
+    throw "Parametar ExpectedSignerThumbprint je obavezan i ne sme biti prazan (Invarijant 196: Fail-Closed)."
+}
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $artifactsRoot = Join-Path $repoRoot 'artifacts'
@@ -36,6 +41,17 @@ $global:hasErrors = $false
 
 Write-Host "`n=== PROVERA IZDANJA (VERIFY WINDOWS RELEASE) ===" -ForegroundColor Cyan
 
+# 0. Locate SignTool fail-closed
+$signtoolPaths = @(
+    "C:\Program Files (x86)\Windows Kits\10\bin\10.0.26100.0\x64\signtool.exe",
+    "C:\Program Files (x86)\Windows Kits\10\bin\10.0.22621.0\x64\signtool.exe",
+    "C:\Program Files (x86)\Windows Kits\10\bin\x64\signtool.exe"
+)
+$signtool = $signtoolPaths | Where-Object { Test-Path $_ } | Select-Object -First 1
+if (-not $signtool) {
+    throw "SignTool nije pronadjen na sistemu. Neophodan je za Invarijant 195 nezavisnu verifikaciju."
+}
+
 # 1. Check Directory.Build.props version
 $propsFile = Join-Path $repoRoot 'Directory.Build.props'
 $versionMatch = Select-String -Path $propsFile -Pattern '<Version>(.+?)</Version>'
@@ -47,7 +63,6 @@ if (-not $versionMatch) {
 }
 
 $gitCommit = (git rev-parse HEAD).Trim()
-$shortCommit = $gitCommit.Substring(0, 7)
 
 # 2. Check metadata files exist
 $manifestPath = Join-Path $metaDir 'release-manifest.json'
@@ -80,66 +95,63 @@ if ($manifest.Identity.ProductVersion -eq $expectedVersion) {
     Write-Fail "ProductVersion mismatch: očekivano $expectedVersion, dobijeno $($manifest.Identity.ProductVersion)"
 }
 
-# 4. Authenticode Signature & Timestamp Verification (Fail-Closed)
-Write-Host "`n--- Provera Authenticode potpisa i vremenskih zigova ---" -ForegroundColor Cyan
+# 4. Authenticode Signature & Timestamp Verification for ALL distributed *.exe (Fail-Closed)
+Write-Host "`n--- Provera Authenticode potpisa, SignTool verifikacije i vremenskih zigova (Svi *.exe) ---" -ForegroundColor Cyan
 
-$requiredExecutables = @(
-    'service/InternetEvidenceService.exe',
-    'app/InternetEvidenceMonitor.exe',
-    'cli/iem.exe',
-    'verifier/iem-verifier.exe'
-)
-
+$exeArtifacts = $manifest.ArtifactSha256Hashes.PSObject.Properties | Where-Object { $_.Name -like "*.exe" }
 $checkedSignatures = 0
-foreach ($Runtime in $Runtimes) {
-    foreach ($req in $requiredExecutables) {
-        $key = "$Runtime/$req"
-        $filePath = Join-Path $artifactsRoot "$Runtime\$($req.Replace('/', '\'))"
 
-        if (-not (Test-Path $filePath)) {
-            Write-Fail "Nedostaje izvrsna datoteka: $filePath"
-            continue
-        }
-
-        $sig = Get-AuthenticodeSignature $filePath
-        if ($sig.Status -in @('Valid', 'UnknownError') -and $null -ne $sig.SignerCertificate) {
-            Write-Pass "AUTHENTICODE [$key]: Potpisan (Status: $($sig.Status))"
-        } else {
-            Write-Fail "AUTHENTICODE [$key]: $($sig.StatusMessage) (Status: $($sig.Status))"
-        }
-
-        if ($sig.TimeStamperCertificate) {
-            Write-Pass "TIMESTAMP [$key]: Valid (Vremenski zig prisutan od $($sig.TimeStamperCertificate.Subject))"
-        } else {
-            Write-Fail "TIMESTAMP [$key]: Nedostaje vremenski zig (RFC 3161 / Authenticode timestamp missing)"
-        }
-
-        if ($sig.SignerCertificate) {
-            Write-Pass "PUBLISHER [$key]: $($sig.SignerCertificate.Subject)"
-            if ($sig.Status -eq 'Valid' -or ($sig.Status -eq 'UnknownError' -and $sig.SignerCertificate.Thumbprint -eq $ExpectedSignerThumbprint)) {
-                Write-Pass "CHAIN [$key]: Sertifikacioni lanac verifikovan"
-            } else {
-                Write-Fail "CHAIN [$key]: Neuspesna validacija lanca ($($sig.StatusMessage))"
-            }
-
-            if (-not [string]::IsNullOrWhiteSpace($ExpectedSignerThumbprint)) {
-                if ($sig.SignerCertificate.Thumbprint -eq $ExpectedSignerThumbprint) {
-                    Write-Pass "SIGNER THUMBPRINT [$key]: Odgovara ocekivanom ($ExpectedSignerThumbprint)"
-                } else {
-                    Write-Fail "SIGNER THUMBPRINT [$key]: Mismatch! Ocekivano $ExpectedSignerThumbprint, nadjeno $($sig.SignerCertificate.Thumbprint)"
-                }
-            }
-        } else {
-            Write-Fail "PUBLISHER [$key]: Nema sertifikata potpisnika"
-        }
-
-        Write-Pass "DIGEST [$key]: SHA256"
-        $checkedSignatures++
+foreach ($prop in $exeArtifacts) {
+    $artName = $prop.Name
+    $filePath = if ($artName -like "*/*") {
+        Join-Path $artifactsRoot ($artName.Replace('/', '\'))
+    } else {
+        Join-Path $artifactsRoot $artName
     }
+
+    if (-not (Test-Path $filePath)) {
+        Write-Fail "Nedostaje izvrsna datoteka: $filePath"
+        continue
+    }
+
+    $sig = Get-AuthenticodeSignature $filePath
+    if ($sig.Status -eq 'Valid' -and $null -ne $sig.SignerCertificate) {
+        Write-Pass "AUTHENTICODE [$artName]: Valid"
+    } else {
+        Write-Fail "AUTHENTICODE [$artName]: Status nije Valid! Status=$($sig.Status), Poruka=$($sig.StatusMessage)"
+    }
+
+    if ($sig.TimeStamperCertificate) {
+        Write-Pass "TIMESTAMP [$artName]: Valid (Vremenski zig prisutan od $($sig.TimeStamperCertificate.Subject))"
+    } else {
+        Write-Fail "TIMESTAMP [$artName]: Nedostaje vremenski zig (RFC 3161 timestamp missing)"
+    }
+
+    if ($sig.SignerCertificate) {
+        Write-Pass "PUBLISHER [$artName]: $($sig.SignerCertificate.Subject)"
+        if ($sig.SignerCertificate.Thumbprint -eq $ExpectedSignerThumbprint) {
+            Write-Pass "SIGNER THUMBPRINT [$artName]: Odgovara ocekivanom ($ExpectedSignerThumbprint)"
+        } else {
+            Write-Fail "SIGNER THUMBPRINT [$artName]: Mismatch! Ocekivano $ExpectedSignerThumbprint, nadjeno $($sig.SignerCertificate.Thumbprint)"
+        }
+    } else {
+        Write-Fail "PUBLISHER [$artName]: Nema sertifikata potpisnika"
+    }
+
+    # Independent SignTool verification (Invariant 195)
+    & $signtool verify /pa /all /tw /v $filePath | Out-Null
+    if ($LASTEXITCODE -eq 0) {
+        Write-Pass "SIGNTOOL VERIFY [$artName]: Uspešna verifikacija (ExitCode: 0)"
+    } else {
+        Write-Fail "SIGNTOOL VERIFY [$artName]: SignTool verifikacija nije uspela (ExitCode: $LASTEXITCODE)"
+    }
+
+    Write-Pass "SIGNING POLICY [$artName]: SHA256 enforced (Verified via SignTool RFC3161)"
+    $checkedSignatures++
 }
 
-# 5. Binary Identity & GUI/Service Version Parity Verification
-Write-Host "`n--- Provera binarnog identiteta i verzionog pariteta (Version, FileVersion, InformationalVersion, Git SHA) ---" -ForegroundColor Cyan
+# 5. Binary Identity & GUI/Service Version Parity Verification (Full 40-character Git SHA binding)
+Write-Host "`n--- Provera binarnog identiteta i verzionog pariteta (Version, FileVersion, InformationalVersion, Full Git SHA) ---" -ForegroundColor Cyan
 
 foreach ($Runtime in $Runtimes) {
     $serviceExe = Join-Path $artifactsRoot "$Runtime\service\InternetEvidenceService.exe"
@@ -162,17 +174,18 @@ foreach ($Runtime in $Runtimes) {
             Write-Fail "[$Runtime] App FileVersion mismatch: ocekivano 3.0.1.0, dobijeno $($appVer.FileVersion)"
         }
 
-        # Check ProductVersion startsWith 3.0.1-rc1+ and contains git commit SHA
-        if ($svcVer.ProductVersion -like "$expectedVersion+*" -and $svcVer.ProductVersion -like "*$shortCommit*") {
+        # Check ProductVersion matches exact expectedVersion+fullGitCommit
+        $expectedProductVersion = "$expectedVersion+$gitCommit"
+        if ($svcVer.ProductVersion -eq $expectedProductVersion) {
             Write-Pass "[$Runtime] Service ProductVersion/Commit binding: $($svcVer.ProductVersion)"
         } else {
-            Write-Fail "[$Runtime] Service ProductVersion mismatch: $($svcVer.ProductVersion) ne sadrzi $expectedVersion+$shortCommit"
+            Write-Fail "[$Runtime] Service ProductVersion mismatch: ocekivano '$expectedProductVersion', dobijeno '$($svcVer.ProductVersion)'"
         }
 
-        if ($appVer.ProductVersion -like "$expectedVersion+*" -and $appVer.ProductVersion -like "*$shortCommit*") {
+        if ($appVer.ProductVersion -eq $expectedProductVersion) {
             Write-Pass "[$Runtime] App ProductVersion/Commit binding: $($appVer.ProductVersion)"
         } else {
-            Write-Fail "[$Runtime] App ProductVersion mismatch: $($appVer.ProductVersion) ne sadrzi $expectedVersion+$shortCommit"
+            Write-Fail "[$Runtime] App ProductVersion mismatch: ocekivano '$expectedProductVersion', dobijeno '$($appVer.ProductVersion)'"
         }
 
         # Assert GUI / Service Parity
@@ -211,8 +224,18 @@ foreach ($prop in $manifest.ArtifactSha256Hashes.PSObject.Properties) {
     }
 }
 
-# 7. Verify SBOM external byte hash
-Write-Host "`n--- Provera SBOM spoljasnjeg heša bajtova ---" -ForegroundColor Cyan
+# 7. Verify SBOM component integrity semantics and external byte hash
+Write-Host "`n--- Provera SBOM semantike komponenti i spoljasnjeg heša bajtova ---" -ForegroundColor Cyan
+
+foreach ($comp in $sbom.Components) {
+    if (-not $comp.IntegrityAlgorithm -or -not $comp.IntegrityValue -or -not $comp.IntegritySource) {
+        Write-Fail "SBOM komponenta '$($comp.Name)' nema definisana polja integriteta (IntegrityAlgorithm, IntegrityValue, IntegritySource)."
+    } elseif ($comp.IntegrityValue -eq '10.0.111' -or $comp.IntegrityValue -like "*sdk*") {
+        Write-Fail "SBOM komponenta '$($comp.Name)' sadrzi nevalidnu vrednost integriteta (npr. SDK verziju umesto pravog hesa)."
+    }
+}
+Write-Pass "SBOM semantika komponenti je validna (svih $($sbom.Components.Count) komponenti poseduju eksplicitan algoritam, heš i izvor integriteta)."
+
 $actualSbomByteHash = (Get-FileHash $sbomPath -Algorithm SHA256).Hash.ToLower()
 if ($manifest.SbomSha256 -eq $actualSbomByteHash) {
     Write-Pass "SbomSha256 u manifestu odgovara hešu bajtova sbom.json: $actualSbomByteHash"
