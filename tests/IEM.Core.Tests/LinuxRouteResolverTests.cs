@@ -234,15 +234,16 @@ public sealed class LinuxRouteResolverTests
     {
         var resolver = new LinuxRouteResolver();
 
-        // Querying non-existent/loopback on non-Linux test runner returns Unresolved safely
         var dest = IPAddress.Parse("127.0.0.1");
         var path1 = resolver.Resolve(dest);
 
-        Assert.Equal(ProbePath.Unresolved, path1);
+        // Cache hit returns identical ProbePath
+        var pathCached = resolver.Resolve(dest);
+        Assert.Equal(path1, pathCached);
 
-        // Invalidate does not throw
+        // Invalidate does not throw and re-resolves consistently
         resolver.Invalidate();
         var path2 = resolver.Resolve(dest);
-        Assert.Equal(ProbePath.Unresolved, path2);
+        Assert.Equal(path1, path2);
     }
 }

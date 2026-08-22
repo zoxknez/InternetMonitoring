@@ -4,10 +4,15 @@
 # 192. ALL_ARTIFACTS_OF_ONE_RELEASE_SHARE_ONE_CANONICAL_RELEASE_IDENTITY
 # 193. RELEASE_IDENTITY_NEVER_CHANGES_AFTER_ARTIFACT_SIGNING
 # 194. UNSIGNED_REQUIRED_EXECUTABLE_IS_NEVER_RELEASED
+# 196. RELEASE_SIGNING_FAILURE_ALWAYS_FAILS_CLOSED
+# 197. TIMESTAMP_FAILURE_NEVER_SILENTLY_DEGRADES
 # 198. SIGNED_ARTIFACT_IS_NEVER_MUTATED_AFTER_SIGNING
 # 199. RELEASE_MANIFEST_HASHES_EXACT_DISTRIBUTED_ARTIFACTS
+# 200. SBOM_IS_GENERATED_FROM_THE_RELEASE_BEING_DISTRIBUTED
+# 201. SBOM_ACCURATELY_REPRESENTS_RELEASE_COMPONENTS
 # 207. SERVICE_AND_APPLICATION_RELEASE_VERSIONS_NEVER_SILENTLY_DIVERGE
 # 210. DISTRIBUTED_ARTIFACTS_ARE_BIT_IDENTICAL_TO_THE_VERIFIED_RELEASE_SET
+# WIN_RELEASE_SOURCE_TREE_MUST_BE_CLEAN_BEFORE_AND_AFTER_BUILD
 
 param(
     [string[]]$Runtimes = @('win-x64', 'win-arm64'),
@@ -25,14 +30,101 @@ function Write-Step([string]$message) {
     Write-Host "  $message" -ForegroundColor Cyan
 }
 
-# 1. Clean-tree check before start
+# 1. Exact SDK Verification (global.json authority)
+Write-Step 'Provera .NET SDK verzije'
+$requiredSdk = '10.0.111'
+$actualSdk = (& dotnet --version).Trim()
+if ($actualSdk -ne $requiredSdk) {
+    throw "Release zahteva .NET SDK $requiredSdk; aktivan je $actualSdk."
+}
+Write-Host "Aktivan .NET SDK: $actualSdk (potvrdjeno)" -ForegroundColor Green
+
+# 2. Clean-tree check before start (including untracked files)
 Write-Step 'Provera stanja radnog stabla (pre gradnje)'
 $statusBefore = git status --porcelain
 if ($statusBefore) {
-    Write-Host "UPOZORENJE: Radno stablo sadrzi nekomitovane izmene:`n$statusBefore" -ForegroundColor Yellow
+    throw "Radno stablo nije cisto pre gradnje (Release source tree dirty before build):`n$statusBefore"
+}
+Write-Host "Radno stablo je potpuno cisto." -ForegroundColor Green
+
+# 3. Mandatory Signing Certificate Resolution and Pre-Validation
+Write-Step 'Provera i validacija sertifikata za potpisivanje'
+if ([string]::IsNullOrWhiteSpace($SigningThumbprint)) {
+    throw "Obavezan otisak sertifikata (SigningThumbprint / IEM_SIGNING_THUMBPRINT) nije zadat. Izrada izdanja se prekida (Fail-Closed)."
 }
 
-# 2. Extract Authoritative Version from Directory.Build.props
+$cert = Get-Item "Cert:\CurrentUser\My\$SigningThumbprint" -ErrorAction SilentlyContinue
+$isLocalMachine = $false
+if (-not $cert) {
+    $cert = Get-Item "Cert:\LocalMachine\My\$SigningThumbprint" -ErrorAction SilentlyContinue
+    if ($cert) { $isLocalMachine = $true }
+}
+
+if (-not $cert) {
+    throw "Sertifikat za potpisivanje sa otiskom '$SigningThumbprint' nije pronadjen u Cert:\CurrentUser\My ili Cert:\LocalMachine\My."
+}
+
+if (-not $cert.HasPrivateKey) {
+    throw "Sertifikat sa otiskom '$SigningThumbprint' nema privatni kljuc (HasPrivateKey = false)."
+}
+
+if ($cert.NotAfter -le [DateTime]::UtcNow) {
+    throw "Sertifikat sa otiskom '$SigningThumbprint' je istekao dana $($cert.NotAfter.ToString('u'))."
+}
+
+$hasCodeSigningEku = $false
+foreach ($ext in $cert.Extensions) {
+    if ($ext -is [System.Security.Cryptography.X509Certificates.X509EnhancedKeyUsageExtension]) {
+        foreach ($usage in $ext.EnhancedKeyUsages) {
+            if ($usage.Value -eq '1.3.6.1.5.5.7.3.3') { # Code Signing OID
+                $hasCodeSigningEku = $true
+                break
+            }
+        }
+    }
+}
+if (-not $hasCodeSigningEku -and ($cert.EnhancedKeyUsageList.Count -gt 0)) {
+    # If EnhancedKeyUsageList is present, verify code signing is included
+    $hasCodeSigningEku = ($cert.EnhancedKeyUsageList | Where-Object { $_.ObjectId.Value -eq '1.3.6.1.5.5.7.3.3' -or $_.Value -eq '1.3.6.1.5.5.7.3.3' }) -ne $null
+}
+
+if (-not $hasCodeSigningEku) {
+    throw "Sertifikat sa otiskom '$SigningThumbprint' ne poseduje Code Signing EKU (1.3.6.1.5.5.7.3.3)."
+}
+
+Write-Host "Sertifikat je validan: $($cert.Subject) [Otisak: $($cert.Thumbprint)]" -ForegroundColor Green
+
+# 4. Locate SignTool from Windows SDK
+Write-Step 'Pronalazenje signtool.exe'
+$signtoolPaths = @(
+    "${env:ProgramFiles(x86)}\Windows Kits\10\bin\10.0.26100.0\x64\signtool.exe",
+    "${env:ProgramFiles(x86)}\Windows Kits\10\bin\10.0.22621.0\x64\signtool.exe",
+    "${env:ProgramFiles(x86)}\Windows Kits\10\bin\x64\signtool.exe",
+    "${env:ProgramFiles}\Windows Kits\10\bin\10.0.26100.0\x64\signtool.exe",
+    "${env:ProgramFiles}\Windows Kits\10\bin\x64\signtool.exe"
+)
+$signtool = $null
+foreach ($path in $signtoolPaths) {
+    if (Test-Path $path) {
+        $signtool = $path
+        break
+    }
+}
+if (-not $signtool) {
+    $found = Get-ChildItem -Path "${env:ProgramFiles(x86)}\Windows Kits", "${env:ProgramFiles}\Windows Kits" -Filter signtool.exe -Recurse -ErrorAction SilentlyContinue |
+        Where-Object { $_.FullName -like "*\x64\signtool.exe" } | Select-Object -First 1
+    if ($found) { $signtool = $found.FullName }
+}
+if (-not $signtool) {
+    $cmd = Get-Command signtool.exe -ErrorAction SilentlyContinue
+    if ($cmd) { $signtool = $cmd.Source }
+}
+if (-not $signtool) {
+    throw "signtool.exe nije pronadjen u Windows SDK ili na sistemu. Fail-Closed."
+}
+Write-Host "SignTool pronadjen: $signtool" -ForegroundColor Green
+
+# 5. Extract Authoritative Version from Directory.Build.props
 $propsFile = Join-Path $repoRoot 'Directory.Build.props'
 $versionMatch = Select-String -Path $propsFile -Pattern '<Version>(.+?)</Version>'
 if (-not $versionMatch) {
@@ -43,21 +135,20 @@ $version = $versionMatch.Matches[0].Groups[1].Value.Trim()
 $gitCommit = (git rev-parse HEAD).Trim()
 $buildTimestampUtc = [DateTimeOffset]::UtcNow
 $buildId = "build-$($buildTimestampUtc.ToString('yyyyMMddHHmmss'))"
-$sdkVersion = (& dotnet --version).Trim()
 
 Write-Host "Release Target: $version" -ForegroundColor Green
 Write-Host "Git Commit:     $gitCommit" -ForegroundColor Green
-Write-Host "SDK Version:    $sdkVersion" -ForegroundColor Green
+Write-Host "SDK Version:    $actualSdk" -ForegroundColor Green
 Write-Host "Build ID:       $buildId" -ForegroundColor Green
 
-# 3. Verify locked dependencies
+# 6. Verify locked dependencies
 Write-Step 'Provera zakljucanih zavisnosti'
 & dotnet restore (Join-Path $repoRoot 'InternetEvidenceMonitor.slnx') -p:VerifyLockedDependencies=true --nologo
 if ($LASTEXITCODE -ne 0) {
     throw "Zakljucane zavisnosti se ne poklapaju sa projektima."
 }
 
-# 4. Run tests
+# 7. Run tests
 Write-Step 'Izvrsavanje testova'
 & dotnet test (Join-Path $repoRoot 'InternetEvidenceMonitor.slnx') -c $Configuration --nologo
 if ($LASTEXITCODE -ne 0) {
@@ -81,10 +172,10 @@ try {
         New-Item -ItemType Directory -Path $outputRoot -Force | Out-Null
 
         $projects = @(
-            @{ Name = 'servis';    Path = 'src\IEM.Service';  Folder = 'service' }
-            @{ Name = 'interfejs'; Path = 'src\IEM.App';      Folder = 'app' }
-            @{ Name = 'konzola';   Path = 'src\IEM.Cli';      Folder = 'cli' }
-            @{ Name = 'verifikator'; Path = 'src\IEM.Verifier'; Folder = 'verifier' }
+            @{ Name = 'servis';      Path = 'src\IEM.Service';    Folder = 'service';   ExeName = 'InternetEvidenceService.exe' }
+            @{ Name = 'interfejs';   Path = 'src\IEM.App';        Folder = 'app';       ExeName = 'InternetEvidenceMonitor.exe' }
+            @{ Name = 'konzola';     Path = 'src\IEM.Cli';        Folder = 'cli';       ExeName = 'iem.exe' }
+            @{ Name = 'verifikator'; Path = 'src\IEM.Verifier';   Folder = 'verifier';  ExeName = 'iem-verifier.exe' }
         )
 
         foreach ($project in $projects) {
@@ -116,7 +207,7 @@ Internet Monitoring $version
 Platforma:     $Runtime
 Konfiguracija: $Configuration
 Napravljeno:   $($buildTimestampUtc.ToString('yyyy-MM-dd HH:mm:ss zzz'))
-.NET SDK:      $sdkVersion
+.NET SDK:      $actualSdk
 Git Commit:    $gitCommit
 
 Sadrzaj:
@@ -127,38 +218,63 @@ Sadrzaj:
   install\   Skripte za instalaciju servisa.
 "@ | Set-Content -Path (Join-Path $outputRoot 'IZDANJE.txt') -Encoding utf8
 
-        # 5. Authenticode Signing Hook on all PE files & install scripts
-        Write-Step "[$Runtime] Potpisivanje izvrsnih datoteka (Authenticode)"
-        $filesToSign = Get-ChildItem $outputRoot -Recurse -Include *.exe, *.dll, *.ps1
+        # 8. Fail-Closed SignTool PE Signing & Authenticode PS1 Signing Hook
+        Write-Step "[$Runtime] Potpisivanje izvrsnih datoteka (SignTool RFC3161)"
+        $peFiles = Get-ChildItem $outputRoot -Recurse -Include *.exe, *.dll
+        $storeArgs = if ($isLocalMachine) { @('/sm', '/s', 'My') } else { @('/s', 'My') }
 
-        if (![string]::IsNullOrWhiteSpace($SigningThumbprint)) {
-            $cert = Get-Item "Cert:\CurrentUser\My\$SigningThumbprint" -ErrorAction SilentlyContinue
-            if (!$cert) { $cert = Get-Item "Cert:\LocalMachine\My\$SigningThumbprint" -ErrorAction SilentlyContinue }
-            if ($cert) {
-                foreach ($f in $filesToSign) {
-                    Set-AuthenticodeSignature -FilePath $f.FullName -Certificate $cert -TimestampServer 'http://timestamp.digicert.com' | Out-Null
-                }
+        foreach ($pe in $peFiles) {
+            & $signtool sign @storeArgs /sha1 $SigningThumbprint /fd SHA256 /tr 'http://timestamp.digicert.com' /td SHA256 $pe.FullName
+            if ($LASTEXITCODE -ne 0) {
+                throw "SignTool potpisivanje nije uspelo za: $($pe.FullName) (ExitCode: $LASTEXITCODE)"
+            }
+
+            # Independent verification check
+            & $signtool verify /pa /all /v $pe.FullName | Out-Null
+            if ($LASTEXITCODE -ne 0) {
+                throw "SignTool verifikacija nije uspela za potpisani PE: $($pe.FullName)"
             }
         }
 
-        # Record signature metadata
+        # Sign PowerShell installation scripts
+        $ps1Files = Get-ChildItem $outputRoot -Recurse -Filter *.ps1
+        foreach ($ps1 in $ps1Files) {
+            $sigRes = Set-AuthenticodeSignature -FilePath $ps1.FullName -Certificate $cert -HashAlgorithm SHA256 -TimestampServer 'http://timestamp.digicert.com'
+            if ($sigRes.Status -ne 'Valid') {
+                throw "Set-AuthenticodeSignature nije uspeo za skriptu: $($ps1.FullName) ($($sigRes.StatusMessage))"
+            }
+        }
+
+        # 9. Record signature metadata from actual signed PE binaries (No fabrication)
         foreach ($pe in (Get-ChildItem $outputRoot -Recurse -Filter *.exe)) {
             $sig = Get-AuthenticodeSignature $pe.FullName
+            if ($sig.Status -ne 'Valid') {
+                throw "Potpis datoteke $($pe.Name) nije validan: $($sig.StatusMessage)"
+            }
+            if (-not $sig.TimeStamperCertificate) {
+                throw "Datoteka $($pe.Name) nema validan vremenski zig (timestamp)."
+            }
+
             $rel = $pe.FullName.Substring($outputRoot.Length + 1).Replace('\', '/')
             $key = "$Runtime/$rel"
+
             $allSignatures[$key] = [PSCustomObject]@{
                 ArtifactPath = $key
                 IsSigned = ($sig.Status -eq 'Valid')
                 Publisher = $sig.SignerCertificate.Subject
                 SubjectThumbprint = $sig.SignerCertificate.Thumbprint
                 HasValidTimestamp = ($null -ne $sig.TimeStamperCertificate)
-                TimestampUtc = if ($sig.TimeStamperCertificate) { $buildTimestampUtc.ToString('o') } else { $null }
+                TimestampUtc = $null # Do not fabricate assumed timestamps
                 DigestAlgorithm = "SHA256"
                 ChainValidated = ($sig.Status -eq 'Valid')
             }
+
+            # Record inner executable hashes directly into ArtifactSha256Hashes
+            $peHash = (Get-FileHash $pe.FullName -Algorithm SHA256).Hash.ToLower()
+            $allArtifactHashes[$key] = $peHash
         }
 
-        # 6. Internal checksums
+        # 10. Internal checksums (SHA256SUMS.txt)
         Write-Step "[$Runtime] Kontrolni zbirovi (SHA256SUMS.txt)"
         $sums = Get-ChildItem $outputRoot -Recurse -File |
             Where-Object { $_.Name -ne 'SHA256SUMS.txt' } |
@@ -170,7 +286,7 @@ Sadrzaj:
             }
         $sums | Set-Content -Path (Join-Path $outputRoot 'SHA256SUMS.txt') -Encoding utf8
 
-        # 7. Create ZIP archive from signed files
+        # 11. Create ZIP archives from signed files
         Write-Step "[$Runtime] Kreiranje ZIP arhive"
         $zip1 = Join-Path $artifactsRoot "InternetMonitoring-$version-$Runtime.zip"
         $zip2 = Join-Path $artifactsRoot "MonitorInternetDokaza-$version-$Runtime.zip"
@@ -188,7 +304,7 @@ Sadrzaj:
         $allArtifactHashes["InternetMonitoring-$version-$Runtime.zip"] = $zipHash1
         $allArtifactHashes["MonitorInternetDokaza-$version-$Runtime.zip"] = $zipHash2
 
-        # 8. Portable single-file editions
+        # 12. Portable single-file editions
         Write-Step "[$Runtime] Portabl single-file izdanja"
         $portable = @(
             @{ Name = 'interfejs'; Path = 'src\IEM.App'; Built = 'InternetEvidenceMonitor.exe'; Ships = "InternetMonitoring-$version-$Runtime.exe"; Alias = "InternetEvidenceMonitor-$version-$Runtime.exe"; Alias2 = "MonitorInternetDokaza-$version-$Runtime.exe" }
@@ -217,10 +333,14 @@ Sadrzaj:
             Move-Item (Join-Path $staging $single.Built) $shipped
             Remove-Item $staging -Recurse -Force
 
-            # Sign portable executable if cert available
-            if (![string]::IsNullOrWhiteSpace($SigningThumbprint)) {
-                $cert = Get-Item "Cert:\CurrentUser\My\$SigningThumbprint" -ErrorAction SilentlyContinue
-                if ($cert) { Set-AuthenticodeSignature -FilePath $shipped -Certificate $cert -TimestampServer 'http://timestamp.digicert.com' | Out-Null }
+            # Sign portable executable with SignTool
+            & $signtool sign @storeArgs /sha1 $SigningThumbprint /fd SHA256 /tr 'http://timestamp.digicert.com' /td SHA256 $shipped
+            if ($LASTEXITCODE -ne 0) {
+                throw "SignTool potpisivanje nije uspelo za portabl izdanje: $shipped"
+            }
+            & $signtool verify /pa /all /v $shipped | Out-Null
+            if ($LASTEXITCODE -ne 0) {
+                throw "SignTool verifikacija nije uspela za portabl izdanje: $shipped"
             }
 
             $singleHash = (Get-FileHash $shipped -Algorithm SHA256).Hash.ToLower()
@@ -234,7 +354,7 @@ Sadrzaj:
                 Publisher = $sig.SignerCertificate.Subject
                 SubjectThumbprint = $sig.SignerCertificate.Thumbprint
                 HasValidTimestamp = ($null -ne $sig.TimeStamperCertificate)
-                TimestampUtc = if ($sig.TimeStamperCertificate) { $buildTimestampUtc.ToString('o') } else { $null }
+                TimestampUtc = $null
                 DigestAlgorithm = "SHA256"
                 ChainValidated = ($sig.Status -eq 'Valid')
             }
@@ -254,29 +374,75 @@ Sadrzaj:
         }
     }
 
-    # 9. Release Metadata Generation (ReleaseManifest, Provenance, SBOM, Staged Preview Manifest)
-    Write-Step 'Generisanje metapodataka o izdanju (release-metadata)'
+    # 13. Comprehensive SBOM & Release Metadata Generation
+    Write-Step 'Generisanje sveobuhvatnog SBOM-a i metapodataka o izdanju (release-metadata)'
     $metaDir = Join-Path $artifactsRoot 'release-metadata'
     if (Test-Path $metaDir) { Remove-Item $metaDir -Recurse -Force }
     New-Item -ItemType Directory -Path $metaDir -Force | Out-Null
 
-    # SBOM
-    $sbomComponents = @(
-        [PSCustomObject]@{ Name = 'IEM.Core'; Version = $version; PackageType = 'project'; Supplier = 'IEM Project'; License = 'MIT'; Sha256Hash = (Get-FileHash (Join-Path $repoRoot 'src\IEM.Core\IEM.Core.csproj') -Algorithm SHA256).Hash.ToLower() }
-        [PSCustomObject]@{ Name = 'IEM.Windows'; Version = $version; PackageType = 'project'; Supplier = 'IEM Project'; License = 'MIT'; Sha256Hash = (Get-FileHash (Join-Path $repoRoot 'src\IEM.Windows\IEM.Windows.csproj') -Algorithm SHA256).Hash.ToLower() }
-        [PSCustomObject]@{ Name = 'IEM.Service'; Version = $version; PackageType = 'project'; Supplier = 'IEM Project'; License = 'MIT'; Sha256Hash = (Get-FileHash (Join-Path $repoRoot 'src\IEM.Service\IEM.Service.csproj') -Algorithm SHA256).Hash.ToLower() }
-        [PSCustomObject]@{ Name = 'IEM.App'; Version = $version; PackageType = 'project'; Supplier = 'IEM Project'; License = 'MIT'; Sha256Hash = (Get-FileHash (Join-Path $repoRoot 'src\IEM.App\IEM.App.csproj') -Algorithm SHA256).Hash.ToLower() }
+    # Solution Projects
+    $projectNames = @(
+        'IEM.Core', 'IEM.Storage', 'IEM.Presentation', 'IEM.Evidence',
+        'IEM.Verification', 'IEM.Windows', 'IEM.Linux', 'IEM.Service.Runtime',
+        'IEM.Legal', 'IEM.Service', 'IEM.Service.Linux', 'IEM.App', 'IEM.Cli', 'IEM.Verifier'
     )
-
-    $sb = [System.Text.StringBuilder]::new()
-    $sb.Append("format=IEM-SBOM-1;rel=$version-$gitCommit;components=") | Out-Null
-    foreach ($c in $sbomComponents) {
-        $sb.Append("[$($c.Name):$($c.Version):$($c.Sha256Hash)];") | Out-Null
+    $sbomComponents = [System.Collections.Generic.List[object]]::new()
+    foreach ($p in $projectNames) {
+        $projFile = Join-Path $repoRoot "src\$p\$p.csproj"
+        if (Test-Path $projFile) {
+            $h = (Get-FileHash $projFile -Algorithm SHA256).Hash.ToLower()
+            $sbomComponents.Add([PSCustomObject]@{
+                Name = $p
+                Version = $version
+                PackageType = 'project'
+                Supplier = 'IEM Project'
+                License = 'MIT'
+                Sha256Hash = $h
+            })
+        }
     }
-    $sha = [System.Security.Cryptography.SHA256]::Create()
-    $hashBytes = $sha.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($sb.ToString()))
-    $sbomSha256 = [System.BitConverter]::ToString($hashBytes).Replace('-', '').ToLower()
 
+    # Locked NuGet Packages from packages.lock.json
+    $lockFiles = Get-ChildItem (Join-Path $repoRoot 'src') -Recurse -Filter 'packages.lock.json'
+    $seenPackages = [System.Collections.Generic.HashSet[string]]::new()
+    foreach ($lf in $lockFiles) {
+        $lockJson = Get-Content $lf.FullName -Raw | ConvertFrom-Json
+        if ($lockJson.dependencies) {
+            foreach ($tfProp in $lockJson.dependencies.PSObject.Properties) {
+                $targetFramework = $tfProp.Value
+                foreach ($pkgProp in $targetFramework.PSObject.Properties) {
+                    $pkgName = $pkgProp.Name
+                    $pkgDetails = $pkgProp.Value
+                    $key = "$pkgName:$($pkgDetails.resolved)"
+                    if (-not $seenPackages.Contains($key)) {
+                        $seenPackages.Add($key) | Out-Null
+                        $sbomComponents.Add([PSCustomObject]@{
+                            Name = $pkgName
+                            Version = $pkgDetails.resolved
+                            PackageType = 'nuget'
+                            Supplier = 'NuGet'
+                            License = 'Various'
+                            Sha256Hash = $pkgDetails.contentHash
+                        })
+                    }
+                }
+            }
+        }
+    }
+
+    # .NET Runtime Packs for Runtimes
+    foreach ($r in $Runtimes) {
+        $sbomComponents.Add([PSCustomObject]@{
+            Name = "Microsoft.NETCore.App.Runtime.$r"
+            Version = '10.0.11'
+            PackageType = 'runtime-pack'
+            Supplier = 'Microsoft'
+            License = 'MIT'
+            Sha256Hash = $actualSdk
+        })
+    }
+
+    # Write sbom.json WITHOUT self-hash (clean external hash design)
     $sbomDoc = [PSCustomObject]@{
         SbomFormat = 'IEM-SBOM-1'
         DocumentNamespace = "https://github.com/zoxknez/InternetMonitoring/sbom/$version/$buildId"
@@ -292,10 +458,13 @@ Sadrzaj:
             ReleaseManifestVersion = 1
         }
         Components = $sbomComponents
-        SbomSha256 = $sbomSha256
     }
+    $sbomPath = Join-Path $metaDir 'sbom.json'
     $sbomJson = $sbomDoc | ConvertTo-Json -Depth 10
-    Set-Content -Path (Join-Path $metaDir 'sbom.json') -Value $sbomJson -Encoding utf8
+    Set-Content -Path $sbomPath -Value $sbomJson -Encoding utf8
+
+    # Compute external byte hash of sbom.json
+    $sbomSha256 = (Get-FileHash $sbomPath -Algorithm SHA256).Hash.ToLower()
 
     # Release Manifest
     $releaseManifest = [PSCustomObject]@{
@@ -315,15 +484,16 @@ Sadrzaj:
         SbomSha256 = $sbomSha256
         GeneratedAtUtc = $buildTimestampUtc.ToString('o')
     }
+    $manifestPath = Join-Path $metaDir 'release-manifest.json'
     $manifestJson = $releaseManifest | ConvertTo-Json -Depth 10
-    Set-Content -Path (Join-Path $metaDir 'release-manifest.json') -Value $manifestJson -Encoding utf8
+    Set-Content -Path $manifestPath -Value $manifestJson -Encoding utf8
 
     # Release Provenance
     $provenance = [PSCustomObject]@{
         Version = $version
         GitCommit = $gitCommit
         BuiltAtUtc = $buildTimestampUtc.ToString('o')
-        DotnetSdkVersion = $sdkVersion
+        DotnetSdkVersion = $actualSdk
         Configuration = $Configuration
         RuntimeIdentifiers = $Runtimes
         ArtifactHashes = $allArtifactHashes
@@ -365,6 +535,14 @@ finally {
         [System.IO.File]::WriteAllBytes($path, $locks[$path])
     }
 }
+
+# 14. Clean-tree check after build (Fail-Closed)
+Write-Step 'Provera stanja radnog stabla (nakon gradnje)'
+$statusAfter = git status --porcelain
+if ($statusAfter) {
+    throw "Radno stablo nije cisto nakon gradnje (Release source tree dirty after build):`n$statusAfter"
+}
+Write-Host "Radno stablo je cisto nakon gradnje." -ForegroundColor Green
 
 Write-Host ''
 Write-Host "  IZRADA IZDANJA JE USPESNO ZAVRSENA ($version)" -ForegroundColor Green

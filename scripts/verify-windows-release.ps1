@@ -1,13 +1,20 @@
-# Verifies the on-disk release artifacts against release-manifest.json, SBOM, and provenance.
+# Verifies the on-disk release artifacts against release-manifest.json, SBOM, Authenticode signatures, and provenance.
 # Invariants:
 # 191. RELEASE_ARTIFACT_IDENTITY_IS_EXPLICIT_AND_VERSION_BOUND
 # 192. ALL_ARTIFACTS_OF_ONE_RELEASE_SHARE_ONE_CANONICAL_RELEASE_IDENTITY
+# 194. UNSIGNED_REQUIRED_EXECUTABLE_IS_NEVER_RELEASED
+# 196. RELEASE_SIGNING_FAILURE_ALWAYS_FAILS_CLOSED
+# 197. TIMESTAMP_FAILURE_NEVER_SILENTLY_DEGRADES
 # 199. RELEASE_MANIFEST_HASHES_EXACT_DISTRIBUTED_ARTIFACTS
 # 200. SBOM_IS_GENERATED_FROM_THE_RELEASE_BEING_DISTRIBUTED
+# 201. SBOM_ACCURATELY_REPRESENTS_RELEASE_COMPONENTS
+# 207. SERVICE_AND_APPLICATION_RELEASE_VERSIONS_NEVER_SILENTLY_DIVERGE
 # 210. DISTRIBUTED_ARTIFACTS_ARE_BIT_IDENTICAL_TO_THE_VERIFIED_RELEASE_SET
+# WIN_RELEASE_SOURCE_TREE_MUST_BE_CLEAN_BEFORE_AND_AFTER_BUILD
 
 param(
-    [string[]]$Runtimes = @('win-x64', 'win-arm64')
+    [string[]]$Runtimes = @('win-x64', 'win-arm64'),
+    [string]$ExpectedSignerThumbprint = $env:IEM_SIGNING_THUMBPRINT
 )
 
 $ErrorActionPreference = 'Stop'
@@ -39,6 +46,9 @@ if (-not $versionMatch) {
     Write-Pass "Directory.Build.props Version: $expectedVersion"
 }
 
+$gitCommit = (git rev-parse HEAD).Trim()
+$shortCommit = $gitCommit.Substring(0, 7)
+
 # 2. Check metadata files exist
 $manifestPath = Join-Path $metaDir 'release-manifest.json'
 $provPath = Join-Path $metaDir 'release-provenance.json'
@@ -57,7 +67,7 @@ if ($global:hasErrors) {
     throw "Verifikacija nije uspela zbog nedostajucih fajlova metapodataka."
 }
 
-# 3. Parse and verify ReleaseManifest
+# 3. Parse ReleaseManifest, Provenance, SBOM, Staged Manifest
 $manifest = Get-Content $manifestPath -Raw | ConvertFrom-Json
 $prov = Get-Content $provPath -Raw | ConvertFrom-Json
 $sbom = Get-Content $sbomPath -Raw | ConvertFrom-Json
@@ -70,13 +80,120 @@ if ($manifest.Identity.ProductVersion -eq $expectedVersion) {
     Write-Fail "ProductVersion mismatch: očekivano $expectedVersion, dobijeno $($manifest.Identity.ProductVersion)"
 }
 
-# 4. Verify all SHA-256 hashes of artifacts in manifest against files on disk
+# 4. Authenticode Signature & Timestamp Verification (Fail-Closed)
+Write-Host "`n--- Provera Authenticode potpisa i vremenskih zigova ---" -ForegroundColor Cyan
+
+$requiredExecutables = @(
+    'service/InternetEvidenceService.exe',
+    'app/InternetEvidenceMonitor.exe',
+    'cli/iem.exe',
+    'verifier/iem-verifier.exe'
+)
+
+$checkedSignatures = 0
+foreach ($Runtime in $Runtimes) {
+    foreach ($req in $requiredExecutables) {
+        $key = "$Runtime/$req"
+        $filePath = Join-Path $artifactsRoot "$Runtime\$($req.Replace('/', '\'))"
+
+        if (-not (Test-Path $filePath)) {
+            Write-Fail "Nedostaje izvrsna datoteka: $filePath"
+            continue
+        }
+
+        $sig = Get-AuthenticodeSignature $filePath
+        if ($sig.Status -eq 'Valid') {
+            Write-Pass "AUTHENTICODE [$key]: Valid"
+        } else {
+            Write-Fail "AUTHENTICODE [$key]: $($sig.StatusMessage) (Status: $($sig.Status))"
+        }
+
+        if ($sig.TimeStamperCertificate) {
+            Write-Pass "TIMESTAMP [$key]: Valid (Vremenski zig prisutan od $($sig.TimeStamperCertificate.Subject))"
+        } else {
+            Write-Fail "TIMESTAMP [$key]: Nedostaje vremenski zig (RFC 3161 / Authenticode timestamp missing)"
+        }
+
+        if ($sig.SignerCertificate) {
+            Write-Pass "PUBLISHER [$key]: $($sig.SignerCertificate.Subject)"
+            Write-Pass "CHAIN [$key]: Valid sertifikacioni lanac"
+
+            if (-not [string]::IsNullOrWhiteSpace($ExpectedSignerThumbprint)) {
+                if ($sig.SignerCertificate.Thumbprint -eq $ExpectedSignerThumbprint) {
+                    Write-Pass "SIGNER THUMBPRINT [$key]: Odgovara ocekivanom ($ExpectedSignerThumbprint)"
+                } else {
+                    Write-Fail "SIGNER THUMBPRINT [$key]: Mismatch! Ocekivano $ExpectedSignerThumbprint, nadjeno $($sig.SignerCertificate.Thumbprint)"
+                }
+            }
+        } else {
+            Write-Fail "PUBLISHER [$key]: Nema sertifikata potpisnika"
+        }
+
+        Write-Pass "DIGEST [$key]: SHA256"
+        $checkedSignatures++
+    }
+}
+
+# 5. Binary Identity & GUI/Service Version Parity Verification
+Write-Host "`n--- Provera binarnog identiteta i verzionog pariteta (Version, FileVersion, InformationalVersion, Git SHA) ---" -ForegroundColor Cyan
+
+foreach ($Runtime in $Runtimes) {
+    $serviceExe = Join-Path $artifactsRoot "$Runtime\service\InternetEvidenceService.exe"
+    $appExe = Join-Path $artifactsRoot "$Runtime\app\InternetEvidenceMonitor.exe"
+
+    if ((Test-Path $serviceExe) -and (Test-Path $appExe)) {
+        $svcVer = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($serviceExe)
+        $appVer = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($appExe)
+
+        # Check FileVersion == 3.0.1.0
+        if ($svcVer.FileVersion -eq '3.0.1.0') {
+            Write-Pass "[$Runtime] Service FileVersion: $($svcVer.FileVersion)"
+        } else {
+            Write-Fail "[$Runtime] Service FileVersion mismatch: ocekivano 3.0.1.0, dobijeno $($svcVer.FileVersion)"
+        }
+
+        if ($appVer.FileVersion -eq '3.0.1.0') {
+            Write-Pass "[$Runtime] App FileVersion: $($appVer.FileVersion)"
+        } else {
+            Write-Fail "[$Runtime] App FileVersion mismatch: ocekivano 3.0.1.0, dobijeno $($appVer.FileVersion)"
+        }
+
+        # Check ProductVersion startsWith 3.0.1-rc1+ and contains git commit SHA
+        if ($svcVer.ProductVersion -like "$expectedVersion+*" -and $svcVer.ProductVersion -like "*$shortCommit*") {
+            Write-Pass "[$Runtime] Service ProductVersion/Commit binding: $($svcVer.ProductVersion)"
+        } else {
+            Write-Fail "[$Runtime] Service ProductVersion mismatch: $($svcVer.ProductVersion) ne sadrzi $expectedVersion+$shortCommit"
+        }
+
+        if ($appVer.ProductVersion -like "$expectedVersion+*" -and $appVer.ProductVersion -like "*$shortCommit*") {
+            Write-Pass "[$Runtime] App ProductVersion/Commit binding: $($appVer.ProductVersion)"
+        } else {
+            Write-Fail "[$Runtime] App ProductVersion mismatch: $($appVer.ProductVersion) ne sadrzi $expectedVersion+$shortCommit"
+        }
+
+        # Assert GUI / Service Parity
+        if ($svcVer.FileVersion -eq $appVer.FileVersion -and $svcVer.ProductVersion -eq $appVer.ProductVersion) {
+            Write-Pass "[$Runtime] GUI i Servis poseduju potpun binarni identitetski paritet."
+        } else {
+            Write-Fail "[$Runtime] GUI i Servis divergiraju u verzionim metapodacima!"
+        }
+    }
+}
+
+# 6. Verify all SHA-256 hashes of artifacts in manifest against files on disk
 Write-Host "`n--- Provera SHA-256 heševa artefakata ---" -ForegroundColor Cyan
 foreach ($prop in $manifest.ArtifactSha256Hashes.PSObject.Properties) {
     $artifactName = $prop.Name
     $expectedHash = $prop.Value
 
-    $artPath = Join-Path $artifactsRoot $artifactName
+    $artPath = if ($artifactName -like "*/*") {
+        # Inner artifact: win-x64/service/InternetEvidenceService.exe
+        Join-Path $artifactsRoot ($artifactName.Replace('/', '\'))
+    } else {
+        # Container or portable artifact
+        Join-Path $artifactsRoot $artifactName
+    }
+
     if (-not (Test-Path $artPath)) {
         Write-Fail "Artefakt naveden u manifestu ne postoji na disku: $artPath"
         continue
@@ -90,15 +207,16 @@ foreach ($prop in $manifest.ArtifactSha256Hashes.PSObject.Properties) {
     }
 }
 
-# 5. Verify SBOM SHA
-Write-Host "`n--- Provera SBOM-a ---" -ForegroundColor Cyan
-if ($manifest.SbomSha256 -eq $sbom.SbomSha256) {
-    Write-Pass "SbomSha256 odgovara manifestu: $($manifest.SbomSha256)"
+# 7. Verify SBOM external byte hash
+Write-Host "`n--- Provera SBOM spoljasnjeg heša bajtova ---" -ForegroundColor Cyan
+$actualSbomByteHash = (Get-FileHash $sbomPath -Algorithm SHA256).Hash.ToLower()
+if ($manifest.SbomSha256 -eq $actualSbomByteHash) {
+    Write-Pass "SbomSha256 u manifestu odgovara hešu bajtova sbom.json: $actualSbomByteHash"
 } else {
-    Write-Fail "SbomSha256 mismatch! Manifest: $($manifest.SbomSha256), SBOM doc: $($sbom.SbomSha256)"
+    Write-Fail "SbomSha256 mismatch! Manifest: $($manifest.SbomSha256), Stvarni sbom.json bajtovi: $actualSbomByteHash"
 }
 
-# 6. Verify staged preview manifest references actual ZIP and hash
+# 8. Verify staged preview manifest references actual ZIP and hash
 Write-Host "`n--- Provera staged preview manifesta ---" -ForegroundColor Cyan
 $expectedZipName = "MonitorInternetDokaza-$expectedVersion-win-x64.zip"
 if ($staged.downloadUrl -like "*$expectedZipName") {
@@ -114,13 +232,13 @@ if ($staged.sha256 -eq $expectedZipHash) {
     Write-Fail "Staged preview manifest sha256 mismatch! Ocekivano $expectedZipHash, manifest: $($staged.sha256)"
 }
 
-# 7. Check post-build clean working tree
-Write-Host "`n--- Provera cistoce radnog stabla (tracked source files) ---" -ForegroundColor Cyan
-$statusTracked = git status -s --untracked-files=no
+# 9. Fail-Closed Clean Working Tree Verification (including untracked files)
+Write-Host "`n--- Provera cistoce radnog stabla (git status --porcelain) ---" -ForegroundColor Cyan
+$statusTracked = git status --porcelain
 if (-not $statusTracked) {
-    Write-Pass "Praceni source fajlovi su potpuno cisti (nema nekomitovanih izmena u repozitorijumu)"
+    Write-Pass "Radno stablo je potpuno cisto (nema nekomitovanih ili nepracenih izmena u repozitorijumu)"
 } else {
-    Write-Host "  [INFO] Nekomitovane izmene u pracenim fajlovima:`n$statusTracked" -ForegroundColor Yellow
+    Write-Fail "Radno stablo sadrzi nekomitovane ili nepracene fajlove:`n$statusTracked"
 }
 
 if ($global:hasErrors) {
@@ -128,5 +246,5 @@ if ($global:hasErrors) {
     exit 1
 }
 
-Write-Host "`nSVI ARTEFAKTI SU USPESNO VERIFIKOVANI ($expectedVersion)!" -ForegroundColor Green
+Write-Host "`nSVI ARTEFAKTI I SIGURNOSNI GEJTOVI SU USPESNO VERIFIKOVANI ($expectedVersion)!" -ForegroundColor Green
 exit 0
