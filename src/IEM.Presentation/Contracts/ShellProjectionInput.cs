@@ -15,4 +15,5 @@ public sealed record ShellProjectionInput(
     HostPresentationFacts HostFacts,
     HistoryPresentationState History,
     UpdatePresentationState Update,
-    CaseWorkspaceState CaseWorkspace);
+    CaseWorkspaceState CaseWorkspace,
+    SpeedExecutionFacts SpeedFacts);

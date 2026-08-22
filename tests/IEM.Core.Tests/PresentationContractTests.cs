@@ -106,47 +106,48 @@ public sealed class PresentationContractTests
     }
 
     [Fact]
-    public void SpeedPresentationState_Initial_And_Derived_Flags_Prevent_Impossible_States_Invariant_159_167()
+    public void SpeedPresentationState_Polymorphic_Variants_Prevent_Impossible_States_By_Construction()
     {
+        // 1. NotRun variant
         var initial = SpeedPresentationState.Initial;
-
-        // Initial unmeasured state
+        Assert.IsType<SpeedPresentationState.NotRun>(initial);
         Assert.Equal(SpeedExecutionState.NotRun, initial.ExecutionState);
         Assert.False(initial.Ran);
         Assert.False(initial.IsRefused);
-        Assert.Null(initial.RequestedInterface);
-        Assert.Null(initial.ObservedPath);
-        Assert.Null(initial.PathAgreement);
-        Assert.Null(initial.TunnelIndication);
-        Assert.Null(initial.DownloadThroughputMbps);
-        Assert.Null(initial.UploadThroughputMbps);
-        Assert.Null(initial.RefusalReason);
+        Assert.False(initial.HasTerminalOutcome);
         Assert.Contains("Nije pokrenuto", initial.DownloadThroughputText);
         Assert.DoesNotContain("0 Mbps", initial.DownloadThroughputText);
 
-        // Refused state derivation
-        var refused = new SpeedPresentationState(
-            ExecutionState: SpeedExecutionState.Refused,
+        // 2. Executing variant
+        var executing = new SpeedPresentationState.Executing(
+            MeasurementIntent: "Default",
+            RequestedInterface: "Ethernet");
+
+        Assert.Equal(SpeedExecutionState.Executing, executing.ExecutionState);
+        Assert.False(executing.Ran);
+        Assert.False(executing.IsRefused);
+        Assert.False(executing.HasTerminalOutcome);
+        Assert.Equal("Ethernet", executing.RequestedInterface);
+        Assert.Equal(SemanticTone.Info, executing.Tone);
+
+        // 3. Refused variant: Ran MUST be false (Invariant 167), refusal reason present, NO throughput fields
+        var refused = new SpeedPresentationState.Refused(
             MeasurementIntent: "Default",
             RequestedInterface: "Ethernet",
-            ObservedPath: null,
-            PathAgreement: null,
-            TunnelIndication: null,
-            DownloadThroughputMbps: null,
-            UploadThroughputMbps: null,
-            DownloadThroughputText: "Merenje odbijeno",
-            UploadThroughputText: "Merenje odbijeno",
-            MeasurementStatusText: "TunnelDetectedWithoutBypass",
             RefusalReason: "TunnelDetectedWithoutBypass",
-            Tone: SemanticTone.Warning);
+            DownloadThroughputText: "— (Merenje odbijeno)",
+            UploadThroughputText: "— (Merenje odbijeno)");
 
-        Assert.True(refused.Ran);
+        Assert.Equal(SpeedExecutionState.Refused, refused.ExecutionState);
+        Assert.False(refused.Ran); // Invariant 167: Refused is NOT executed, Ran is false
         Assert.True(refused.IsRefused);
+        Assert.True(refused.HasTerminalOutcome);
         Assert.Equal("TunnelDetectedWithoutBypass", refused.RefusalReason);
+        Assert.Contains("TunnelDetectedWithoutBypass", refused.MeasurementStatusText);
+        Assert.DoesNotContain("0 Mbps", refused.DownloadThroughputText);
 
-        // Succeeded state derivation
-        var succeeded = new SpeedPresentationState(
-            ExecutionState: SpeedExecutionState.Succeeded,
+        // 4. Succeeded variant: Ran is true, throughput present, NO refusal reason
+        var succeeded = new SpeedPresentationState.Succeeded(
             MeasurementIntent: "Default",
             RequestedInterface: "Ethernet",
             ObservedPath: "Ethernet",
@@ -156,13 +157,15 @@ public sealed class PresentationContractTests
             UploadThroughputMbps: 48.2,
             DownloadThroughputText: "95.4 Mbps",
             UploadThroughputText: "48.2 Mbps",
-            MeasurementStatusText: "Uspešno izmereno",
-            RefusalReason: null,
+            MeasurementStatusText: "Merenje uspešno završeno.",
             Tone: SemanticTone.Good);
 
-        Assert.True(succeeded.Ran);
+        Assert.Equal(SpeedExecutionState.Succeeded, succeeded.ExecutionState);
+        Assert.True(succeeded.Ran); // Succeeded is executed, Ran is true
         Assert.False(succeeded.IsRefused);
+        Assert.True(succeeded.HasTerminalOutcome);
         Assert.Equal(95.4, succeeded.DownloadThroughputMbps);
+        Assert.Equal(48.2, succeeded.UploadThroughputMbps);
     }
 
     [Fact]
@@ -182,6 +185,8 @@ public sealed class PresentationContractTests
         Assert.Null(state.IsOnline);                     // DEF-07: Nullable IsOnline is null when unknown
         Assert.Null(state.CurrentSeverity);              // DEF-07: CurrentSeverity is null prior to observation
         Assert.Equal(SemanticTone.Unknown, state.Tone);  // DEF-07: SemanticTone is Unknown on initial state
+        Assert.Equal("—", state.DowntimeText);           // Unobserved downtime is not rendered as 0 sekundi
+        Assert.Equal("—", state.LocalDowntimeText);      // Unobserved downtime is not rendered as 0 sekundi
         Assert.True(state.CanScheduleSpeed);            // Derived from !SpeedBusy
         Assert.True(state.Timeline.IsDefaultOrEmpty);
         Assert.True(state.Latency.IsDefaultOrEmpty);
@@ -192,6 +197,7 @@ public sealed class PresentationContractTests
         Assert.NotNull(state.Evidence);
         Assert.NotNull(state.Case);
         Assert.NotNull(state.Speed);
+        Assert.IsType<SpeedPresentationState.NotRun>(state.Speed);
     }
 
     [Fact]
@@ -245,8 +251,26 @@ public sealed class PresentationContractTests
     }
 
     [Fact]
-    public void ShellProjectionInput_Carries_Explicit_Decomposed_State_Without_Ambient_Reads()
+    public void ShellProjectionInput_And_SpeedProjectionInput_Carry_Explicit_Decomposed_State_Without_Ambient_Reads()
     {
+        var speedFacts = new SpeedExecutionFacts(
+            ExecutionState: SpeedExecutionState.NotRun,
+            MeasurementIntent: null,
+            RequestedInterface: null,
+            ObservedPath: null,
+            PathAgreement: null,
+            TunnelIndication: null,
+            DownloadThroughputMbps: null,
+            UploadThroughputMbps: null,
+            RefusalReason: null,
+            CustomStatusMessage: null);
+
+        var speedInput = new SpeedProjectionInput(
+            Snapshot: null!,
+            Execution: speedFacts);
+
+        Assert.NotNull(speedInput.Execution);
+
         var input = new ShellProjectionInput(
             Snapshot: null!,
             Interaction: new ShellInteractionState(
@@ -271,13 +295,15 @@ public sealed class PresentationContractTests
                 HostDescription: "Nadzor radi u ovom prozoru."),
             History: HistoryPresentationState.Empty,
             Update: UpdatePresentationState.Hidden,
-            CaseWorkspace: CaseWorkspaceState.Empty);
+            CaseWorkspace: CaseWorkspaceState.Empty,
+            SpeedFacts: speedFacts);
 
         Assert.NotNull(input.Interaction);
         Assert.NotNull(input.HostFacts);
         Assert.NotNull(input.History);
         Assert.NotNull(input.Update);
         Assert.NotNull(input.CaseWorkspace);
+        Assert.NotNull(input.SpeedFacts);
     }
 }
 

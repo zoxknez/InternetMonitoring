@@ -21,7 +21,7 @@ public interface ISnapshotSemanticProjector
 
     EvidencePresentationState ProjectEvidence(PresentationSnapshot snapshot);
 
-    SpeedPresentationState ProjectSpeed(PresentationSnapshot snapshot);
+    SpeedPresentationState ProjectSpeed(SpeedProjectionInput input);
 
     CasePresentationState ProjectCase(PresentationSnapshot snapshot, CaseWorkspaceState workspace);
 }
