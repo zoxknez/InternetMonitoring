@@ -220,7 +220,7 @@ Sadrzaj:
 
         # 8. Fail-Closed SignTool PE Signing & Authenticode PS1 Signing Hook
         Write-Step "[$Runtime] Potpisivanje izvrsnih datoteka (SignTool RFC3161)"
-        $peFiles = Get-ChildItem $outputRoot -Recurse -Include *.exe, *.dll
+        $peFiles = Get-ChildItem $outputRoot -Recurse -Include *.exe, IEM.*.dll, InternetEvidence*.dll
         $storeArgs = if ($isLocalMachine) { @('/sm', '/s', 'My') } else { @('/s', 'My') }
 
         foreach ($pe in $peFiles) {
