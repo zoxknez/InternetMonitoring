@@ -1,9 +1,4 @@
-# Builds and tests every push and pull request.
-#
-# Windows, because the application is Windows-only: the service, the named-pipe security and
-# the Native Wi-Fi layer have no counterpart elsewhere. The test suite itself needs neither a
-# network nor a radio - that is the point of keeping the fault catalogue in IEM.Core - so it
-# runs unchanged on a hosted runner.
+# Builds and tests the Windows and Linux products on explicitly versioned runners.
 name: build
 
 on:
@@ -17,8 +12,9 @@ permissions:
   contents: read
 
 jobs:
-  build:
-    runs-on: windows-latest
+  windows-build:
+    name: Windows build and tests
+    runs-on: windows-2025
 
     steps:
       - uses: actions/checkout@v4
@@ -56,3 +52,44 @@ jobs:
 
       - name: Testovi
         run: dotnet test InternetEvidenceMonitor.slnx -c Release --no-build --nologo
+
+  linux-build:
+    name: Linux build, tests and package
+    runs-on: ubuntu-24.04
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Postavi .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Zakljucane Linux zavisnosti
+        run: |
+          dotnet restore src/IEM.App.Linux/IEM.App.Linux.csproj -p:VerifyLockedDependencies=true --nologo
+          dotnet restore src/IEM.Service.Linux/IEM.Service.Linux.csproj -p:VerifyLockedDependencies=true --nologo
+          dotnet restore tests/IEM.Core.Tests/IEM.Core.Tests.csproj -p:VerifyLockedDependencies=true --nologo
+
+      - name: Linux gradnja
+        run: |
+          dotnet build src/IEM.App.Linux/IEM.App.Linux.csproj -c Release --no-restore --nologo
+          dotnet build src/IEM.Service.Linux/IEM.Service.Linux.csproj -c Release --no-restore --nologo
+
+      - name: Deljeni i Linux testovi
+        run: dotnet test tests/IEM.Core.Tests/IEM.Core.Tests.csproj -c Release --no-restore --nologo
+
+      - name: Napravi i proveri linux-x64 paket
+        run: |
+          chmod +x scripts/publish-linux.sh
+          chmod +x scripts/ci/verify-linux-package.sh
+          bash scripts/publish-linux.sh linux-x64
+          bash scripts/ci/verify-linux-package.sh artifacts/linux/linux-x64/internet-evidence-monitor_3.1.0~alpha1_amd64.deb
+
+      - name: Sacuvaj Linux artefakte
+        uses: actions/upload-artifact@v4
+        with:
+          name: internet-evidence-monitor-3.1.0-alpha.1-linux-x64
+          path: artifacts/linux/linux-x64/
+          if-no-files-found: error
+          retention-days: 14

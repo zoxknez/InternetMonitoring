@@ -1,10 +1,6 @@
 name: lane-c-systemd-acceptance
 
 on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -12,8 +8,8 @@ permissions:
 
 jobs:
   systemd-acceptance:
-    name: Ubuntu 26.04 Real systemd PID 1 Acceptance
-    runs-on: ubuntu-26.04
+    name: Ubuntu 26.04 Tier-A VM systemd PID 1 Acceptance
+    runs-on: [self-hosted, linux, x64, iem-ubuntu-26.04]
 
     steps:
       - name: Checkout repository
@@ -25,7 +21,7 @@ jobs:
           global-json-file: global.json
 
       - name: Restore dependencies
-        run: dotnet restore InternetEvidenceMonitor.slnx --nologo
+        run: dotnet restore InternetEvidenceMonitor.slnx -p:VerifyLockedDependencies=true --nologo
 
       - name: Build solution
         run: dotnet build InternetEvidenceMonitor.slnx -c Release --no-restore --nologo
@@ -36,7 +32,7 @@ jobs:
       - name: Run Lane C Real systemd PID 1 Acceptance
         run: |
           chmod +x scripts/ci/lane-c-systemd-acceptance.sh
-          sudo CI=true GITHUB_ACTIONS=true bash scripts/ci/lane-c-systemd-acceptance.sh
+          sudo bash scripts/ci/lane-c-systemd-acceptance.sh
 
       - name: Upload Lane C Acceptance Artifacts
         if: always()
