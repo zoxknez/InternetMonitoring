@@ -1,0 +1,296 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="IEM.App.Linux.MainWindow"
+        Title="Monitor internet dokaza"
+        Width="1180"
+        Height="760"
+        MinWidth="860"
+        MinHeight="600"
+        Background="#F4F6F8"
+        WindowStartupLocation="CenterScreen">
+  <Window.Styles>
+    <Style Selector="Border.card">
+      <Setter Property="Background" Value="White" />
+      <Setter Property="BorderBrush" Value="#D9E0E7" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="10" />
+      <Setter Property="Padding" Value="18" />
+    </Style>
+    <Style Selector="TextBlock.section-title">
+      <Setter Property="FontSize" Value="19" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="Foreground" Value="#172033" />
+    </Style>
+    <Style Selector="TextBlock.muted">
+      <Setter Property="Foreground" Value="#5B6678" />
+    </Style>
+    <Style Selector="Button.primary">
+      <Setter Property="Background" Value="#155EEF" />
+      <Setter Property="Foreground" Value="White" />
+      <Setter Property="Padding" Value="18,10" />
+    </Style>
+    <Style Selector="Button.secondary">
+      <Setter Property="Padding" Value="18,10" />
+    </Style>
+  </Window.Styles>
+
+  <Grid RowDefinitions="Auto,Auto,Auto,*">
+    <Border Background="#101828" Padding="24,18">
+      <Grid ColumnDefinitions="*,Auto">
+        <StackPanel Spacing="4">
+          <TextBlock Text="MONITOR INTERNET DOKAZA"
+                     FontSize="22"
+                     FontWeight="Bold"
+                     Foreground="White" />
+          <TextBlock Text="{Binding ModeLabel}"
+                     Foreground="#C7D7FE"
+                     TextWrapping="Wrap"
+                     AutomationProperties.Name="Režim rada aplikacije" />
+        </StackPanel>
+        <Button Grid.Column="1"
+                Content="Otvori dokazni folder"
+                Command="{Binding OpenEvidenceFolderCommand}"
+                Classes="secondary"
+                AutomationProperties.Name="Otvori folder trenutne dokazne sesije" />
+      </Grid>
+    </Border>
+
+    <Border Grid.Row="1"
+            IsVisible="{Binding HasFault}"
+            Background="#FEF0C7"
+            BorderBrush="#F79009"
+            BorderThickness="0,0,0,1"
+            Padding="24,10">
+      <TextBlock Text="{Binding Fault}"
+                 Foreground="#7A2E0E"
+                 TextWrapping="Wrap"
+                 AutomationProperties.Name="Greška ili upozorenje"
+                 AutomationProperties.LiveSetting="Assertive" />
+    </Border>
+
+    <Border Grid.Row="2" Background="White" BorderBrush="#D9E0E7" BorderThickness="0,0,0,1" Padding="24,14">
+      <Grid ColumnDefinitions="*,Auto" ColumnSpacing="20">
+        <StackPanel Spacing="3">
+          <TextBlock Text="{Binding State.StateLabel}"
+                     FontSize="20"
+                     FontWeight="SemiBold"
+                     Foreground="#172033"
+                     AutomationProperties.Name="Trenutno stanje veze"
+                     AutomationProperties.LiveSetting="Polite" />
+          <TextBlock Text="{Binding State.StateExplanation}"
+                     Classes="muted"
+                     TextWrapping="Wrap"
+                     MaxWidth="720" />
+          <TextBlock Text="{Binding State.FactsLine}" Classes="muted" />
+        </StackPanel>
+
+        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+          <ComboBox Width="220"
+                    ItemsSource="{Binding Durations}"
+                    SelectedItem="{Binding SelectedDuration}"
+                    AutomationProperties.Name="Planirano trajanje nadzora">
+            <ComboBox.ItemTemplate>
+              <DataTemplate>
+                <StackPanel>
+                  <TextBlock Text="{Binding Label}" FontWeight="SemiBold" />
+                  <TextBlock Text="{Binding Note}" FontSize="12" Foreground="#667085" />
+                </StackPanel>
+              </DataTemplate>
+            </ComboBox.ItemTemplate>
+          </ComboBox>
+          <Button Content="Pokreni"
+                  Command="{Binding StartCommand}"
+                  IsEnabled="{Binding CanStart}"
+                  HotKey="Ctrl+Enter"
+                  Classes="primary"
+                  AutomationProperties.Name="Pokreni novu sesiju nadzora" />
+          <Button Content="Završi i sačuvaj"
+                  Command="{Binding StopCommand}"
+                  IsEnabled="{Binding CanStop}"
+                  HotKey="Ctrl+Shift+Enter"
+                  Classes="secondary"
+                  AutomationProperties.Name="Završi sesiju i sačuvaj dokazni paket" />
+        </StackPanel>
+      </Grid>
+    </Border>
+
+    <TabControl Grid.Row="3" Margin="20" AutomationProperties.Name="Glavne oblasti aplikacije">
+      <TabItem Header="MONITOR">
+        <ScrollViewer>
+          <StackPanel Margin="4,16" Spacing="16">
+            <Grid ColumnDefinitions="2*,*" ColumnSpacing="16">
+              <Border Classes="card">
+                <StackPanel Spacing="12">
+                  <TextBlock Text="Sesija uživo" Classes="section-title" />
+                  <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto,Auto" ColumnSpacing="24" RowSpacing="10">
+                    <StackPanel>
+                      <TextBlock Text="Dostupnost" Classes="muted" />
+                      <TextBlock Text="{Binding State.AvailabilityText}" FontSize="28" FontWeight="Bold" />
+                    </StackPanel>
+                    <StackPanel Grid.Column="1">
+                      <TextBlock Text="Odziv" Classes="muted" />
+                      <TextBlock Text="{Binding State.LatencyText}" FontSize="28" FontWeight="Bold" />
+                    </StackPanel>
+                    <StackPanel Grid.Row="1">
+                      <TextBlock Text="Proteklo" Classes="muted" />
+                      <TextBlock Text="{Binding State.ElapsedText}" FontSize="18" FontWeight="SemiBold" />
+                    </StackPanel>
+                    <StackPanel Grid.Row="1" Grid.Column="1">
+                      <TextBlock Text="Preostalo" Classes="muted" />
+                      <TextBlock Text="{Binding State.RemainingValue}" FontSize="18" FontWeight="SemiBold" />
+                    </StackPanel>
+                    <ProgressBar Grid.Row="2"
+                                 Grid.ColumnSpan="2"
+                                 IsVisible="{Binding State.HasProgress}"
+                                 Value="{Binding State.ProgressPercent}"
+                                 Maximum="100"
+                                 Height="8"
+                                 AutomationProperties.Name="Napredak planiranog trajanja" />
+                  </Grid>
+                </StackPanel>
+              </Border>
+
+              <Border Grid.Column="1" Classes="card">
+                <StackPanel Spacing="10">
+                  <TextBlock Text="Slojevi provere" Classes="section-title" />
+                  <ItemsControl ItemsSource="{Binding State.Probes}">
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate>
+                        <Grid ColumnDefinitions="*,Auto" Margin="0,4">
+                          <TextBlock Text="{Binding Name}" />
+                          <TextBlock Grid.Column="1" Text="{Binding Detail}" FontWeight="SemiBold" />
+                        </Grid>
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                  <TextBlock Text="Pre prvog uzorka nijedna provera se ne prikazuje kao uspešna."
+                             Classes="muted"
+                             FontSize="12"
+                             TextWrapping="Wrap" />
+                </StackPanel>
+              </Border>
+            </Grid>
+
+            <Border Classes="card">
+              <StackPanel Spacing="10">
+                <TextBlock Text="Ključne činjenice" Classes="section-title" />
+                <ItemsControl ItemsSource="{Binding State.Metrics}">
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                      <Grid ColumnDefinitions="2*,Auto,*" ColumnSpacing="12" Margin="0,5">
+                        <TextBlock Text="{Binding Label}" />
+                        <TextBlock Grid.Column="1" Text="{Binding Value}" FontWeight="Bold" />
+                        <TextBlock Grid.Column="2" Text="{Binding Hint}" Classes="muted" />
+                      </Grid>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+              </StackPanel>
+            </Border>
+          </StackPanel>
+        </ScrollViewer>
+      </TabItem>
+
+      <TabItem Header="EVIDENCE">
+        <ScrollViewer>
+          <StackPanel Margin="4,16" Spacing="16">
+            <Grid ColumnDefinitions="*,*,*" ColumnSpacing="16">
+              <Border Classes="card">
+                <StackPanel>
+                  <TextBlock Text="Integritet" Classes="muted" />
+                  <TextBlock Text="{Binding State.Evidence.IntegrityLabel}" FontSize="20" FontWeight="Bold" TextWrapping="Wrap" />
+                </StackPanel>
+              </Border>
+              <Border Grid.Column="1" Classes="card">
+                <StackPanel>
+                  <TextBlock Text="Poverenje" Classes="muted" />
+                  <TextBlock Text="{Binding State.Evidence.TrustLabel}" FontSize="20" FontWeight="Bold" TextWrapping="Wrap" />
+                </StackPanel>
+              </Border>
+              <Border Grid.Column="2" Classes="card">
+                <StackPanel>
+                  <TextBlock Text="Kvalitet merenja" Classes="muted" />
+                  <TextBlock Text="{Binding State.Evidence.OverallQualityText}" FontSize="20" FontWeight="Bold" TextWrapping="Wrap" />
+                </StackPanel>
+              </Border>
+            </Grid>
+            <Border Classes="card">
+              <StackPanel Spacing="10">
+                <TextBlock Text="Dokazni paket" Classes="section-title" />
+                <TextBlock Text="{Binding State.Evidence.PackageVerificationSummary}" TextWrapping="Wrap" />
+                <TextBlock Text="Konačna analiza postaje dostupna kada se sesija završi i paket proveri. Integritet, poverenje i kvalitet ostaju odvojene činjenice."
+                           Classes="muted"
+                           TextWrapping="Wrap" />
+              </StackPanel>
+            </Border>
+          </StackPanel>
+        </ScrollViewer>
+      </TabItem>
+
+      <TabItem Header="CASE">
+        <ScrollViewer>
+          <Grid Margin="4,16" ColumnDefinitions="320,*" ColumnSpacing="16">
+            <Border Classes="card">
+              <StackPanel Spacing="12">
+                <TextBlock Text="Podaci predmeta" Classes="section-title" />
+                <TextBlock Text="Operater" />
+                <TextBox Text="{Binding OperatorName}"
+                         PlaceholderText="Naziv operatera"
+                         AutomationProperties.Name="Naziv internet operatera" />
+                <TextBlock Text="Broj ugovora" />
+                <TextBox Text="{Binding ContractNumber}"
+                         PlaceholderText="Broj ugovora ili korisnika"
+                         AutomationProperties.Name="Broj ugovora" />
+                <TextBlock Text="Kontakt" />
+                <TextBox Text="{Binding UserContact}"
+                         PlaceholderText="E-pošta ili telefon"
+                         AutomationProperties.Name="Kontakt korisnika" />
+                <TextBlock Text="Ovi podaci su beleške korisnika i ne menjaju izvornu evidenciju."
+                           Classes="muted"
+                           TextWrapping="Wrap"
+                           FontSize="12" />
+              </StackPanel>
+            </Border>
+            <Border Grid.Column="1" Classes="card">
+              <StackPanel Spacing="10">
+                <TextBlock Text="Pregled dokumenta" Classes="section-title" />
+                <TextBox Text="{Binding State.Case.PreviewText}"
+                         IsReadOnly="True"
+                         AcceptsReturn="True"
+                         TextWrapping="Wrap"
+                         MinHeight="360"
+                         AutomationProperties.Name="Pregled prigovora samo za čitanje" />
+              </StackPanel>
+            </Border>
+          </Grid>
+        </ScrollViewer>
+      </TabItem>
+
+      <TabItem Header="SPEED">
+        <ScrollViewer>
+          <StackPanel Margin="4,16" Spacing="16">
+            <Border Classes="card">
+              <StackPanel Spacing="12">
+                <TextBlock Text="Merenje brzine" Classes="section-title" />
+                <TextBlock Text="{Binding State.Speed.MeasurementStatusText}" TextWrapping="Wrap" />
+                <Grid ColumnDefinitions="*,*" ColumnSpacing="16">
+                  <StackPanel>
+                    <TextBlock Text="Preuzimanje" Classes="muted" />
+                    <TextBlock Text="{Binding State.Speed.DownloadThroughputText}" FontSize="26" FontWeight="Bold" />
+                  </StackPanel>
+                  <StackPanel Grid.Column="1">
+                    <TextBlock Text="Slanje" Classes="muted" />
+                    <TextBlock Text="{Binding State.Speed.UploadThroughputText}" FontSize="26" FontWeight="Bold" />
+                  </StackPanel>
+                </Grid>
+                <TextBlock Text="Prvo Linux izdanje ne prikazuje neizvršeno ili odbijeno merenje kao 0 Mbps. Servisni raspored brzine biće povezan u sledećem kandidatu."
+                           Classes="muted"
+                           TextWrapping="Wrap" />
+              </StackPanel>
+            </Border>
+          </StackPanel>
+        </ScrollViewer>
+      </TabItem>
+    </TabControl>
+  </Grid>
+</Window>

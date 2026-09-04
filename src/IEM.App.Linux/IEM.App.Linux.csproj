@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <AssemblyName>IEM.App.Linux</AssemblyName>
+    <RootNamespace>IEM.App.Linux</RootNamespace>
+    <RuntimeIdentifiers>linux-x64;linux-arm64</RuntimeIdentifiers>
+    <AvaloniaUseCompiledBindingsByDefault>false</AvaloniaUseCompiledBindingsByDefault>
+    <Version>3.1.0-alpha.1</Version>
+    <AssemblyVersion>3.1.0.0</AssemblyVersion>
+    <FileVersion>3.1.0.0</FileVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia.Desktop" />
+    <PackageReference Include="Avalonia.Themes.Fluent" />
+    <PackageReference Include="CommunityToolkit.Mvvm" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\IEM.Core\IEM.Core.csproj" />
+    <ProjectReference Include="..\IEM.Evidence\IEM.Evidence.csproj" />
+    <ProjectReference Include="..\IEM.Linux\IEM.Linux.csproj" />
+    <ProjectReference Include="..\IEM.Presentation\IEM.Presentation.csproj" />
+    <ProjectReference Include="..\IEM.Service.Runtime\IEM.Service.Runtime.csproj" />
+    <ProjectReference Include="..\IEM.Storage\IEM.Storage.csproj" />
+  </ItemGroup>
+
+</Project>

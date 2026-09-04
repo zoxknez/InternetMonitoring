@@ -1,5 +1,6 @@
 <Solution>
   <Folder Name="/src/">
+    <Project Path="src/IEM.App.Linux/IEM.App.Linux.csproj" />
     <Project Path="src/IEM.App/IEM.App.csproj" />
     <Project Path="src/IEM.Cli/IEM.Cli.csproj" />
     <Project Path="src/IEM.Core/IEM.Core.csproj" />
