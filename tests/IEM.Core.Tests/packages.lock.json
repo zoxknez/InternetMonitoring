@@ -395,7 +395,7 @@
       "iem.evidence": {
         "type": "Project",
         "dependencies": {
-          "IEM.Storage": "[3.0.0, )",
+          "IEM.Storage": "[3.0.1-rc1, )",
           "PDFsharp": "[6.2.4, )",
           "System.Security.Cryptography.Pkcs": "[10.0.0, )"
         }
@@ -403,32 +403,32 @@
       "iem.legal": {
         "type": "Project",
         "dependencies": {
-          "IEM.Storage": "[3.0.0, )"
+          "IEM.Storage": "[3.0.1-rc1, )"
         }
       },
       "iem.linux": {
         "type": "Project",
         "dependencies": {
-          "IEM.Core": "[3.0.0, )",
-          "IEM.Evidence": "[3.0.0, )",
-          "IEM.Storage": "[3.0.0, )"
+          "IEM.Core": "[3.0.1-rc1, )",
+          "IEM.Evidence": "[3.0.1-rc1, )",
+          "IEM.Storage": "[3.0.1-rc1, )"
         }
       },
       "iem.presentation": {
         "type": "Project",
         "dependencies": {
-          "IEM.Core": "[3.0.0, )",
-          "IEM.Storage": "[3.0.0, )"
+          "IEM.Core": "[3.0.1-rc1, )",
+          "IEM.Storage": "[3.0.1-rc1, )"
         }
       },
       "iem.service.linux": {
         "type": "Project",
         "dependencies": {
-          "IEM.Core": "[3.0.0, )",
-          "IEM.Evidence": "[3.0.0, )",
-          "IEM.Linux": "[3.0.0, )",
-          "IEM.Service.Runtime": "[3.0.0, )",
-          "IEM.Storage": "[3.0.0, )",
+          "IEM.Core": "[3.0.1-rc1, )",
+          "IEM.Evidence": "[3.0.1-rc1, )",
+          "IEM.Linux": "[3.0.1-rc1, )",
+          "IEM.Service.Runtime": "[3.0.1-rc1, )",
+          "IEM.Storage": "[3.0.1-rc1, )",
           "Microsoft.Extensions.Hosting.Systemd": "[10.0.11, )",
           "Tmds.DBus.Protocol": "[0.94.2, )"
         }
@@ -436,9 +436,9 @@
       "iem.service.runtime": {
         "type": "Project",
         "dependencies": {
-          "IEM.Core": "[3.0.0, )",
-          "IEM.Evidence": "[3.0.0, )",
-          "IEM.Storage": "[3.0.0, )",
+          "IEM.Core": "[3.0.1-rc1, )",
+          "IEM.Evidence": "[3.0.1-rc1, )",
+          "IEM.Storage": "[3.0.1-rc1, )",
           "Microsoft.Extensions.Hosting.Abstractions": "[10.0.11, )",
           "Microsoft.Extensions.Logging.Abstractions": "[10.0.11, )",
           "Microsoft.Extensions.Options": "[10.0.11, )"
@@ -447,15 +447,15 @@
       "iem.storage": {
         "type": "Project",
         "dependencies": {
-          "IEM.Core": "[3.0.0, )",
+          "IEM.Core": "[3.0.1-rc1, )",
           "Microsoft.Data.Sqlite": "[10.0.11, )"
         }
       },
       "iem.verification": {
         "type": "Project",
         "dependencies": {
-          "IEM.Evidence": "[3.0.0, )",
-          "IEM.Storage": "[3.0.0, )"
+          "IEM.Evidence": "[3.0.1-rc1, )",
+          "IEM.Storage": "[3.0.1-rc1, )"
         }
       },
       "Microsoft.Data.Sqlite": {
@@ -531,6 +531,42 @@
         "requested": "[0.94.2, )",
         "resolved": "0.94.2",
         "contentHash": "AePc2k7vqIXCR/a6hsG4afO22LuSaGLR3tLUBPWkZAH2mhLu/PL3/dYABEniWV7QHzV444No8IiTRV4+oCq37g=="
+      }
+    },
+    "net10.0/linux-arm64": {
+      "SQLitePCLRaw.lib.e_sqlite3": {
+        "type": "Transitive",
+        "resolved": "2.1.12",
+        "contentHash": "fWi8Dbknuhgg72fWinIdjXVaqO1hHL4YBBwVLnr7e1c9TAZwJ0QE38j9syW1hwx6HaqEVTwI+O07WPdZn8Rp0w=="
+      },
+      "System.Diagnostics.EventLog": {
+        "type": "Transitive",
+        "resolved": "10.0.11",
+        "contentHash": "QTXEoQBzz00SFWbo7nAg1Ogd4f99lwqcO9uAJ7MYSLEUR28f6As32QktrqG2Fr9cfAfd1GjLyGYspE7Ipj7P6w=="
+      },
+      "System.Security.Cryptography.Pkcs": {
+        "type": "CentralTransitive",
+        "requested": "[10.0.0, )",
+        "resolved": "10.0.0",
+        "contentHash": "UPWqLSygJlFerRi9XNIuM0a1VC8gHUIufyP24xQ0sc+XimqUAEcjpOz9DhKpyDjH+5B/wO3RpC0KpkEeDj/ddg=="
+      }
+    },
+    "net10.0/linux-x64": {
+      "SQLitePCLRaw.lib.e_sqlite3": {
+        "type": "Transitive",
+        "resolved": "2.1.12",
+        "contentHash": "fWi8Dbknuhgg72fWinIdjXVaqO1hHL4YBBwVLnr7e1c9TAZwJ0QE38j9syW1hwx6HaqEVTwI+O07WPdZn8Rp0w=="
+      },
+      "System.Diagnostics.EventLog": {
+        "type": "Transitive",
+        "resolved": "10.0.11",
+        "contentHash": "QTXEoQBzz00SFWbo7nAg1Ogd4f99lwqcO9uAJ7MYSLEUR28f6As32QktrqG2Fr9cfAfd1GjLyGYspE7Ipj7P6w=="
+      },
+      "System.Security.Cryptography.Pkcs": {
+        "type": "CentralTransitive",
+        "requested": "[10.0.0, )",
+        "resolved": "10.0.0",
+        "contentHash": "UPWqLSygJlFerRi9XNIuM0a1VC8gHUIufyP24xQ0sc+XimqUAEcjpOz9DhKpyDjH+5B/wO3RpC0KpkEeDj/ddg=="
       }
     },
     "net10.0/win-arm64": {

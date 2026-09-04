@@ -38,11 +38,13 @@
   </PropertyGroup>
 
   <!--
-    win-arm64 is carried from day one so no x64-only assumptions creep into P/Invoke.
-    PublishTrimmed stays false everywhere: WPF is not trim-compatible.
+    Shared projects carry every supported release RID so their locked dependency graph and
+    restore assets can be consumed by either desktop product. Platform entry points override
+    this with their own two RIDs. PublishTrimmed stays false: WPF is not trim-compatible and
+    the evidence path favours deterministic compatibility over a smaller package.
   -->
   <PropertyGroup>
-    <RuntimeIdentifiers>win-x64;win-arm64</RuntimeIdentifiers>
+    <RuntimeIdentifiers>win-x64;win-arm64;linux-x64;linux-arm64</RuntimeIdentifiers>
     <PublishTrimmed>false</PublishTrimmed>
   </PropertyGroup>
 

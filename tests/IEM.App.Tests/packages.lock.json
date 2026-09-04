@@ -407,29 +407,29 @@
       "iem.evidence": {
         "type": "Project",
         "dependencies": {
-          "IEM.Storage": "[3.0.0, )",
+          "IEM.Storage": "[3.0.1-rc1, )",
           "PDFsharp": "[6.2.4, )"
         }
       },
       "iem.legal": {
         "type": "Project",
         "dependencies": {
-          "IEM.Storage": "[3.0.0, )"
+          "IEM.Storage": "[3.0.1-rc1, )"
         }
       },
       "iem.presentation": {
         "type": "Project",
         "dependencies": {
-          "IEM.Core": "[3.0.0, )",
-          "IEM.Storage": "[3.0.0, )"
+          "IEM.Core": "[3.0.1-rc1, )",
+          "IEM.Storage": "[3.0.1-rc1, )"
         }
       },
       "iem.service.runtime": {
         "type": "Project",
         "dependencies": {
-          "IEM.Core": "[3.0.0, )",
-          "IEM.Evidence": "[3.0.0, )",
-          "IEM.Storage": "[3.0.0, )",
+          "IEM.Core": "[3.0.1-rc1, )",
+          "IEM.Evidence": "[3.0.1-rc1, )",
+          "IEM.Storage": "[3.0.1-rc1, )",
           "Microsoft.Extensions.Hosting.Abstractions": "[10.0.11, )",
           "Microsoft.Extensions.Logging.Abstractions": "[10.0.11, )",
           "Microsoft.Extensions.Options": "[10.0.11, )"
@@ -438,15 +438,15 @@
       "iem.storage": {
         "type": "Project",
         "dependencies": {
-          "IEM.Core": "[3.0.0, )",
+          "IEM.Core": "[3.0.1-rc1, )",
           "Microsoft.Data.Sqlite": "[10.0.11, )"
         }
       },
       "iem.windows": {
         "type": "Project",
         "dependencies": {
-          "IEM.Core": "[3.0.0, )",
-          "IEM.Evidence": "[3.0.0, )",
+          "IEM.Core": "[3.0.1-rc1, )",
+          "IEM.Evidence": "[3.0.1-rc1, )",
           "ManagedNativeWifi": "[3.0.2, )"
         }
       },
@@ -455,22 +455,22 @@
         "dependencies": {
           "CommunityToolkit.Mvvm": "[8.4.0, )",
           "H.NotifyIcon.Wpf": "[2.3.0, )",
-          "IEM.Core": "[3.0.0, )",
-          "IEM.Evidence": "[3.0.0, )",
-          "IEM.Legal": "[3.0.0, )",
-          "IEM.Presentation": "[3.0.0, )",
-          "IEM.Storage": "[3.0.0, )",
-          "IEM.Windows": "[3.0.0, )"
+          "IEM.Core": "[3.0.1-rc1, )",
+          "IEM.Evidence": "[3.0.1-rc1, )",
+          "IEM.Legal": "[3.0.1-rc1, )",
+          "IEM.Presentation": "[3.0.1-rc1, )",
+          "IEM.Storage": "[3.0.1-rc1, )",
+          "IEM.Windows": "[3.0.1-rc1, )"
         }
       },
       "InternetEvidenceService": {
         "type": "Project",
         "dependencies": {
-          "IEM.Core": "[3.0.0, )",
-          "IEM.Evidence": "[3.0.0, )",
-          "IEM.Service.Runtime": "[3.0.0, )",
-          "IEM.Storage": "[3.0.0, )",
-          "IEM.Windows": "[3.0.0, )",
+          "IEM.Core": "[3.0.1-rc1, )",
+          "IEM.Evidence": "[3.0.1-rc1, )",
+          "IEM.Service.Runtime": "[3.0.1-rc1, )",
+          "IEM.Storage": "[3.0.1-rc1, )",
+          "IEM.Windows": "[3.0.1-rc1, )",
           "Microsoft.Extensions.Hosting.WindowsServices": "[10.0.11, )"
         }
       },

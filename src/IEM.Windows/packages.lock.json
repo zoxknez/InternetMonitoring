@@ -54,7 +54,7 @@
       "iem.evidence": {
         "type": "Project",
         "dependencies": {
-          "IEM.Storage": "[3.0.0, )",
+          "IEM.Storage": "[3.0.1-rc1, )",
           "PDFsharp": "[6.2.4, )",
           "System.Security.Cryptography.Pkcs": "[10.0.0, )"
         }
@@ -62,7 +62,7 @@
       "iem.storage": {
         "type": "Project",
         "dependencies": {
-          "IEM.Core": "[3.0.0, )",
+          "IEM.Core": "[3.0.1-rc1, )",
           "Microsoft.Data.Sqlite": "[10.0.11, )"
         }
       },

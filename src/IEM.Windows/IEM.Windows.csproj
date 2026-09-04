@@ -7,6 +7,7 @@
       network or a specific operating system.
     -->
     <TargetFramework>net10.0-windows</TargetFramework>
+    <RuntimeIdentifiers>win-x64;win-arm64</RuntimeIdentifiers>
     <RootNamespace>IEM.Windows</RootNamespace>
   </PropertyGroup>
 
