@@ -103,7 +103,9 @@ public sealed class LinuxHostSystemdTests312
         Assert.Equal("iem", directives["Service.User"]);
         Assert.Equal("iem", directives["Service.Group"]);
         Assert.Equal("iem-users", directives["Service.SupplementaryGroups"]);
-        Assert.Equal("/usr/lib/internet-evidence-monitor/IEM.Service.Linux", directives["Service.ExecStart"]);
+        Assert.Equal(
+            "/usr/lib/internet-evidence-monitor/service/IEM.Service.Linux",
+            directives["Service.ExecStart"]);
         Assert.Equal("on-failure", directives["Service.Restart"]);
         Assert.Equal("5s", directives["Service.RestartSec"]);
         Assert.Equal("internet-evidence-monitor", directives["Service.StateDirectory"]);

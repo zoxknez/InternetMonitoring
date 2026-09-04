@@ -8,7 +8,7 @@ NotifyAccess=all
 User=iem
 Group=iem
 SupplementaryGroups=iem-users
-ExecStart=/usr/lib/internet-evidence-monitor/IEM.Service.Linux
+ExecStart=/usr/lib/internet-evidence-monitor/service/IEM.Service.Linux
 WorkingDirectory=/var/lib/internet-evidence-monitor
 Restart=on-failure
 RestartSec=5s
@@ -17,6 +17,17 @@ StateDirectoryMode=0700
 RuntimeDirectory=internet-evidence-monitor
 RuntimeDirectoryMode=0750
 UMask=0077
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+MemoryDenyWriteExecute=no
 
 [Install]
 WantedBy=multi-user.target

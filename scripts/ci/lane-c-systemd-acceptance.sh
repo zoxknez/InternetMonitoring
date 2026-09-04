@@ -47,6 +47,7 @@ STATUS_FAILURE_RESTART="NOT_TESTED"
 STATUS_FATAL_EXIT_CODE="NOT_TESTED"
 STATUS_UNIX_IPC_IDENTITY="NOT_TESTED"
 STATUS_NETLINK_ROUTING="NOT_TESTED"
+STATUS_NL80211_GENERIC="NOT_TESTED"
 STATUS_DATAGRAM_ICMP="NOT_TESTED"
 STATUS_SOURCE_BINDING_PARITY="NOT_TESTED"
 STATUS_CORE_PROTOCOL_PARITY="NOT_TESTED"
@@ -263,10 +264,11 @@ cleanup_and_exit() {
     elif [ "${orig_exit}" -ne 0 ]; then
         exit "${orig_exit}"
     elif [ "${NOT_TESTED_COUNT}" -gt 0 ]; then
-        if [ "${CI:-}" = "true" ] || [ "${ALLOW_NOT_TESTED:-0}" = "1" ] || [ "${GITHUB_ACTIONS:-}" = "true" ]; then
-            echo "CI runner environment: All active gates passed (0 FAIL). NOT_TESTED count: ${NOT_TESTED_COUNT}. Exiting 0."
+        if [ "${ALLOW_NOT_TESTED:-0}" = "1" ]; then
+            echo "Explicit override accepted. NOT_TESTED count: ${NOT_TESTED_COUNT}. Exiting 0."
             exit 0
         fi
+        echo "Acceptance gate is incomplete. NOT_TESTED count: ${NOT_TESTED_COUNT}. Exiting 2."
         exit 2
     fi
 
