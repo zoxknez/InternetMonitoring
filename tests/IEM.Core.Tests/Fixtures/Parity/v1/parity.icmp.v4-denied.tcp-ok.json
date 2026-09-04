@@ -1,0 +1,43 @@
+{
+  "parityFixtureVersion": 1,
+  "fixtureId": "parity.icmp.v4-denied.tcp-ok",
+  "scenario": "Windows executes ICMP (all time out); Linux never gets an ICMP datagram socket",
+  "intent": "TCP holds on both, so neither is an outage; the classifier and the ICMP tally diverge and nothing else does",
+  "kind": "asymmetric-observability",
+  "tags": ["icmp", "capability"],
+  "semanticInput": {
+    "session": { "plannedDuration": "PT2M", "medium": "Ethernet" },
+    "ticks": [
+      {
+        "seq": 1,
+        "link": { "status": "Up", "hasGateway": true, "medium": "Ethernet" },
+        "world": {
+          "gatewayReachable": { "t": "v", "v": true },
+          "internetReachable": { "t": "v", "v": true }
+        }
+      }
+    ]
+  },
+  "platformFacts": {
+    "windows": { "ticks": [ { "seq": 1, "icmpV4": { "t": "v", "v": "TimedOut" }, "path": { "resolved": { "t": "v", "v": true }, "bound": { "t": "v", "v": true } } } ] },
+    "linux": { "ticks": [ { "seq": 1, "icmpV4": { "t": "skipped" }, "path": { "resolved": { "t": "v", "v": true }, "bound": { "t": "v", "v": true } } } ] }
+  },
+  "expectedCanonicalOutput": {
+    "samples": [ { "seq": 1, "isOutage": false } ]
+  },
+  "allowedDivergences": [
+    {
+      "path": "$.samples[0].networkState",
+      "windows": "IcmpFiltered",
+      "linux": "Ok",
+      "reason": "Windows sees 3/3 ICMP timeout with TCP fresh (IcmpFiltered); Linux has no ICMP attempt so the degradation branch never fires. Both isOutage=false."
+    },
+    {
+      "path": "$.samples[0].tallies.externalIcmp.attempted",
+      "windows": 3,
+      "linux": 0,
+      "reason": "A skipped family is not an attempt; the ICMP tally divergence is expected and bounded to attempted."
+    }
+  ],
+  "pathWhitelist": []
+}

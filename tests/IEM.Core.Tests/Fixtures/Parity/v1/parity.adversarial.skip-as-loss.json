@@ -1,0 +1,30 @@
+{
+  "parityFixtureVersion": 1,
+  "fixtureId": "parity.adversarial.skip-as-loss",
+  "scenario": "ICMP is skipped on both platforms while TCP, TLS and HTTP all succeed",
+  "intent": "A skipped family must not be counted as failure - no outage, no packet loss",
+  "kind": "adversarial",
+  "tags": ["adversarial", "skip"],
+  "semanticInput": {
+    "session": { "plannedDuration": "PT2M", "medium": "Ethernet" },
+    "ticks": [
+      {
+        "seq": 1,
+        "link": { "status": "Up", "hasGateway": true, "medium": "Ethernet" },
+        "world": {
+          "gatewayReachable": { "t": "v", "v": true },
+          "internetReachable": { "t": "v", "v": true }
+        }
+      }
+    ]
+  },
+  "platformFacts": {
+    "windows": { "ticks": [ { "seq": 1, "icmpV4": { "t": "skipped" }, "path": { "resolved": { "t": "v", "v": true }, "bound": { "t": "v", "v": true } } } ] },
+    "linux": { "ticks": [ { "seq": 1, "icmpV4": { "t": "skipped" }, "path": { "resolved": { "t": "v", "v": true }, "bound": { "t": "v", "v": true } } } ] }
+  },
+  "expectedCanonicalOutput": {
+    "samples": [ { "seq": 1, "networkState": "Ok", "isOutage": false } ]
+  },
+  "allowedDivergences": [],
+  "pathWhitelist": []
+}

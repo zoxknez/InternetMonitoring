@@ -1,0 +1,38 @@
+{
+  "parityFixtureVersion": 1,
+  "fixtureId": "parity.healthy.dual-stack",
+  "scenario": "Every probe family succeeds on both platforms",
+  "intent": "Ok, no incident, identical canonical view",
+  "kind": "symmetric",
+  "tags": ["healthy"],
+  "semanticInput": {
+    "session": { "plannedDuration": "PT2M", "medium": "Ethernet" },
+    "ticks": [
+      {
+        "seq": 1,
+        "link": { "status": "Up", "hasGateway": true, "medium": "Ethernet" },
+        "world": {
+          "gatewayReachable": { "t": "v", "v": true },
+          "internetReachable": { "t": "v", "v": true }
+        }
+      }
+    ]
+  },
+  "platformFacts": {
+    "windows": {
+      "ticks": [
+        { "seq": 1, "path": { "resolved": { "t": "v", "v": true }, "bound": { "t": "v", "v": true } } }
+      ]
+    },
+    "linux": {
+      "ticks": [
+        { "seq": 1, "path": { "resolved": { "t": "v", "v": true }, "bound": { "t": "v", "v": true } } }
+      ]
+    }
+  },
+  "expectedCanonicalOutput": {
+    "samples": [ { "seq": 1, "networkState": "Ok", "isOutage": false } ]
+  },
+  "allowedDivergences": [],
+  "pathWhitelist": []
+}

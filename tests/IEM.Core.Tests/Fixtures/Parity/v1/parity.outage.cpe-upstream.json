@@ -1,0 +1,30 @@
+{
+  "parityFixtureVersion": 1,
+  "fixtureId": "parity.outage.cpe-upstream",
+  "scenario": "Gateway answers, every external target fails",
+  "intent": "CpeUpstreamUnreachable on both platforms - the fault is beyond the router",
+  "kind": "symmetric",
+  "tags": ["outage", "upstream"],
+  "semanticInput": {
+    "session": { "plannedDuration": "PT2M", "medium": "Ethernet" },
+    "ticks": [
+      {
+        "seq": 1,
+        "link": { "status": "Up", "hasGateway": true, "medium": "Ethernet" },
+        "world": {
+          "gatewayReachable": { "t": "v", "v": true },
+          "internetReachable": { "t": "v", "v": false }
+        }
+      }
+    ]
+  },
+  "platformFacts": {
+    "windows": { "ticks": [ { "seq": 1, "path": { "resolved": { "t": "v", "v": true }, "bound": { "t": "v", "v": true } } } ] },
+    "linux": { "ticks": [ { "seq": 1, "path": { "resolved": { "t": "v", "v": true }, "bound": { "t": "v", "v": true } } } ] }
+  },
+  "expectedCanonicalOutput": {
+    "samples": [ { "seq": 1, "networkState": "CpeUpstreamUnreachable", "isOutage": true } ]
+  },
+  "allowedDivergences": [],
+  "pathWhitelist": []
+}

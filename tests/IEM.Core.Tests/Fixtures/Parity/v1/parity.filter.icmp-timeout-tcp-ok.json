@@ -1,0 +1,30 @@
+{
+  "parityFixtureVersion": 1,
+  "fixtureId": "parity.filter.icmp-timeout-tcp-ok",
+  "scenario": "Every external ICMP target times out while TCP, TLS and HTTP succeed",
+  "intent": "IcmpFiltered on both platforms, never an outage",
+  "kind": "symmetric",
+  "tags": ["filter", "icmp"],
+  "semanticInput": {
+    "session": { "plannedDuration": "PT2M", "medium": "Ethernet" },
+    "ticks": [
+      {
+        "seq": 1,
+        "link": { "status": "Up", "hasGateway": true, "medium": "Ethernet" },
+        "world": {
+          "gatewayReachable": { "t": "v", "v": true },
+          "internetReachable": { "t": "v", "v": true }
+        }
+      }
+    ]
+  },
+  "platformFacts": {
+    "windows": { "ticks": [ { "seq": 1, "icmpV4": { "t": "v", "v": "TimedOut" }, "path": { "resolved": { "t": "v", "v": true }, "bound": { "t": "v", "v": true } } } ] },
+    "linux": { "ticks": [ { "seq": 1, "icmpV4": { "t": "v", "v": "TimedOut" }, "path": { "resolved": { "t": "v", "v": true }, "bound": { "t": "v", "v": true } } } ] }
+  },
+  "expectedCanonicalOutput": {
+    "samples": [ { "seq": 1, "networkState": "IcmpFiltered", "isOutage": false } ]
+  },
+  "allowedDivergences": [],
+  "pathWhitelist": []
+}

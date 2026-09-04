@@ -1,0 +1,32 @@
+{
+  "parityFixtureVersion": 1,
+  "fixtureId": "parity.wifi.radio-null.link-down",
+  "scenario": "Adapter down, radio state unreadable on both platforms",
+  "intent": "AdapterDown on both platforms - an unknown radio never becomes a stated equipment fault",
+  "kind": "symmetric",
+  "tags": ["wifi", "unknown"],
+  "semanticInput": {
+    "session": { "plannedDuration": "PT2M", "medium": "Wireless" },
+    "ticks": [
+      {
+        "seq": 1,
+        "link": { "status": "Down", "hasGateway": false, "medium": "Wireless" },
+        "world": {
+          "gatewayReachable": { "t": "v", "v": false },
+          "internetReachable": { "t": "v", "v": false },
+          "radioSwitch": { "t": "unknown" },
+          "ssidOnAir": { "t": "unknown" }
+        }
+      }
+    ]
+  },
+  "platformFacts": {
+    "windows": { "ticks": [ { "seq": 1, "radioOn": { "t": "null" }, "ssidVisibleInScan": { "t": "null" }, "path": { "resolved": { "t": "v", "v": false } } } ] },
+    "linux": { "ticks": [ { "seq": 1, "radioOn": { "t": "null" }, "ssidVisibleInScan": { "t": "null" }, "path": { "resolved": { "t": "v", "v": false } } } ] }
+  },
+  "expectedCanonicalOutput": {
+    "samples": [ { "seq": 1, "networkState": "AdapterDown", "isOutage": true } ]
+  },
+  "allowedDivergences": [],
+  "pathWhitelist": []
+}
