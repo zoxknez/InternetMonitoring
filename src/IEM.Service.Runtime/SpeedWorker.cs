@@ -14,11 +14,16 @@ namespace IEM.Service.Runtime;
 /// Platform-neutral worker carrying out scheduled speed measurements.
 /// Invariants 211 and 275: One Evidence Engine, injected platform probe factory.
 /// </summary>
+public interface ISpeedStatusSource
+{
+    SpeedStatus Status { get; }
+}
+
 public sealed class SpeedWorker(
     IOptions<MonitorSettings> settings,
     ILogger<SpeedWorker> logger,
     IPlatformProbeFactory probeFactory,
-    IPlatformStorageLayout storageLayout) : BackgroundService
+    IPlatformStorageLayout storageLayout) : BackgroundService, ISpeedStatusSource
 {
     private readonly MonitorSettings _settings = settings.Value;
 

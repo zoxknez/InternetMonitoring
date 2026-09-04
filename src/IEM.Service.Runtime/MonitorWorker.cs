@@ -26,9 +26,16 @@ public sealed class MonitorWorker(
     IPowerEventSource powerEvents,
     IPlatformStorageLayout storageLayout,
     IHostApplicationLifetime lifetime,
-    IStorageProtectionProvider storageProtection) : BackgroundService
+    IStorageProtectionProvider storageProtection) : BackgroundService, IMonitorSessionController
 {
     private readonly MonitorSettings _settings = settings.Value;
+    private readonly SemaphoreSlim _controlGate = new(1, 1);
+    private readonly SemaphoreSlim _sessionSignal = new(0, 1);
+    private CancellationTokenSource? _activeSessionCancellation;
+    private SessionStopDisposition _requestedStopDisposition;
+    private bool _startPending;
+    private bool _paused;
+    private bool _autoStartEvaluated;
 
     /// <summary>Live state for anything asking over the status pipe/transport.</summary>
     public ServiceStatus Status { get; private set; } = ServiceStatus.Idle;
@@ -38,11 +45,156 @@ public sealed class MonitorWorker(
     /// </summary>
     public MonitorSnapshot Live { get; private set; } = MonitorSnapshot.Empty;
 
+    public async Task<SessionControlResult> StartSessionAsync(
+        string sessionId,
+        TimeSpan duration,
+        string? interfaceName,
+        string ownerPrincipalRef,
+        CancellationToken cancellationToken)
+    {
+        if (!IsValidSessionId(sessionId))
+        {
+            return new SessionControlResult(
+                SessionControlOutcome.InvalidRequest,
+                null,
+                "Identifikator sesije mora imati 1-64 ASCII slova, cifre, tačke, donje crte ili crtice.");
+        }
+
+        if ((duration <= TimeSpan.Zero && duration != Timeout.InfiniteTimeSpan) ||
+            duration > TimeSpan.FromDays(31))
+        {
+            return new SessionControlResult(
+                SessionControlOutcome.InvalidRequest,
+                sessionId,
+                "Trajanje mora biti pozitivno, najviše 31 dan, ili beskonačno.");
+        }
+
+        if (string.IsNullOrWhiteSpace(ownerPrincipalRef))
+        {
+            return new SessionControlResult(
+                SessionControlOutcome.InvalidRequest,
+                sessionId,
+                "Vlasnik sesije nije utvrđen.");
+        }
+
+        await _controlGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            if (_paused && !string.IsNullOrWhiteSpace(Status.SessionId))
+            {
+                if (!string.Equals(sessionId, Status.SessionId, StringComparison.Ordinal))
+                {
+                    return new SessionControlResult(
+                        SessionControlOutcome.Conflict,
+                        Status.SessionId,
+                        "Druga, pauzirana sesija čeka nastavak ili završavanje.");
+                }
+
+                _paused = false;
+                _startPending = true;
+                SignalSessionLoop();
+                return new SessionControlResult(
+                    SessionControlOutcome.Accepted,
+                    Status.SessionId,
+                    "Nastavak sesije je prihvaćen.");
+            }
+
+            if (_startPending || Status.State is SessionState.Running or SessionState.Finalizing)
+            {
+                return new SessionControlResult(
+                    SessionControlOutcome.Conflict,
+                    Status.SessionId,
+                    "Sesija je već aktivna ili se upravo pokreće/završava.");
+            }
+
+            var outputRoot = _settings.ResolveOutputRoot(storageLayout.DefaultOutputRoot);
+            new SessionRequest(
+                duration,
+                string.IsNullOrWhiteSpace(interfaceName) ? null : interfaceName.Trim(),
+                DateTimeOffset.UtcNow,
+                sessionId,
+                ownerPrincipalRef).Write(outputRoot);
+
+            _startPending = true;
+            SignalSessionLoop();
+
+            return new SessionControlResult(
+                SessionControlOutcome.Accepted,
+                sessionId,
+                "Pokretanje sesije je prihvaćeno.");
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
+        {
+            return new SessionControlResult(
+                SessionControlOutcome.InvalidRequest,
+                sessionId,
+                $"Zahtev za sesiju nije sačuvan: {ex.Message}");
+        }
+        finally
+        {
+            _controlGate.Release();
+        }
+    }
+
+    public Task<SessionControlResult> PauseSessionAsync(
+        string? sessionId,
+        CancellationToken cancellationToken) =>
+        StopActiveSessionAsync(sessionId, SessionStopDisposition.Pause, cancellationToken);
+
+    public Task<SessionControlResult> FinalizeSessionAsync(
+        string? sessionId,
+        CancellationToken cancellationToken) =>
+        StopActiveSessionAsync(sessionId, SessionStopDisposition.Finalize, cancellationToken);
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         try
         {
-            await RunSessionAsync(stoppingToken).ConfigureAwait(false);
+            while (!stoppingToken.IsCancellationRequested)
+            {
+                using var sessionCancellation = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
+
+                await _controlGate.WaitAsync(stoppingToken).ConfigureAwait(false);
+                try
+                {
+                    _activeSessionCancellation = sessionCancellation;
+                    _requestedStopDisposition = SessionStopDisposition.None;
+                }
+                finally
+                {
+                    _controlGate.Release();
+                }
+
+                var ranSession = false;
+                try
+                {
+                    ranSession = await RunSessionAsync(sessionCancellation.Token, stoppingToken).ConfigureAwait(false);
+                }
+                finally
+                {
+                    await _controlGate.WaitAsync(CancellationToken.None).ConfigureAwait(false);
+                    try
+                    {
+                        _activeSessionCancellation = null;
+                        _requestedStopDisposition = SessionStopDisposition.None;
+                        _startPending = false;
+                    }
+                    finally
+                    {
+                        _controlGate.Release();
+                    }
+                }
+
+                if (stoppingToken.IsCancellationRequested)
+                {
+                    return;
+                }
+
+                if (!ranSession || _paused)
+                {
+                    await WaitForSessionSignalAsync(stoppingToken).ConfigureAwait(false);
+                }
+            }
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
         {
@@ -64,37 +216,6 @@ public sealed class MonitorWorker(
         }
 #pragma warning restore CA1031
 
-        if (!stoppingToken.IsCancellationRequested)
-        {
-            await WaitForScheduledMeasurementAsync(stoppingToken).ConfigureAwait(false);
-            lifetime.StopApplication();
-        }
-    }
-
-    private async Task WaitForScheduledMeasurementAsync(CancellationToken stoppingToken)
-    {
-        var outputRoot = _settings.ResolveOutputRoot(storageLayout.DefaultOutputRoot);
-
-        if (SpeedRequest.Read(outputRoot) is not { } pending)
-        {
-            return;
-        }
-
-        logger.LogInformation(
-            "Nema više sesija, ali je merenje brzine zakazano za {Due}. Servis ostaje pokrenut do tada.",
-            SerbianText.DateTime(pending.DueAtUtc.ToLocalTime()));
-
-        while (!stoppingToken.IsCancellationRequested && SpeedRequest.Read(outputRoot) is not null)
-        {
-            try
-            {
-                await Task.Delay(TimeSpan.FromSeconds(15), stoppingToken).ConfigureAwait(false);
-            }
-            catch (OperationCanceledException)
-            {
-                return;
-            }
-        }
     }
 
     /// <summary>
@@ -102,7 +223,9 @@ public sealed class MonitorWorker(
     /// </summary>
     public const int FatalExitCode = 3;
 
-    private async Task RunSessionAsync(CancellationToken stoppingToken)
+    private async Task<bool> RunSessionAsync(
+        CancellationToken sessionToken,
+        CancellationToken hostStoppingToken)
     {
         var outputRoot = _settings.ResolveOutputRoot(storageLayout.DefaultOutputRoot);
         var now = DateTimeOffset.UtcNow;
@@ -114,17 +237,12 @@ public sealed class MonitorWorker(
             logger.LogInformation(
                 "Nema aktivne sesije. Servis je pokrenut i čeka u stanju mirovanja.");
 
-            Status = ServiceStatus.Idle;
-            try
+            if (Status.State == SessionState.Idle)
             {
-                await Task.Delay(Timeout.InfiniteTimeSpan, stoppingToken).ConfigureAwait(false);
-            }
-            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
-            {
-                // Expected shutdown
+                Status = ServiceStatus.Idle;
             }
 
-            return;
+            return false;
         }
 
         // Stage B: Platform Resolution via Factory Scope
@@ -138,12 +256,12 @@ public sealed class MonitorWorker(
         {
             var analysis = intent.Analysis!;
             var layoutDesc = SessionLayoutDescriptor.CreateStandard(analysis.Start!.SessionId);
-            var verObs = await storageProtection.VerifyStorageProtectionAsync(analysis.Paths!.Directory, layoutDesc, stoppingToken).ConfigureAwait(false);
+            var verObs = await storageProtection.VerifyStorageProtectionAsync(analysis.Paths!.Directory, layoutDesc, sessionToken).ConfigureAwait(false);
             if (verObs.ProtectionState != StorageProtectionState.Established)
             {
                 logger.LogError("Nastavak sesije '{SessionId}' je odbijen jer granica zaštite nije Established: {Error}",
                     analysis.Start.SessionId, verObs.DiagnosticMessage);
-                return;
+                return false;
             }
 
             plan = new SessionPlan(
@@ -160,7 +278,9 @@ public sealed class MonitorWorker(
             var req = intent.Request!;
             var paths = SessionPaths.ForNewSession(outputRoot, now.ToLocalTime());
             var link = inspector.Inspect();
-            var sessionId = $"S{now.ToLocalTime():yyyyMMddHHmmss}";
+            var sessionId = string.IsNullOrWhiteSpace(req.SessionId)
+                ? $"S{now.ToLocalTime():yyyyMMddHHmmss}"
+                : req.SessionId;
 
             var start = new SessionStartPayload(
                 sessionId,
@@ -181,7 +301,7 @@ public sealed class MonitorWorker(
         var sessionLayout = SessionLayoutDescriptor.CreateStandard(plan.SessionId);
         if (plan.Resume is null)
         {
-            var provObs = await storageProtection.ProvisionSessionBoundariesAsync(plan.Paths.Directory, sessionLayout, stoppingToken).ConfigureAwait(false);
+            var provObs = await storageProtection.ProvisionSessionBoundariesAsync(plan.Paths.Directory, sessionLayout, sessionToken).ConfigureAwait(false);
             if (provObs.ProtectionState != StorageProtectionState.Established)
             {
                 logger.LogCritical("Sigurnosna granica sesije nije uspostavljena (Provision): {Error}", provObs.DiagnosticMessage);
@@ -189,7 +309,7 @@ public sealed class MonitorWorker(
             }
         }
 
-        var boundaryCheck = await storageProtection.VerifyStorageProtectionAsync(plan.Paths.Directory, sessionLayout, stoppingToken).ConfigureAwait(false);
+        var boundaryCheck = await storageProtection.VerifyStorageProtectionAsync(plan.Paths.Directory, sessionLayout, sessionToken).ConfigureAwait(false);
         if (boundaryCheck.ProtectionState != StorageProtectionState.Established)
         {
             logger.LogCritical("Sigurnosna granica sesije nije verifikovana (Verify): {Error}", boundaryCheck.DiagnosticMessage);
@@ -234,6 +354,7 @@ public sealed class MonitorWorker(
                 StartedUtc: plan.StartedUtc,
                 PlannedDuration: plan.PlannedDuration,
                 Resumed: plan.Resume is not null);
+            _startPending = false;
 
             LogSessionStart(plan);
             Subscribe(engine);
@@ -247,13 +368,28 @@ public sealed class MonitorWorker(
                     StartedUtc = plan.StartedUtc,
                 };
 
-            await engine.RunAsync(plan.Remaining, stoppingToken).ConfigureAwait(false);
+            try
+            {
+                await engine.RunAsync(plan.Remaining, sessionToken).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (sessionToken.IsCancellationRequested)
+            {
+                // Control commands and host shutdown cancel the active engine deliberately.
+                // CompleteSession below decides whether the evidence stays open or is finalized.
+            }
 
             SetFinalizeStep(FinalizeStep.StoppingProbes);
             await tracer.DisposeAsync().ConfigureAwait(false);
             await probeSource.DisposeAsync().ConfigureAwait(false);
 
-            finished = CompleteSession(engine, recorder, plan, outputRoot, stoppingToken.IsCancellationRequested);
+            finished = CompleteSession(
+                engine,
+                recorder,
+                plan,
+                outputRoot,
+                hostStoppingToken.IsCancellationRequested
+                    ? SessionStopDisposition.HostShutdown
+                    : GetRequestedStopDisposition());
         }
         finally
         {
@@ -273,7 +409,10 @@ public sealed class MonitorWorker(
         {
             SetFinalizeStep(FinalizeStep.BuildingReport);
             BuildReport(plan.Paths);
+            Status = Status with { State = SessionState.Completed, FinalizeStep = FinalizeStep.Done };
         }
+
+        return true;
     }
 
     private void BuildReport(SessionPaths paths)
@@ -324,6 +463,9 @@ public sealed class MonitorWorker(
 
     private SessionIntent ResolveSessionIntent(string outputRoot, DateTimeOffset now)
     {
+        var mayAutoStart = !_autoStartEvaluated;
+        _autoStartEvaluated = true;
+
         if (_settings.ResumeUnfinished)
         {
             var analysis = SessionResumeAnalyzer.Analyze(outputRoot, now);
@@ -353,7 +495,7 @@ public sealed class MonitorWorker(
             }
         }
 
-        var request = SessionRequest.Read(outputRoot) ?? AutoRequest(outputRoot, now);
+        var request = SessionRequest.Read(outputRoot) ?? (mayAutoStart ? AutoRequest(outputRoot, now) : null);
         if (request is not null)
         {
             var sel = string.IsNullOrWhiteSpace(request.Interface)
@@ -420,27 +562,32 @@ public sealed class MonitorWorker(
         EvidenceRecorder recorder,
         SessionPlan plan,
         string outputRoot,
-        bool wasCancelled)
+        SessionStopDisposition disposition)
     {
-        var now = DateTimeOffset.UtcNow;
-        var stats = engine.Statistics;
-
-        SetFinalizeStep(FinalizeStep.WritingEvidence);
-
-        if (wasCancelled)
+        if (disposition is SessionStopDisposition.Pause or SessionStopDisposition.HostShutdown)
         {
             logger.LogInformation(
-                "Servis se zaustavlja pre isteka trajanja. Sesija {SessionId} je prekinuta i biće " +
-                "nastavljena pri sledećem pokretanju servisa.",
+                disposition == SessionStopDisposition.Pause
+                    ? "Sesija {SessionId} je pauzirana i ostaje otvorena za nastavak."
+                    : "Servis se zaustavlja pre isteka trajanja. Sesija {SessionId} ostaje otvorena " +
+                      "i biće nastavljena pri sledećem pokretanju servisa.",
                 plan.SessionId);
 
-            recorder.Complete(stats, now);
             Status = Status with { State = SessionState.Interrupted };
             SetFinalizeStep(FinalizeStep.Done);
             return false;
         }
 
-        logger.LogInformation("Planirano trajanje sesije {SessionId} je isteklo. Sesija se zatvara.", plan.SessionId);
+        var now = DateTimeOffset.UtcNow;
+        var stats = engine.Statistics;
+
+        SetFinalizeStep(FinalizeStep.WritingEvidence);
+
+        logger.LogInformation(
+            disposition == SessionStopDisposition.Finalize
+                ? "Zatraženo je završavanje sesije {SessionId}. Sesija se zatvara."
+                : "Planirano trajanje sesije {SessionId} je isteklo. Sesija se zatvara.",
+            plan.SessionId);
 
         recorder.Complete(stats, now);
         SessionRequest.Clear(outputRoot);
@@ -492,8 +639,100 @@ public sealed class MonitorWorker(
         };
     }
 
+    private async Task<SessionControlResult> StopActiveSessionAsync(
+        string? sessionId,
+        SessionStopDisposition disposition,
+        CancellationToken cancellationToken)
+    {
+        CancellationTokenSource? cancellation;
+
+        await _controlGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            if (_activeSessionCancellation is null || Status.State != SessionState.Running)
+            {
+                return new SessionControlResult(
+                    SessionControlOutcome.NotFound,
+                    Status.SessionId,
+                    "Nema aktivne sesije kojom se može upravljati.");
+            }
+
+            if (!string.IsNullOrWhiteSpace(sessionId) &&
+                !string.Equals(sessionId, Status.SessionId, StringComparison.Ordinal))
+            {
+                return new SessionControlResult(
+                    SessionControlOutcome.NotFound,
+                    Status.SessionId,
+                    "Aktivna sesija nema traženi identifikator.");
+            }
+
+            if (_requestedStopDisposition != SessionStopDisposition.None)
+            {
+                return new SessionControlResult(
+                    SessionControlOutcome.Conflict,
+                    Status.SessionId,
+                    "Sesija se već zaustavlja ili završava.");
+            }
+
+            _requestedStopDisposition = disposition;
+            _paused = disposition == SessionStopDisposition.Pause;
+            cancellation = _activeSessionCancellation;
+        }
+        finally
+        {
+            _controlGate.Release();
+        }
+
+        await cancellation.CancelAsync().ConfigureAwait(false);
+        return new SessionControlResult(
+            SessionControlOutcome.Accepted,
+            Status.SessionId,
+            disposition == SessionStopDisposition.Pause
+                ? "Pauziranje sesije je prihvaćeno."
+                : "Završavanje sesije je prihvaćeno.");
+    }
+
+    private async Task WaitForSessionSignalAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            await _sessionSignal.WaitAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // Ordinary service shutdown while idle or paused.
+        }
+    }
+
+    private void SignalSessionLoop()
+    {
+        if (_sessionSignal.CurrentCount == 0)
+        {
+            _sessionSignal.Release();
+        }
+    }
+
+    private SessionStopDisposition GetRequestedStopDisposition() => _requestedStopDisposition;
+
+    private static bool IsValidSessionId(string? value) =>
+        value is { Length: > 0 and <= 64 } &&
+        value is not "." and not ".." &&
+        value.All(character =>
+            character is >= 'a' and <= 'z' or
+                >= 'A' and <= 'Z' or
+                >= '0' and <= '9' or
+                '.' or '_' or '-');
+
     private static string Describe(TimeSpan duration) =>
         duration == Timeout.InfiniteTimeSpan ? "do prekida" : SerbianText.Duration(duration);
+
+    private enum SessionStopDisposition
+    {
+        None,
+        Pause,
+        Finalize,
+        HostShutdown,
+    }
 
     private sealed record SessionPlan(
         SessionPaths Paths,

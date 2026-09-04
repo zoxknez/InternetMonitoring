@@ -20,7 +20,9 @@ namespace IEM.Storage;
 public sealed record SessionRequest(
     TimeSpan Duration,
     string? Interface,
-    DateTimeOffset RequestedAt)
+    DateTimeOffset RequestedAt,
+    string? SessionId = null,
+    string? OwnerPrincipalRef = null)
 {
     private const string FileName = "zahtev.json";
 
@@ -56,7 +58,12 @@ public sealed record SessionRequest(
                     ? parsed
                     : TimeSpan.FromHours(48);
 
-            return new SessionRequest(duration, stored.Interface, stored.RequestedAt);
+            return new SessionRequest(
+                duration,
+                stored.Interface,
+                stored.RequestedAt,
+                stored.SessionId,
+                stored.OwnerPrincipalRef);
         }
         catch (Exception ex) when (ex is JsonException or IOException)
         {
@@ -74,7 +81,9 @@ public sealed record SessionRequest(
         var stored = new StoredRequest(
             Duration == Timeout.InfiniteTimeSpan ? "infinite" : Duration.ToString("c", CultureInfo.InvariantCulture),
             Interface,
-            RequestedAt);
+            RequestedAt,
+            SessionId,
+            OwnerPrincipalRef);
 
         File.WriteAllText(
             PathFor(outputRoot),
@@ -101,5 +110,10 @@ public sealed record SessionRequest(
         }
     }
 
-    private sealed record StoredRequest(string Duration, string? Interface, DateTimeOffset RequestedAt);
+    private sealed record StoredRequest(
+        string Duration,
+        string? Interface,
+        DateTimeOffset RequestedAt,
+        string? SessionId = null,
+        string? OwnerPrincipalRef = null);
 }

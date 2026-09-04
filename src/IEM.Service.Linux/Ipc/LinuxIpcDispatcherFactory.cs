@@ -10,11 +10,11 @@ namespace IEM.Service.Linux.Ipc;
 public static class LinuxIpcDispatcherFactory
 {
     public static IpcCommandDispatcher Create(
-        MonitorWorker monitorWorker,
-        SpeedWorker speedWorker,
+        IMonitorSessionController monitorController,
+        ISpeedStatusSource speedWorker,
         ISessionOwnerResolver? sessionOwnerResolver = null)
     {
-        ArgumentNullException.ThrowIfNull(monitorWorker);
+        ArgumentNullException.ThrowIfNull(monitorController);
         ArgumentNullException.ThrowIfNull(speedWorker);
 
         var dispatcher = new IpcCommandDispatcher(
@@ -27,9 +27,9 @@ public static class LinuxIpcDispatcherFactory
         {
             var statusObj = new
             {
-                Status = monitorWorker.Status.ToString(),
-                SpeedStatus = speedWorker.Status.ToString(),
-                Snapshot = monitorWorker.Live,
+                Status = monitorController.Status,
+                SpeedStatus = speedWorker.Status,
+                Snapshot = monitorController.Live,
                 CallerPrincipal = peer.PrincipalRef,
                 Roles = peer.SupplementaryClaims
             };
@@ -41,12 +41,12 @@ public static class LinuxIpcDispatcherFactory
         // 2. GetActiveSession
         dispatcher.RegisterHandler("GetActiveSession", (request, peer, ct) =>
         {
-            var activeSessionId = dispatcher.SessionOwnerResolver.GetSessionOwner();
+            var activeSessionId = monitorController.Status.SessionId;
             var result = new
             {
-                SessionId = request.SessionId,
-                State = monitorWorker.Status.ToString(),
-                Owner = activeSessionId,
+                SessionId = activeSessionId,
+                State = monitorController.Status,
+                Owner = dispatcher.SessionOwnerResolver.GetSessionOwner(activeSessionId),
             };
 
             return Task.FromResult(IpcResponseEnvelope.CreateSuccess(
@@ -61,8 +61,8 @@ public static class LinuxIpcDispatcherFactory
             var status = new
             {
                 SessionId = request.SessionId,
-                Status = monitorWorker.Status.ToString(),
-                Live = monitorWorker.Live,
+                Status = monitorController.Status,
+                Live = monitorController.Live,
             };
 
             return Task.FromResult(IpcResponseEnvelope.CreateSuccess(
@@ -72,89 +72,121 @@ public static class LinuxIpcDispatcherFactory
         });
 
         // 4. StartSession
-        dispatcher.RegisterHandler("StartSession", (request, peer, ct) =>
+        dispatcher.RegisterHandler("StartSession", async (request, peer, ct) =>
         {
             var sessionId = !string.IsNullOrWhiteSpace(request.SessionId)
                 ? request.SessionId
-                : Guid.NewGuid().ToString("N");
+                : $"S{DateTimeOffset.UtcNow:yyyyMMddHHmmss}-{Guid.NewGuid():N}"[..31];
 
-            var result = new
+            StartSessionCommandPayload payload;
+            try
             {
-                SessionId = sessionId,
-                Started = true,
-                Owner = peer.PrincipalRef
-            };
+                payload = string.IsNullOrWhiteSpace(request.Payload)
+                    ? new StartSessionCommandPayload()
+                    : JsonSerializer.Deserialize<StartSessionCommandPayload>(request.Payload) ??
+                      throw new JsonException("Prazan payload.");
+            }
+            catch (JsonException ex)
+            {
+                return IpcResponseEnvelope.CreateError(
+                    request.RequestId,
+                    dispatcher.ServiceInstanceId,
+                    IpcResponseStatus.InvalidRequest,
+                    "INVALID_START_PAYLOAD",
+                    $"StartSession payload nije validan: {ex.Message}");
+            }
 
-            return Task.FromResult(IpcResponseEnvelope.CreateSuccess(
-                request.RequestId,
-                dispatcher.ServiceInstanceId,
-                JsonSerializer.Serialize(result)));
+            if (!MonitorSettings.TryParseDuration(payload.Duration, out var duration))
+            {
+                return IpcResponseEnvelope.CreateError(
+                    request.RequestId,
+                    dispatcher.ServiceInstanceId,
+                    IpcResponseStatus.InvalidRequest,
+                    "INVALID_DURATION",
+                    "Trajanje mora biti, na primer, 90m, 48h, 7d ili infinite.");
+            }
+
+            var control = await monitorController.StartSessionAsync(
+                sessionId,
+                duration,
+                payload.InterfaceName,
+                peer.PrincipalRef,
+                ct).ConfigureAwait(false);
+
+            return ToResponse(dispatcher, request, control);
         });
 
         // 5. StopSession
-        dispatcher.RegisterHandler("StopSession", (request, peer, ct) =>
+        dispatcher.RegisterHandler("StopSession", async (request, peer, ct) =>
         {
-            var result = new
-            {
-                SessionId = request.SessionId,
-                Stopped = true,
-                StoppedBy = peer.PrincipalRef
-            };
-
-            return Task.FromResult(IpcResponseEnvelope.CreateSuccess(
-                request.RequestId,
-                dispatcher.ServiceInstanceId,
-                JsonSerializer.Serialize(result)));
+            var control = await monitorController.PauseSessionAsync(request.SessionId, ct).ConfigureAwait(false);
+            return ToResponse(dispatcher, request, control);
         });
 
         // 6. FinalizeSession
-        dispatcher.RegisterHandler("FinalizeSession", (request, peer, ct) =>
+        dispatcher.RegisterHandler("FinalizeSession", async (request, peer, ct) =>
         {
-            var result = new
-            {
-                SessionId = request.SessionId,
-                Finalized = true,
-                FinalizedBy = peer.PrincipalRef
-            };
-
-            return Task.FromResult(IpcResponseEnvelope.CreateSuccess(
-                request.RequestId,
-                dispatcher.ServiceInstanceId,
-                JsonSerializer.Serialize(result)));
+            var control = await monitorController.FinalizeSessionAsync(request.SessionId, ct).ConfigureAwait(false);
+            return ToResponse(dispatcher, request, control);
         });
 
         // 7. RetryTimestamp
         dispatcher.RegisterHandler("RetryTimestamp", (request, peer, ct) =>
         {
-            var result = new
-            {
-                SessionId = request.SessionId,
-                Retried = true,
-                RetriedBy = peer.PrincipalRef
-            };
-
-            return Task.FromResult(IpcResponseEnvelope.CreateSuccess(
+            return Task.FromResult(IpcResponseEnvelope.CreateError(
                 request.RequestId,
                 dispatcher.ServiceInstanceId,
-                JsonSerializer.Serialize(result)));
+                IpcResponseStatus.Rejected,
+                "TIMESTAMP_RETRY_NOT_AVAILABLE",
+                "Ponovni vremenski pečat još nije dostupan u ovoj verziji."));
         });
 
         // 8. CreateExport
         dispatcher.RegisterHandler("CreateExport", (request, peer, ct) =>
         {
-            var result = new
-            {
-                SessionId = request.SessionId,
-                ExportCreated = true,
-                ExportedBy = peer.PrincipalRef
-            };
-
-            return Task.FromResult(IpcResponseEnvelope.CreateSuccess(
+            return Task.FromResult(IpcResponseEnvelope.CreateError(
                 request.RequestId,
                 dispatcher.ServiceInstanceId,
-                JsonSerializer.Serialize(result)));
+                IpcResponseStatus.Rejected,
+                "EXPORT_NOT_AVAILABLE",
+                "Izvoz preko servisnog IPC-a još nije dostupan u ovoj verziji."));
         });
 
         return dispatcher;
+    }
+
+    private static IpcResponseEnvelope ToResponse(
+        IpcCommandDispatcher dispatcher,
+        IpcRequestEnvelope request,
+        SessionControlResult result)
+    {
+        if (result.Accepted)
+        {
+            return IpcResponseEnvelope.CreateSuccess(
+                request.RequestId,
+                dispatcher.ServiceInstanceId,
+                JsonSerializer.Serialize(new
+                {
+                    result.SessionId,
+                    Accepted = true,
+                    result.Message,
+                }),
+                result.SessionId);
+        }
+
+        var (status, code) = result.Outcome switch
+        {
+            SessionControlOutcome.Conflict => (IpcResponseStatus.Conflict, "SESSION_CONFLICT"),
+            SessionControlOutcome.NotFound => (IpcResponseStatus.NotFound, "SESSION_NOT_FOUND"),
+            SessionControlOutcome.InvalidRequest => (IpcResponseStatus.InvalidRequest, "INVALID_SESSION_REQUEST"),
+            _ => (IpcResponseStatus.InternalError, "UNEXPECTED_CONTROL_OUTCOME"),
+        };
+
+        return IpcResponseEnvelope.CreateError(
+            request.RequestId,
+            dispatcher.ServiceInstanceId,
+            status,
+            code,
+            result.Message);
     }
 }

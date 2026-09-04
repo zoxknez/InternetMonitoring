@@ -233,9 +233,11 @@ public sealed class IpcCommandDispatcher
                 // If StartSession succeeded, record the caller's PrincipalRef as authoritative immutable session owner
                 if (request.CommandName == "StartSession" && response.Status == IpcResponseStatus.Success)
                 {
-                    var sessionId = !string.IsNullOrWhiteSpace(request.SessionId)
-                        ? request.SessionId
-                        : Guid.NewGuid().ToString("N");
+                    var sessionId = !string.IsNullOrWhiteSpace(response.SessionId)
+                        ? response.SessionId
+                        : !string.IsNullOrWhiteSpace(request.SessionId)
+                            ? request.SessionId
+                            : Guid.NewGuid().ToString("N");
 
                     _sessionOwnerResolver.RecordSessionOwner(sessionId, peerIdentity.PrincipalRef);
                 }

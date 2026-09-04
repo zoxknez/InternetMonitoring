@@ -39,16 +39,18 @@ try
     // Runtime engine workers reuse from IEM.Service.Runtime
     builder.Services.Configure<MonitorSettings>(builder.Configuration.GetSection(MonitorSettings.SectionName));
     builder.Services.AddSingleton<MonitorWorker>();
+    builder.Services.AddSingleton<IMonitorSessionController>(provider => provider.GetRequiredService<MonitorWorker>());
     builder.Services.AddHostedService(provider => provider.GetRequiredService<MonitorWorker>());
     builder.Services.AddSingleton<SpeedWorker>();
+    builder.Services.AddSingleton<ISpeedStatusSource>(provider => provider.GetRequiredService<SpeedWorker>());
     builder.Services.AddHostedService(provider => provider.GetRequiredService<SpeedWorker>());
 
     // Unix IPC Transport & Command Dispatcher (§11 / Phase 3.1-3)
-    builder.Services.AddSingleton<ISessionOwnerResolver, InMemorySessionOwnerResolver>();
+    builder.Services.AddSingleton<ISessionOwnerResolver, SessionRequestOwnerResolver>();
     builder.Services.AddSingleton<IIpcTransport, LinuxUnixDomainSocketTransport>();
     builder.Services.AddSingleton<IpcCommandDispatcher>(sp => LinuxIpcDispatcherFactory.Create(
-        sp.GetRequiredService<MonitorWorker>(),
-        sp.GetRequiredService<SpeedWorker>(),
+        sp.GetRequiredService<IMonitorSessionController>(),
+        sp.GetRequiredService<ISpeedStatusSource>(),
         sp.GetRequiredService<ISessionOwnerResolver>()));
     builder.Services.AddHostedService<LinuxIpcHostedService>();
 

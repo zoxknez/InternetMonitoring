@@ -80,13 +80,26 @@ public sealed record IpcResponseEnvelope
     [JsonPropertyName("serviceInstanceId")]
     public string ServiceInstanceId { get; init; } = string.Empty;
 
-    public static IpcResponseEnvelope CreateSuccess(string requestId, string serviceInstanceId, string? payload = null) =>
+    /// <summary>
+    /// Authoritative session identifier resolved by the service. This is populated for
+    /// session-affecting commands so authorization state never has to infer an identifier
+    /// from an opaque JSON payload.
+    /// </summary>
+    [JsonPropertyName("sessionId")]
+    public string? SessionId { get; init; }
+
+    public static IpcResponseEnvelope CreateSuccess(
+        string requestId,
+        string serviceInstanceId,
+        string? payload = null,
+        string? sessionId = null) =>
         new()
         {
             RequestId = requestId,
             Status = IpcResponseStatus.Success,
             Payload = payload,
             ServiceInstanceId = serviceInstanceId,
+            SessionId = sessionId,
         };
 
     public static IpcResponseEnvelope CreateError(string requestId, string serviceInstanceId, IpcResponseStatus status, string errorCode, string errorMessage) =>

@@ -1,5 +1,6 @@
 namespace IEM.Presentation.Contracts;
 
+using IEM.Core;
 using IEM.Core.Presentation;
 
 /// <summary>
@@ -16,4 +17,5 @@ public sealed record ShellProjectionInput(
     HistoryPresentationState History,
     UpdatePresentationState Update,
     CaseWorkspaceState CaseWorkspace,
-    SpeedExecutionFacts SpeedFacts);
+    SpeedExecutionFacts SpeedFacts,
+    MonitorSnapshot? LiveSnapshot = null);

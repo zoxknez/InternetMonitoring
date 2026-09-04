@@ -1,4 +1,4 @@
-using System.IO.Pipes;
+﻿using System.IO.Pipes;
 using System.Runtime.Versioning;
 using System.Security.AccessControl;
 using System.Security.Principal;
@@ -71,7 +71,7 @@ public sealed class StatusPipeServer(
     /// </para>
     /// </param>
     [SupportedOSPlatform("windows")]
-    private async Task ListenAsync(bool ownsSecurity, CancellationToken stoppingToken)
+    internal async Task ListenAsync(bool ownsSecurity, CancellationToken stoppingToken)
     {
         if (!ownsSecurity)
         {
@@ -79,7 +79,14 @@ public sealed class StatusPipeServer(
             // pipe without a descriptor, and the person whose connection is being measured
             // could then not read their own status - a failure that looks like the service
             // being down and would depend on which task happened to start first.
-            await _securityEstablished.Task.WaitAsync(stoppingToken).ConfigureAwait(false);
+            try
+            {
+                await _securityEstablished.Task.WaitAsync(stoppingToken).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                return;
+            }
         }
 
         while (!stoppingToken.IsCancellationRequested)
