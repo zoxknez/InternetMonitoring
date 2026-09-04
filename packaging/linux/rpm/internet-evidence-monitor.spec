@@ -31,6 +31,7 @@ cp -a %{_builddir}/iem-payload/. %{buildroot}/
 
 %pre
 getent group iem-users >/dev/null || groupadd --system iem-users
+getent group iem-admin >/dev/null || groupadd --system iem-admin
 getent group iem >/dev/null || groupadd --system iem
 getent passwd iem >/dev/null || useradd --system --gid iem --groups iem-users \
     --home-dir /var/lib/internet-evidence-monitor --shell /usr/sbin/nologin iem
@@ -38,15 +39,34 @@ exit 0
 
 %post
 %systemd_post internet-evidence-monitor.service
+IEM_GID="$(getent group iem | cut -d: -f3)"
+if [ -n "${IEM_GID}" ]; then
+    cat > /etc/sysctl.d/99-internet-evidence-monitor.conf <<EOF
+# Managed by internet-evidence-monitor (rpm %post). Do not edit.
+# Lets the iem service account open unprivileged ICMP datagram sockets
+# without CAP_NET_RAW.
+net.ipv4.ping_group_range = ${IEM_GID} ${IEM_GID}
+EOF
+    chmod 0644 /etc/sysctl.d/99-internet-evidence-monitor.conf
+    if [ -d /run/systemd/system ] && command -v sysctl >/dev/null 2>&1; then
+        sysctl --quiet -p /etc/sysctl.d/99-internet-evidence-monitor.conf || true
+    fi
+fi
 
 %preun
 %systemd_preun internet-evidence-monitor.service
 
 %postun
 %systemd_postun_with_restart internet-evidence-monitor.service
+if [ "$1" = "0" ]; then
+    # Full uninstall: the sysctl drop-in is ours. Evidence in /var/lib and the
+    # iem / iem-users / iem-admin accounts are deliberately kept.
+    rm -f /etc/sysctl.d/99-internet-evidence-monitor.conf
+fi
 
 %files
 %license /usr/share/doc/internet-evidence-monitor/copyright
+/usr/share/doc/internet-evidence-monitor/sbom.json
 /usr/bin/internet-evidence-monitor
 /usr/lib/internet-evidence-monitor/
 /usr/share/applications/internet-evidence-monitor.desktop

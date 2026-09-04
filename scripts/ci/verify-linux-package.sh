@@ -43,8 +43,9 @@ UNIT="${PAYLOAD_ROOT}/usr/lib/systemd/system/internet-evidence-monitor.service"
 DESKTOP="${PAYLOAD_ROOT}/usr/share/applications/internet-evidence-monitor.desktop"
 ICON="${PAYLOAD_ROOT}/usr/share/icons/hicolor/scalable/apps/internet-evidence-monitor.svg"
 LICENSE_FILE="${PAYLOAD_ROOT}/usr/share/doc/internet-evidence-monitor/copyright"
+SBOM="${PAYLOAD_ROOT}/usr/share/doc/internet-evidence-monitor/sbom.json"
 
-for required in "${APP}" "${SERVICE}" "${LAUNCHER}" "${UNIT}" "${DESKTOP}" "${ICON}" "${LICENSE_FILE}"; do
+for required in "${APP}" "${SERVICE}" "${LAUNCHER}" "${UNIT}" "${DESKTOP}" "${ICON}" "${LICENSE_FILE}" "${SBOM}"; do
     if [ ! -f "${required}" ]; then
         echo "Required package path is missing: ${required#${PAYLOAD_ROOT}}" >&2
         exit 1
@@ -110,6 +111,31 @@ for maintainer_script in postinst prerm postrm; do
     fi
     dash -n "${CONTROL_ROOT}/${maintainer_script}"
 done
+
+# The postinst must provision all three canonical groups and the unprivileged-ICMP tunable.
+for token in 'iem-users' 'iem-admin' 'ping_group_range'; do
+    if ! grep -q "${token}" "${CONTROL_ROOT}/postinst"; then
+        echo "postinst does not reference required token: ${token}" >&2
+        exit 1
+    fi
+done
+if ! grep -q 'sysctl.d/99-internet-evidence-monitor.conf' "${CONTROL_ROOT}/postrm"; then
+    echo "postrm does not clean up the sysctl drop-in on purge." >&2
+    exit 1
+fi
+
+# SBOM: IEM-SBOM-1, generated from this payload.
+if command -v python3 >/dev/null 2>&1; then
+    python3 - "${SBOM}" <<'PY'
+import json, sys
+doc = json.load(open(sys.argv[1], encoding="utf-8"))
+assert doc.get("SbomFormat") == "IEM-SBOM-1", doc.get("SbomFormat")
+assert doc.get("ComponentCount", 0) == len(doc.get("Components", [])), "component count mismatch"
+assert any(c["PackageType"] == "payload-file" for c in doc["Components"]), "no payload files in SBOM"
+assert any(c["PackageType"] == "nuget" for c in doc["Components"]), "no nuget components in SBOM"
+print(f"SBOM OK: {doc['ComponentCount']} components")
+PY
+fi
 
 if command -v desktop-file-validate >/dev/null 2>&1; then
     desktop-file-validate "${DESKTOP}"

@@ -84,6 +84,16 @@ find "${STAGE_ROOT}/usr/lib/internet-evidence-monitor" -type f \
 find "${STAGE_ROOT}/usr/lib/internet-evidence-monitor" -type f -name 'createdump' \
     -exec chmod 0755 {} +
 
+# SBOM over the staged payload - the exact bytes that ship (invariants 200, 201).
+python3 "${ROOT_DIR}/scripts/ci/generate-linux-sbom.py" \
+    --repo-root "${ROOT_DIR}" \
+    --payload-root "${STAGE_ROOT}/usr/lib/internet-evidence-monitor" \
+    --version "${VERSION}" \
+    --rid "${RID}" \
+    --output "${STAGE_ROOT}/usr/share/doc/internet-evidence-monitor/sbom.json"
+install -m 0644 "${STAGE_ROOT}/usr/share/doc/internet-evidence-monitor/sbom.json" \
+    "${PACKAGE_ROOT}/sbom-${RID}.json"
+
 PORTABLE_NAME="MonitorInternetDokaza-${VERSION}-${RID}-portable.tar.gz"
 tar -C "${PUBLISH_ROOT}/app" -czf "${PACKAGE_ROOT}/${PORTABLE_NAME}" .
 

@@ -1,8 +1,14 @@
 #!/bin/sh
 set -e
 
+SYSCTL_DROPIN=/etc/sysctl.d/99-internet-evidence-monitor.conf
+
 if ! getent group iem-users >/dev/null 2>&1; then
     addgroup --system iem-users
+fi
+
+if ! getent group iem-admin >/dev/null 2>&1; then
+    addgroup --system iem-admin
 fi
 
 if ! getent group iem >/dev/null 2>&1; then
@@ -19,6 +25,23 @@ usermod -a -G iem-users iem
 if [ -n "${SUDO_USER:-}" ] && [ "${SUDO_USER}" != "root" ] && id "${SUDO_USER}" >/dev/null 2>&1; then
     usermod -a -G iem-users "${SUDO_USER}"
     echo "Korisnik ${SUDO_USER} je dodat u iem-users; odjavite se i prijavite ponovo."
+fi
+
+# Unprivileged ICMP datagram sockets for the iem group, with the GID resolved on this
+# system (Debian/RPM allocate system GIDs dynamically). Not CAP_NET_RAW - see roadmap 4.5.
+IEM_GID="$(getent group iem | cut -d: -f3)"
+if [ -n "${IEM_GID}" ]; then
+    DROPIN_BODY="# Managed by internet-evidence-monitor (postinst). Do not edit.
+# Lets the iem service account open unprivileged ICMP datagram sockets
+# (socket(AF_INET, SOCK_DGRAM, IPPROTO_ICMP)) without CAP_NET_RAW.
+net.ipv4.ping_group_range = ${IEM_GID} ${IEM_GID}"
+    if [ ! -f "${SYSCTL_DROPIN}" ] || [ "$(cat "${SYSCTL_DROPIN}" 2>/dev/null)" != "${DROPIN_BODY}" ]; then
+        printf '%s\n' "${DROPIN_BODY}" > "${SYSCTL_DROPIN}"
+        chmod 0644 "${SYSCTL_DROPIN}"
+    fi
+    if [ -d /run/systemd/system ] && command -v sysctl >/dev/null 2>&1; then
+        sysctl --quiet -p "${SYSCTL_DROPIN}" || true
+    fi
 fi
 
 if [ -d /run/systemd/system ]; then

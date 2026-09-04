@@ -5,6 +5,13 @@ if [ -d /run/systemd/system ]; then
     systemctl daemon-reload || true
 fi
 
-# /var/lib/internet-evidence-monitor intentionally remains in place: uninstalling the
-# program must not silently delete evidence. Accounts are retained for the same reason.
+if [ "$1" = "purge" ]; then
+    # The sysctl drop-in is ours to remove on purge; the tunable reverts on the next boot
+    # or an explicit `sysctl --system`.
+    rm -f /etc/sysctl.d/99-internet-evidence-monitor.conf
+fi
+
+# /var/lib/internet-evidence-monitor intentionally remains in place, even on purge:
+# uninstalling the program must not silently delete evidence. The iem / iem-users /
+# iem-admin accounts are retained for the same reason.
 exit 0
