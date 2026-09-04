@@ -1,6 +1,7 @@
 # Internet Evidence Monitor 3.1 — Linux Master Architecture & Implementation Plan
 
-> **Status:** Planned / 3.1-0 adapter inventory locked 2026-08-19  
+> **Status (2026-08-24):** Implementirano kroz 3.1-9; sledeća faza je 3.1-10 · Avalonia Linux UI. Faze 3.1-10 do 3.1-15 ostaju planirane.
+> **Napomena o verifikaciji:** lokalna puna test-verifikacija čeka striktno pinovani .NET SDK `10.0.111` (trenutno dostupan SDK je `10.0.101`).
 > **Base release:** Internet Evidence Monitor `3.0.0-rc1`  
 > **Scope:** Linux enablement + Windows/Linux semantic parity  
 > **Principle:** **One Evidence Engine — Multiple Platform Adapters**  
@@ -4741,23 +4742,15 @@ Canonical serialization
 
 # 44. Preporučeni sledeći korak
 
-Dok `3.0.0-rc1` paralelno ide kroz završnu Windows validaciju:
-
 ```text
-START:
-3.1-0 · Linux Portability Baseline
+NEXT:
+3.1-10 · Avalonia Linux UI
 ```
 
-Bez feature developmenta i bez promene kanonske semantike.
-
-Prvi konkretni output 3.1 ciklusa treba da bude:
-
-1. Windows → Linux adapter inventar — **zaključan u §4**,
-2. platform contract matrix — **zaključana u §4.2 / §4.3 / §15A**,
-3. characterization/parity test plan (prvi konkretan kodni rad unutar 3.1-0),
-4. Linux threat model draft (§34, proširiti socket/symlink/key/portable),
-5. draft architecture tests,
-6. invarijante 211–282 su u masteru; 3.1-0 ih pretvara u testove, ne redefiniše.
+Pre početka pakovanja i release acceptance-a izgraditi `IEM.App.Linux` nad već izdvojenim
+`IEM.Presentation` slojem. UI mora podržati MONITOR, EVIDENCE, CASE i SPEED tokove, a njegov
+gubitak ne sme uticati na merenje u `SystemService` modu. Zatim slede 3.1-11 do 3.1-15:
+pakovanje, parity katalog, lifecycle/release acceptance i `3.1.0-rc1` freeze.
 
 ---
 
@@ -4826,17 +4819,8 @@ IEM 3.0.0-rc1
         │
         └── IEM 3.1 Linux branch
                 │
-                ├── 3.1-0
-                ├── 3.1-1
-                ├── 3.1-2
-                ├── 3.1-3
-                ├── 3.1-4
-                ├── 3.1-5
-                ├── 3.1-6
-                ├── 3.1-7
-                ├── 3.1-8
-                ├── 3.1-9
-                ├── 3.1-10
+                ├── 3.1-0 .. 3.1-9  [implementirano]
+                ├── 3.1-10           [sledeće: Avalonia Linux UI]
                 ├── 3.1-11
                 ├── 3.1-12
                 ├── 3.1-13
