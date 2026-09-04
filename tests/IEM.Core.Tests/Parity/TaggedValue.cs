@@ -54,7 +54,7 @@ public sealed record TaggedValue(TaggedValueTag Tag, JsonElement? Value = null, 
     /// </summary>
     public static TaggedValue Parse(JsonElement parent, string propertyName)
     {
-        if (!parent.TryGetProperty(propertyName, out var element))
+        if (parent.ValueKind != JsonValueKind.Object || !parent.TryGetProperty(propertyName, out var element))
         {
             return new TaggedValue(TaggedValueTag.Absent);
         }
