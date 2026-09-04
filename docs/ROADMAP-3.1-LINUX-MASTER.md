@@ -1,7 +1,7 @@
 # Internet Evidence Monitor 3.1 — Linux Master Architecture & Implementation Plan
 
-> **Status (2026-08-24):** Implementirano kroz 3.1-9; sledeća faza je 3.1-10 · Avalonia Linux UI. Faze 3.1-10 do 3.1-15 ostaju planirane.
-> **Napomena o verifikaciji:** lokalna puna test-verifikacija čeka striktno pinovani .NET SDK `10.0.111` (trenutno dostupan SDK je `10.0.101`).
+> **Status (2026-09-04):** 3.1-0..3.1-9 implementirano. 3.1-10 (Avalonia shell + crash-isolation gate testovi) i 3.1-11 (`.deb`/`.rpm`, `iem-admin`, `ping_group_range` drop-in, SBOM) su na `main`; UI polish (Wayland/HiDPI/a11y/multi-monitor) ostaje otvoren u 3.1-10. 3.1-12 (cross-platform parity) u toku: fixture format + tagged-value parser + linter su sleteli, projekcija/CanonicalParityView/ParityDiffer/katalog slede. 3.1-13..3.1-15 planirani.
+> **Napomena o verifikaciji:** .NET SDK `10.0.111` je pinovan u `global.json` i lokalno prisutan; puna test-verifikacija se izvršava.
 > **Base release:** Internet Evidence Monitor `3.0.0-rc1`  
 > **Scope:** Linux enablement + Windows/Linux semantic parity  
 > **Principle:** **One Evidence Engine — Multiple Platform Adapters**  
