@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="Monitor internet dokaza">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#155EEF"/>
+      <stop offset="1" stop-color="#0B4BCC"/>
+    </linearGradient>
+  </defs>
+  <rect width="256" height="256" rx="54" fill="url(#g)"/>
+  <path d="M48 155h31l17-58 28 94 22-72 13 36h49" fill="none" stroke="#fff" stroke-width="15" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="128" cy="128" r="91" fill="none" stroke="#BFD3FF" stroke-width="8" opacity=".75"/>
+</svg>

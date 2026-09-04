@@ -1,0 +1,29 @@
+#!/bin/sh
+set -e
+
+if ! getent group iem-users >/dev/null 2>&1; then
+    addgroup --system iem-users
+fi
+
+if ! getent group iem >/dev/null 2>&1; then
+    addgroup --system iem
+fi
+
+if ! getent passwd iem >/dev/null 2>&1; then
+    adduser --system --ingroup iem --home /var/lib/internet-evidence-monitor \
+        --no-create-home --shell /usr/sbin/nologin iem
+fi
+
+usermod -a -G iem-users iem
+
+if [ -n "${SUDO_USER:-}" ] && [ "${SUDO_USER}" != "root" ] && id "${SUDO_USER}" >/dev/null 2>&1; then
+    usermod -a -G iem-users "${SUDO_USER}"
+    echo "Korisnik ${SUDO_USER} je dodat u iem-users; odjavite se i prijavite ponovo."
+fi
+
+if [ -d /run/systemd/system ]; then
+    systemctl daemon-reload
+    systemctl enable --now internet-evidence-monitor.service || true
+fi
+
+exit 0

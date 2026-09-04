@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Monitor internet dokaza
+GenericName=Nadzor internet veze
+Comment=Beleži prekide veze i pravi proverljiv dokazni paket
+Exec=internet-evidence-monitor
+Icon=internet-evidence-monitor
+Terminal=false
+StartupNotify=true
+StartupWMClass=IEM.App.Linux
+Categories=Network;
+Keywords=internet;mreža;nadzor;dokaz;prekid;RATEL;

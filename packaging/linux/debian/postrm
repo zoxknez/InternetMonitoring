@@ -1,0 +1,10 @@
+#!/bin/sh
+set -e
+
+if [ -d /run/systemd/system ]; then
+    systemctl daemon-reload || true
+fi
+
+# /var/lib/internet-evidence-monitor intentionally remains in place: uninstalling the
+# program must not silently delete evidence. Accounts are retained for the same reason.
+exit 0
