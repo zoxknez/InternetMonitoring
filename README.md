@@ -29,7 +29,7 @@ i kada interneta nema - to mu je i svrha.
 Primer izveštaja: [PDF](docs/primer-izvestaja.pdf) &middot; [HTML](docs/primer-izvestaja.html).
 Pravila koja program ne sme da prekrši: [docs/INVARIJANTE.md](docs/INVARIJANTE.md).
 Mapa puta i specifikacija verzije 3.0: [docs/ROADMAP-3.0.md](docs/ROADMAP-3.0.md).
-Plan budućih ciklusa: [docs/ROADMAP-3.1.md](docs/ROADMAP-3.1.md).
+Plan budućih ciklusa: [docs/ROADMAP-3.1-LINUX-MASTER.md](docs/ROADMAP-3.1-LINUX-MASTER.md).
 
 ![Nadzor uživo](docs/ui-nadzor.png)
 
@@ -350,8 +350,8 @@ src/
   IEM.App/           grafički interfejs, tray ikona, grafikoni
   IEM.Cli/           konzolni pokretač
 tests/
-  IEM.Core.Tests/    472 testa, bez mreže, bez Windows-a, deterministički
-  IEM.App.Tests/     20 testova ponašanja prozora, sa lažnim hostom
+  IEM.Core.Tests/    1494 testa, bez mreže, bez Windows-a, deterministički
+  IEM.App.Tests/     79 testova ponašanja prozora, sa lažnim hostom
 legacy/
   InternetEvidenceMonitor.ps1   PowerShell verzija 1.0
 ```
@@ -483,7 +483,7 @@ ovog programa neko će poslati svom operateru; sve u kodu služi tome da taj dok
 
 | | |
 |---|---|
-| **Verzija** | 2.8.0-beta.4 · beta izdanje, otvoreno za testiranje |
+| **Verzija** | 3.0.1-rc1 · release candidate |
 | **Autor** | **o0o0o0o** ([GitHub](https://github.com/zoxknez)) |
 | **Licenca** | [MIT](LICENSE) |
 | **Platforma** | Windows 10/11, x64 i ARM64. Ne traži instaliran .NET - objavljene arhive nose svoj runtime. |
