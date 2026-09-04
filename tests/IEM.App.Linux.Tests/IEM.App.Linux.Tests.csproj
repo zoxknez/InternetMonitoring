@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!--
+      Platform-neutral TFM so the Linux CI lane runs it. What is under test is the Avalonia
+      shell's own behaviour - which host it drives, and that driving it never reaches into
+      measurement - so it stays out of IEM.Core.Tests, which must not pull in a UI stack.
+    -->
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="coverlet.collector" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\IEM.App.Linux\IEM.App.Linux.csproj" />
+    <ProjectReference Include="..\..\src\IEM.Core\IEM.Core.csproj" />
+    <ProjectReference Include="..\..\src\IEM.Service.Runtime\IEM.Service.Runtime.csproj" />
+    <ProjectReference Include="..\..\src\IEM.Presentation\IEM.Presentation.csproj" />
+  </ItemGroup>
+
+</Project>

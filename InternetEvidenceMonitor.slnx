@@ -17,6 +17,7 @@
   </Folder>
 
   <Folder Name="/tests/">
+    <Project Path="tests/IEM.App.Linux.Tests/IEM.App.Linux.Tests.csproj" />
     <Project Path="tests/IEM.App.Tests/IEM.App.Tests.csproj" />
     <Project Path="tests/IEM.Core.Tests/IEM.Core.Tests.csproj" />
   </Folder>

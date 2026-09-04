@@ -19,6 +19,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="IEM.App.Linux.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\IEM.Core\IEM.Core.csproj" />
     <ProjectReference Include="..\IEM.Evidence\IEM.Evidence.csproj" />
     <ProjectReference Include="..\IEM.Linux\IEM.Linux.csproj" />

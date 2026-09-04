@@ -70,14 +70,18 @@ jobs:
           dotnet restore src/IEM.App.Linux/IEM.App.Linux.csproj -p:VerifyLockedDependencies=true --nologo
           dotnet restore src/IEM.Service.Linux/IEM.Service.Linux.csproj -p:VerifyLockedDependencies=true --nologo
           dotnet restore tests/IEM.Core.Tests/IEM.Core.Tests.csproj -p:VerifyLockedDependencies=true --nologo
+          dotnet restore tests/IEM.App.Linux.Tests/IEM.App.Linux.Tests.csproj -p:VerifyLockedDependencies=true --nologo
 
       - name: Linux gradnja
         run: |
           dotnet build src/IEM.App.Linux/IEM.App.Linux.csproj -c Release --no-restore --nologo
           dotnet build src/IEM.Service.Linux/IEM.Service.Linux.csproj -c Release --no-restore --nologo
+          dotnet build tests/IEM.App.Linux.Tests/IEM.App.Linux.Tests.csproj -c Release --no-restore --nologo
 
       - name: Deljeni i Linux testovi
-        run: dotnet test tests/IEM.Core.Tests/IEM.Core.Tests.csproj -c Release --no-restore --nologo
+        run: |
+          dotnet test tests/IEM.Core.Tests/IEM.Core.Tests.csproj -c Release --no-restore --nologo
+          dotnet test tests/IEM.App.Linux.Tests/IEM.App.Linux.Tests.csproj -c Release --no-restore --nologo
 
       - name: Napravi i proveri linux-x64 paket
         run: |
