@@ -97,10 +97,17 @@ public static class ParityProjection
         results.Add(Probe(ProbeKind.Http, ProbeScope.External, "http://connectivitycheck/", Reaches(internetReachable), path));
         AddDns(results, internetReachable, path);
 
+        var monotonic = tick.TryGetProperty("monotonicMs", out var monotonicElement)
+            ? TimeSpan.FromMilliseconds(monotonicElement.GetInt64())
+            : TimeSpan.FromSeconds(seq);
+        var wall = tick.TryGetProperty("wallUtc", out var wallElement)
+            ? DateTimeOffset.Parse(wallElement.GetString()!, System.Globalization.CultureInfo.InvariantCulture)
+            : new DateTimeOffset(2026, 8, 19, 10, 0, 0, TimeSpan.Zero).Add(monotonic);
+
         return new ProbeCycle(
             seq,
-            new DateTimeOffset(2026, 8, 19, 10, 0, 0, TimeSpan.Zero).AddSeconds(seq),
-            MonotonicTicks: seq * TimeSpan.TicksPerSecond,
+            wall,
+            MonotonicTicks: monotonic.Ticks,
             snapshot,
             results,
             TimeSpan.FromMilliseconds(12));
@@ -110,6 +117,20 @@ public static class ParityProjection
     {
         var radioOn = ToNullableBool(TaggedValue.Parse(platformTick, "radioOn"));
         var ssidVisible = ToNullableBool(TaggedValue.Parse(platformTick, "ssidVisibleInScan"));
+
+        // A negative scan observation is only evidence while the cache is fresh and complete.
+        // Positive sightings survive a partial dump; absence does not (roadmap 25.6).
+        if (ssidVisible == false && platformTick.TryGetProperty("scan", out var scan))
+        {
+            var complete = scan.TryGetProperty("completeness", out var completeness) &&
+                completeness.GetString() == "Complete";
+            var fresh = scan.TryGetProperty("ageMs", out var age) &&
+                age.ValueKind == JsonValueKind.Number && age.GetInt64() <= 180_000;
+            if (!complete || !fresh)
+            {
+                ssidVisible = null;
+            }
+        }
 
         return new WirelessSnapshot("ParityNet", "AA:BB:CC:DD:EE:FF", 80, 36)
         {

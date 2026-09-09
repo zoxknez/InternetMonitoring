@@ -73,8 +73,52 @@ public static class ParityDiffer
             CompareSample(index, windows.Samples[index], linux.Samples[index], fixture, lines);
         }
 
+        CompareIncidents(windows.Incidents, linux.Incidents, fixture, lines);
+        Compare("$.sessionVerdictKind", windows.SessionVerdictKind, linux.SessionVerdictKind, fixture, lines);
+        Compare("$.claims.supportsComplaint", windows.Claims.SupportsComplaint, linux.Claims.SupportsComplaint, fixture, lines);
+        Compare("$.claims.namesOperatorAsFault", windows.Claims.NamesOperatorAsFault, linux.Claims.NamesOperatorAsFault, fixture, lines);
+        Compare("$.claims.wifiRadioBlamed", windows.Claims.WifiRadioBlamed, linux.Claims.WifiRadioBlamed, fixture, lines);
+
         return new ParityDiffResult(lines);
     }
+
+    private static void CompareIncidents(
+        IReadOnlyList<CanonicalIncidentView> windows,
+        IReadOnlyList<CanonicalIncidentView> linux,
+        ParityFixture fixture,
+        List<ParityDiffLine> lines)
+    {
+        var count = Math.Max(windows.Count, linux.Count);
+        for (var index = 0; index < count; index++)
+        {
+            if (index >= windows.Count || index >= linux.Count)
+            {
+                lines.Add(new ParityDiffLine(
+                    $"$.incidents[{index}]",
+                    index < windows.Count ? "present" : "absent",
+                    index < linux.Count ? "present" : "absent",
+                    ParityVerdict.Forbidden,
+                    "incident count differs between platforms"));
+                continue;
+            }
+
+            Compare($"$.incidents[{index}].index", windows[index].Index, linux[index].Index, fixture, lines);
+            Compare($"$.incidents[{index}].worstState", windows[index].WorstState, linux[index].WorstState, fixture, lines);
+            Compare($"$.incidents[{index}].monotonic.firstBadMs", windows[index].Monotonic.FirstBadMs, linux[index].Monotonic.FirstBadMs, fixture, lines);
+            Compare($"$.incidents[{index}].monotonic.lastBadMs", windows[index].Monotonic.LastBadMs, linux[index].Monotonic.LastBadMs, fixture, lines);
+            CompareNullable($"$.incidents[{index}].monotonic.firstGoodMs", windows[index].Monotonic.FirstGoodMs, linux[index].Monotonic.FirstGoodMs, fixture, lines);
+            Compare($"$.incidents[{index}].endedByGap", windows[index].EndedByGap, linux[index].EndedByGap, fixture, lines);
+            Compare($"$.incidents[{index}].routeChanged", windows[index].RouteChanged, linux[index].RouteChanged, fixture, lines);
+        }
+    }
+
+    private static void CompareNullable(
+        string path,
+        long? windows,
+        long? linux,
+        ParityFixture fixture,
+        List<ParityDiffLine> lines) =>
+        Compare(path, windows?.ToString() ?? "null", linux?.ToString() ?? "null", fixture, lines);
 
     private static void CompareSample(
         int index,

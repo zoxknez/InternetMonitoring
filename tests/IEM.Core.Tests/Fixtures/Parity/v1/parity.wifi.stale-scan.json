@@ -1,0 +1,35 @@
+{
+  "parityFixtureVersion": 1,
+  "fixtureId": "parity.wifi.stale-scan",
+  "scenario": "Adapter is down and an old complete scan no longer sees the SSID",
+  "intent": "A stale negative scan becomes unknown, so neither platform may claim WifiRadioDown",
+  "kind": "symmetric",
+  "tags": ["wifi", "scan", "freshness"],
+  "semanticInput": {
+    "session": { "plannedDuration": "PT2M", "medium": "Wireless" },
+    "ticks": [
+      {
+        "seq": 1,
+        "monotonicMs": 0,
+        "link": { "status": "Down", "hasGateway": false, "medium": "Wireless" },
+        "world": {
+          "gatewayReachable": { "t": "v", "v": false },
+          "internetReachable": { "t": "v", "v": false },
+          "radioSwitch": { "t": "v", "v": "on" },
+          "ssidOnAir": { "t": "v", "v": false }
+        }
+      }
+    ]
+  },
+  "platformFacts": {
+    "windows": { "ticks": [ { "seq": 1, "radioOn": { "t": "v", "v": true }, "ssidVisibleInScan": { "t": "v", "v": false }, "scan": { "completeness": "Complete", "ageMs": 180001 }, "path": { "resolved": { "t": "v", "v": false } } } ] },
+    "linux": { "ticks": [ { "seq": 1, "radioOn": { "t": "v", "v": true }, "ssidVisibleInScan": { "t": "v", "v": false }, "scan": { "completeness": "Complete", "ageMs": 180001 }, "path": { "resolved": { "t": "v", "v": false } } } ] }
+  },
+  "expectedCanonicalOutput": {
+    "samples": [ { "seq": 1, "networkState": "AdapterDown", "isOutage": true } ],
+    "sessionVerdictKind": "LocalFault",
+    "claims": { "supportsComplaint": false, "namesOperatorAsFault": false, "wifiRadioBlamed": false }
+  },
+  "allowedDivergences": [],
+  "pathWhitelist": []
+}

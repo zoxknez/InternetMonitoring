@@ -1,0 +1,34 @@
+{
+  "parityFixtureVersion": 1,
+  "fixtureId": "parity.adversarial.null-as-ssid-gone",
+  "scenario": "The adapter is down while SSID visibility cannot be established",
+  "intent": "A null observation must not be converted to SSID absent or WifiRadioDown",
+  "kind": "adversarial",
+  "tags": ["wifi", "unknown", "adversarial"],
+  "semanticInput": {
+    "session": { "plannedDuration": "PT2M", "medium": "Wireless" },
+    "ticks": [
+      {
+        "seq": 1,
+        "link": { "status": "Down", "hasGateway": false, "medium": "Wireless" },
+        "world": {
+          "gatewayReachable": { "t": "v", "v": false },
+          "internetReachable": { "t": "v", "v": false },
+          "radioSwitch": { "t": "v", "v": "on" },
+          "ssidOnAir": { "t": "unknown" }
+        }
+      }
+    ]
+  },
+  "platformFacts": {
+    "windows": { "ticks": [ { "seq": 1, "radioOn": { "t": "v", "v": true }, "ssidVisibleInScan": { "t": "null" }, "path": { "resolved": { "t": "v", "v": false } } } ] },
+    "linux": { "ticks": [ { "seq": 1, "radioOn": { "t": "v", "v": true }, "ssidVisibleInScan": { "t": "null" }, "path": { "resolved": { "t": "v", "v": false } } } ] }
+  },
+  "expectedCanonicalOutput": {
+    "samples": [ { "seq": 1, "networkState": "AdapterDown", "isOutage": true } ],
+    "sessionVerdictKind": "LocalFault",
+    "claims": { "supportsComplaint": false, "namesOperatorAsFault": false, "wifiRadioBlamed": false }
+  },
+  "allowedDivergences": [],
+  "pathWhitelist": []
+}

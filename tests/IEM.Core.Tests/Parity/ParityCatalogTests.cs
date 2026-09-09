@@ -24,8 +24,9 @@ public sealed class ParityCatalogTests
         Assert.Equal(fixtureId, fixture.FixtureId);
         ParityFixtureLinter.Validate(fixture);
 
-        var windows = CanonicalParityView.From(ParityProjection.Project(fixture, ParityPlatform.Windows));
-        var linux = CanonicalParityView.From(ParityProjection.Project(fixture, ParityPlatform.Linux));
+        var monitoredTime = ReadPlannedDuration(fixture);
+        var windows = CanonicalParityView.From(ParityProjection.Project(fixture, ParityPlatform.Windows), monitoredTime: monitoredTime);
+        var linux = CanonicalParityView.From(ParityProjection.Project(fixture, ParityPlatform.Linux), monitoredTime: monitoredTime);
         var diff = ParityDiffer.Diff(windows, linux, fixture);
 
         Assert.False(diff.HasForbidden, diff.Report());
@@ -60,8 +61,39 @@ public sealed class ParityCatalogTests
             return;
         }
 
-        var windows = CanonicalParityView.From(ParityProjection.Project(fixture, ParityPlatform.Windows));
+        var windows = CanonicalParityView.From(
+            ParityProjection.Project(fixture, ParityPlatform.Windows),
+            monitoredTime: ReadPlannedDuration(fixture));
         Assert.Equal(expectedState.GetString(), windows.Samples[0].NetworkState);
+
+        if (fixture.ExpectedCanonicalOutput.TryGetProperty("sessionVerdictKind", out var expectedVerdict))
+        {
+            Assert.Equal(expectedVerdict.GetString(), windows.SessionVerdictKind);
+        }
+
+        if (fixture.ExpectedCanonicalOutput.TryGetProperty("claims", out var claims))
+        {
+            if (claims.TryGetProperty("supportsComplaint", out var supportsComplaint))
+            {
+                Assert.Equal(supportsComplaint.GetBoolean(), windows.Claims.SupportsComplaint);
+            }
+
+            if (claims.TryGetProperty("namesOperatorAsFault", out var namesOperator))
+            {
+                Assert.Equal(namesOperator.GetBoolean(), windows.Claims.NamesOperatorAsFault);
+            }
+
+            if (claims.TryGetProperty("wifiRadioBlamed", out var wifiBlamed))
+            {
+                Assert.Equal(wifiBlamed.GetBoolean(), windows.Claims.WifiRadioBlamed);
+            }
+        }
+    }
+
+    private static TimeSpan ReadPlannedDuration(ParityFixture fixture)
+    {
+        var raw = fixture.SemanticInput.GetProperty("session").GetProperty("plannedDuration").GetString();
+        return System.Xml.XmlConvert.ToTimeSpan(raw!);
     }
 
     [Fact]
@@ -75,5 +107,9 @@ public sealed class ParityCatalogTests
         Assert.Contains("parity.filter.icmp-timeout-tcp-ok", ids);
         Assert.Contains("parity.wifi.radio-on-ssid-gone.symmetric", ids);
         Assert.Contains("parity.wifi.radio-null.link-down", ids);
+        Assert.Contains("parity.wifi.stale-scan", ids);
+        Assert.Contains("parity.wifi.ssid-gone.asymmetric-scan", ids);
+        Assert.Contains("parity.adversarial.null-as-ssid-gone", ids);
+        Assert.Contains("parity.adversarial.unknown-radio-as-off", ids);
     }
 }

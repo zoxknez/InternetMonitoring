@@ -1,0 +1,34 @@
+{
+  "parityFixtureVersion": 1,
+  "fixtureId": "parity.adversarial.unknown-radio-as-off",
+  "scenario": "The adapter is down and the SSID is absent, but radio state is unknown",
+  "intent": "Unknown radio state cannot satisfy the explicit radio-on precondition for WifiRadioDown",
+  "kind": "adversarial",
+  "tags": ["wifi", "unknown", "adversarial"],
+  "semanticInput": {
+    "session": { "plannedDuration": "PT2M", "medium": "Wireless" },
+    "ticks": [
+      {
+        "seq": 1,
+        "link": { "status": "Down", "hasGateway": false, "medium": "Wireless" },
+        "world": {
+          "gatewayReachable": { "t": "v", "v": false },
+          "internetReachable": { "t": "v", "v": false },
+          "radioSwitch": { "t": "unknown" },
+          "ssidOnAir": { "t": "v", "v": false }
+        }
+      }
+    ]
+  },
+  "platformFacts": {
+    "windows": { "ticks": [ { "seq": 1, "radioOn": { "t": "null" }, "ssidVisibleInScan": { "t": "v", "v": false }, "scan": { "completeness": "Complete", "ageMs": 1000 }, "path": { "resolved": { "t": "v", "v": false } } } ] },
+    "linux": { "ticks": [ { "seq": 1, "radioOn": { "t": "null" }, "ssidVisibleInScan": { "t": "v", "v": false }, "scan": { "completeness": "Complete", "ageMs": 1000 }, "path": { "resolved": { "t": "v", "v": false } } } ] }
+  },
+  "expectedCanonicalOutput": {
+    "samples": [ { "seq": 1, "networkState": "AdapterDown", "isOutage": true } ],
+    "sessionVerdictKind": "LocalFault",
+    "claims": { "supportsComplaint": false, "namesOperatorAsFault": false, "wifiRadioBlamed": false }
+  },
+  "allowedDivergences": [],
+  "pathWhitelist": []
+}
