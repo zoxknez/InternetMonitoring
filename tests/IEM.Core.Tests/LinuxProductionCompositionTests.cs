@@ -706,19 +706,24 @@ public sealed class LinuxProductionCompositionTests
     [Fact]
     public async Task IPC_01_Connect_And_Valid_IEM_Response_Is_Reachable()
     {
-        var source = new LinuxControlSocketReachabilitySource(streamFactory: async ct =>
-        {
-            var memoryStream = new MemoryDuplexServerStream(async (requestBytes, outStream) =>
+        var source = new LinuxControlSocketReachabilitySource(
+            // This test runs inside the full Linux acceptance assembly. The production
+            // 500 ms budget is itself covered by IPC_05; a scheduler pause under parallel
+            // test load must not turn this valid-protocol test into a timeout test.
+            probeTimeout: TimeSpan.FromSeconds(5),
+            streamFactory: async ct =>
             {
-                var reqJson = System.Text.Encoding.UTF8.GetString(requestBytes);
-                var req = System.Text.Json.JsonSerializer.Deserialize<IpcRequestEnvelope>(reqJson)!;
+                var memoryStream = new MemoryDuplexServerStream(async (requestBytes, outStream) =>
+                {
+                    var reqJson = System.Text.Encoding.UTF8.GetString(requestBytes);
+                    var req = System.Text.Json.JsonSerializer.Deserialize<IpcRequestEnvelope>(reqJson)!;
 
-                var resp = IpcResponseEnvelope.CreateSuccess(req.RequestId, "service-instance-123", "{}");
-                var respJson = System.Text.Json.JsonSerializer.Serialize(resp);
-                await IpcMessageFraming.WriteFrameAsync(outStream, System.Text.Encoding.UTF8.GetBytes(respJson), ct);
+                    var resp = IpcResponseEnvelope.CreateSuccess(req.RequestId, "service-instance-123", "{}");
+                    var respJson = System.Text.Json.JsonSerializer.Serialize(resp);
+                    await IpcMessageFraming.WriteFrameAsync(outStream, System.Text.Encoding.UTF8.GetBytes(respJson), ct);
+                });
+                return memoryStream;
             });
-            return memoryStream;
-        });
 
         var reachability = await source.ProbeReachabilityAsync();
         Assert.Equal(ServiceReachability.Reachable, reachability);
