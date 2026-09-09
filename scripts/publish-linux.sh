@@ -33,7 +33,7 @@ STAGE_ROOT="${BUILD_ROOT}/stage"
 PACKAGE_ROOT="${OUTPUT_ROOT}/${RID}"
 DOTNET_ARTIFACTS_ROOT="${BUILD_ROOT}/dotnet"
 
-rm -rf -- "${BUILD_ROOT}"
+rm -rf -- "${BUILD_ROOT}" "${PACKAGE_ROOT}"
 mkdir -p "${PUBLISH_ROOT}/app" "${PUBLISH_ROOT}/service" "${STAGE_ROOT}" "${PACKAGE_ROOT}"
 
 dotnet restore "${ROOT_DIR}/src/IEM.App.Linux/IEM.App.Linux.csproj" \
@@ -138,7 +138,11 @@ fi
 
 (
     cd "${PACKAGE_ROOT}"
-    sha256sum -- * > SHA256SUMS
+    # The output directory may have existed before older versions of this script cleaned it.
+    # Never hash a previous checksum file (or the temporary file being written).
+    rm -f -- SHA256SUMS SHA256SUMS.tmp
+    sha256sum -- * > SHA256SUMS.tmp
+    mv -- SHA256SUMS.tmp SHA256SUMS
 )
 
 echo "Linux artefakti su napravljeni u ${PACKAGE_ROOT}"
