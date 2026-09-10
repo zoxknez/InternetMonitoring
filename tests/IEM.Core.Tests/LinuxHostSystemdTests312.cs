@@ -152,6 +152,28 @@ public sealed class LinuxHostSystemdTests312
     }
 
     [Fact]
+    public void Lane_C_lifecycle_gate_tracks_the_same_real_session_across_restart_and_crash()
+    {
+        var repoRoot = FindRepoRoot();
+        var scriptPath = Path.Combine(repoRoot, "scripts", "ci", "lane-c-systemd-acceptance.sh");
+        var content = File.ReadAllText(scriptPath);
+
+        Assert.Contains("start_session_as_user", content, StringComparison.Ordinal);
+        Assert.Contains("{\"duration\":\"infinite\"}", content, StringComparison.Ordinal);
+        Assert.Contains("SESSION_AFTER_START", content, StringComparison.Ordinal);
+        Assert.Contains("SESSION_AFTER_RESTART", content, StringComparison.Ordinal);
+        Assert.Contains("SESSION_AFTER_CRASH", content, StringComparison.Ordinal);
+        Assert.Contains(
+            "wait_for_active_session \"${LIFECYCLE_SESSION_ID}\"",
+            content,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "StartSession \"lane-c-ses-1\" 2>/dev/null",
+            content,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Linux_storage_layout_resolves_system_state_and_runtime_directories()
     {
         var layout = LinuxSystemStorageLayout.Instance;

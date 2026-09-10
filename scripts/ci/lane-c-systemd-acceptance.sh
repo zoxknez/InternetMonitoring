@@ -84,6 +84,10 @@ STATE_STAT=""
 RUNTIME_STAT=""
 EXEC_MAIN_CODE=""
 EXEC_MAIN_STATUS=""
+LIFECYCLE_SESSION_ID=""
+SESSION_AFTER_START=""
+SESSION_AFTER_RESTART=""
+SESSION_AFTER_CRASH=""
 
 record_pass() {
     echo ">> [PASS] $1"
@@ -174,6 +178,12 @@ write_evidence_reports() {
     "stateDirectoryStat": "${STATE_STAT}",
     "runtimeDirectoryStat": "${RUNTIME_STAT}"
   },
+  "lifecycleEvidence": {
+    "expectedSessionId": "${LIFECYCLE_SESSION_ID}",
+    "afterStartSessionId": "${SESSION_AFTER_START}",
+    "afterRestartSessionId": "${SESSION_AFTER_RESTART}",
+    "afterCrashSessionId": "${SESSION_AFTER_CRASH}"
+  },
   "summary": {
     "passCount": ${PASS_COUNT},
     "failCount": ${FAIL_COUNT},
@@ -203,6 +213,7 @@ EOF
 - **Capabilities**: \`CapEff=${CAP_EFF}\`, \`CapAmb=${CAP_AMB}\`
 - **StateDirectory Stat**: \`${STATE_STAT}\`
 - **RuntimeDirectory Stat**: \`${RUNTIME_STAT}\`
+- **Lifecycle Session**: expected \`${LIFECYCLE_SESSION_ID}\`, after start \`${SESSION_AFTER_START}\`, after restart \`${SESSION_AFTER_RESTART}\`, after crash \`${SESSION_AFTER_CRASH}\`
 
 ## Gate Status Matrix
 | Gate | Status |
@@ -581,6 +592,48 @@ finally:
 EOF
 chmod 0755 /tmp/iem_ipc_client.py
 
+read_active_session_id() {
+    local response
+    response=$(sudo -u user-a python3 /tmp/iem_ipc_client.py GetServiceStatus 2>/dev/null || echo '{}')
+    echo "${response}" | jq -r \
+        '(.payload // .Payload // "") | fromjson? | (.Status.SessionId // .status.sessionId // empty)' \
+        2>/dev/null || true
+}
+
+wait_for_active_session() {
+    local expected_session_id="$1"
+    local observed_session_id=""
+    for _ in {1..40}; do
+        observed_session_id=$(read_active_session_id)
+        if [ "${observed_session_id}" = "${expected_session_id}" ]; then
+            echo "${observed_session_id}"
+            return 0
+        fi
+        sleep 0.5
+    done
+
+    echo "${observed_session_id}"
+    return 1
+}
+
+start_session_as_user() {
+    local actor="$1"
+    local session_id="$2"
+    local response="{}"
+    for _ in {1..40}; do
+        response=$(sudo -u "${actor}" python3 /tmp/iem_ipc_client.py StartSession \
+            "${session_id}" '{"duration":"infinite"}' 2>/dev/null || echo '{}')
+        if echo "${response}" | grep -E -q '"status": *(0|"Success")'; then
+            echo "${response}"
+            return 0
+        fi
+        sleep 0.5
+    done
+
+    echo "${response}"
+    return 1
+}
+
 # Test 1: Outsider cannot connect to control.sock (Permission denied / 13)
 OUTSIDER_RES=0
 sudo -u outsider python3 /tmp/iem_ipc_client.py GetServiceStatus >/dev/null 2>&1 || OUTSIDER_RES=$?
@@ -601,8 +654,9 @@ else
 fi
 
 # Test 3: User A starts session "lane-c-ses-1" -> Success (status: 0), owner is user-a (unix:1002)
-USER_A_START=$(sudo -u user-a python3 /tmp/iem_ipc_client.py StartSession "lane-c-ses-1" 2>/dev/null || echo "{}")
-if echo "${USER_A_START}" | grep -E -q '"status": *(0|"Success")'; then
+USER_A_START=$(start_session_as_user user-a "lane-c-ses-1" || echo '{}')
+if echo "${USER_A_START}" | grep -E -q '"status": *(0|"Success")' && \
+   wait_for_active_session "lane-c-ses-1" >/dev/null; then
     echo "User A StartSession: PASS"
 else
     echo "ERROR: User A StartSession failed: ${USER_A_START}"
@@ -627,13 +681,15 @@ else
     IPC_TEST_OK=false
 fi
 
-# Test 6: Admin user stops session started by User A via admin override -> Success (status: 0)
-sudo -u user-a python3 /tmp/iem_ipc_client.py StartSession "lane-c-ses-2" >/dev/null 2>&1 || true
-ADMIN_STOP=$(sudo -u admin-user python3 /tmp/iem_ipc_client.py StopSession "lane-c-ses-2" 2>/dev/null || echo "{}")
+# Test 6: User A resumes the paused session, then an admin finalizes it via override.
+# Finalize (rather than another pause) leaves a clean state for the lifecycle session below.
+USER_A_RESUME=$(start_session_as_user user-a "lane-c-ses-1" || echo '{}')
+wait_for_active_session "lane-c-ses-1" >/dev/null || true
+ADMIN_STOP=$(sudo -u admin-user python3 /tmp/iem_ipc_client.py FinalizeSession "lane-c-ses-1" 2>/dev/null || echo "{}")
 if echo "${ADMIN_STOP}" | grep -E -q '"status": *(0|"Success")'; then
-    echo "Admin override StopSession: PASS"
+    echo "Admin override FinalizeSession: PASS"
 else
-    echo "ERROR: Admin override StopSession failed: ${ADMIN_STOP}"
+    echo "ERROR: Admin override FinalizeSession failed (resume=${USER_A_RESUME}): ${ADMIN_STOP}"
     IPC_TEST_OK=false
 fi
 
@@ -1326,6 +1382,17 @@ CURRENT_STAGE="STAGE_9_15_SUSPEND_RESUME_CONTINUITY"
 STATUS_SUSPEND_RESUME_CONTINUITY="NOT_TESTED"
 record_not_tested "Physical host suspend/resume is prohibited on virtualized CI runner (requires bare-metal or suspend-capable VM)"
 
+# Keep one real system session open across the following stop, start, restart and crash
+# operations. Directory survival alone is not continuity: the service must report the
+# same canonical session id after it reconstructs the unfinished evidence chain.
+LIFECYCLE_SESSION_ID="lane-c-lifecycle-continuity"
+LIFECYCLE_START=$(start_session_as_user user-a "${LIFECYCLE_SESSION_ID}" || echo '{}')
+if ! echo "${LIFECYCLE_START}" | grep -E -q '"status": *(0|"Success")' || \
+   ! wait_for_active_session "${LIFECYCLE_SESSION_ID}" >/dev/null; then
+    STATUS_RESTART_LIFECYCLE="FAIL"
+    record_fail "Could not establish the lifecycle session before systemd restart tests"
+fi
+
 EPHEMERAL_SENTINEL="${RUNTIME_DIR}/ephemeral-sentinel-1"
 touch "${EPHEMERAL_SENTINEL}"
 
@@ -1351,19 +1418,27 @@ CURRENT_STAGE="STAGE_11_RESTART_LIFECYCLE"
 
 systemctl start internet-evidence-monitor.service
 
+SESSION_AFTER_START=$(wait_for_active_session "${LIFECYCLE_SESSION_ID}" || true)
+
 EPHEMERAL_SENTINEL_2="${RUNTIME_DIR}/ephemeral-sentinel-2"
 touch "${EPHEMERAL_SENTINEL_2}"
 
 systemctl restart internet-evidence-monitor.service
 
+SESSION_AFTER_RESTART=$(wait_for_active_session "${LIFECYCLE_SESSION_ID}" || true)
+
 RUNTIME_STAT_RESTART=$(stat -c "%U:%G %a" "${RUNTIME_DIR}" 2>/dev/null || echo "")
 
-if [ -f "${STATE_SENTINEL}" ] && [ ! -f "${EPHEMERAL_SENTINEL}" ] && [ ! -f "${EPHEMERAL_SENTINEL_2}" ] && [ "${RUNTIME_STAT_RESTART}" = "iem:iem-users 750" ]; then
+if [ -f "${STATE_SENTINEL}" ] && [ ! -f "${EPHEMERAL_SENTINEL}" ] && \
+   [ ! -f "${EPHEMERAL_SENTINEL_2}" ] && \
+   [ "${RUNTIME_STAT_RESTART}" = "iem:iem-users 750" ] && \
+   [ "${SESSION_AFTER_START}" = "${LIFECYCLE_SESSION_ID}" ] && \
+   [ "${SESSION_AFTER_RESTART}" = "${LIFECYCLE_SESSION_ID}" ]; then
     STATUS_RESTART_LIFECYCLE="PASS"
-    record_pass "RESTART lifecycle: State persisted, old sentinels wiped, fresh 0750 directory provided"
+    record_pass "RESTART lifecycle: same session resumed, state persisted, old runtime sentinels wiped, fresh 0750 directory provided"
 else
     STATUS_RESTART_LIFECYCLE="FAIL"
-    record_fail "RESTART lifecycle failed (Stat: ${RUNTIME_STAT_RESTART})"
+    record_fail "RESTART lifecycle failed (Stat: ${RUNTIME_STAT_RESTART}, afterStart: ${SESSION_AFTER_START:-none}, afterRestart: ${SESSION_AFTER_RESTART:-none})"
 fi
 
 echo "=============================================================================="
@@ -1502,8 +1577,14 @@ EXEC_MAIN_CODE=$(systemctl show -p ExecMainCode --value internet-evidence-monito
 EXEC_MAIN_STATUS=$(systemctl show -p ExecMainStatus --value internet-evidence-monitor.service 2>/dev/null || echo "")
 
 if [ "${RESTART_OK}" = "true" ]; then
-    STATUS_FAILURE_RESTART="PASS"
-    record_pass "systemd Restart=on-failure verified with bounded polling (ExecMainCode=${EXEC_MAIN_CODE}, ExecMainStatus=${EXEC_MAIN_STATUS}, NewPID=${NEW_PID})"
+    SESSION_AFTER_CRASH=$(wait_for_active_session "${LIFECYCLE_SESSION_ID}" || true)
+    if [ "${SESSION_AFTER_CRASH}" = "${LIFECYCLE_SESSION_ID}" ]; then
+        STATUS_FAILURE_RESTART="PASS"
+        record_pass "systemd Restart=on-failure resumed the same session with bounded polling (ExecMainCode=${EXEC_MAIN_CODE}, ExecMainStatus=${EXEC_MAIN_STATUS}, NewPID=${NEW_PID})"
+    else
+        STATUS_FAILURE_RESTART="FAIL"
+        record_fail "systemd restarted after crash but did not resume session ${LIFECYCLE_SESSION_ID} (observed: ${SESSION_AFTER_CRASH:-none})"
+    fi
 else
     STATUS_FAILURE_RESTART="FAIL"
     record_fail "systemd Restart=on-failure timed out after 20s (NRestarts: before=${NRESTARTS_BEFORE}, after=${NRESTARTS_AFTER:-0})"
