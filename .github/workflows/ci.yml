@@ -90,6 +90,11 @@ jobs:
           bash scripts/publish-linux.sh linux-x64
           bash scripts/ci/verify-linux-package.sh artifacts/linux/linux-x64/internet-evidence-monitor_3.1.0~alpha1_amd64.deb
 
+      - name: Proveri install, reinstall i evidence-preserving purge
+        run: |
+          chmod +x scripts/ci/verify-linux-install.sh
+          sudo bash scripts/ci/verify-linux-install.sh artifacts/linux/linux-x64/internet-evidence-monitor_3.1.0~alpha1_amd64.deb
+
       - name: Sacuvaj Linux artefakte
         uses: actions/upload-artifact@v4
         with:
