@@ -1,0 +1,16 @@
+{
+  "parityFixtureVersion": 1,
+  "fixtureId": "parity.bind-fail.tcp-skipped",
+  "scenario": "TCP source binding fails before a connection attempt",
+  "intent": "A skipped TCP family is not packet loss and does not enter the attempt tally",
+  "kind": "symmetric",
+  "tags": ["bind", "tcp", "skip"],
+  "semanticInput": { "session": { "plannedDuration": "PT2M", "medium": "Ethernet" }, "ticks": [ { "seq": 1, "link": { "status": "Up", "hasGateway": true }, "world": { "gatewayReachable": { "t": "v", "v": true }, "internetReachable": { "t": "v", "v": true } } } ] },
+  "platformFacts": {
+    "windows": { "ticks": [ { "seq": 1, "tcp": { "t": "skipped" }, "path": { "resolved": { "t": "v", "v": true }, "bound": { "t": "v", "v": false } } } ] },
+    "linux": { "ticks": [ { "seq": 1, "tcp": { "t": "skipped" }, "path": { "resolved": { "t": "v", "v": true }, "bound": { "t": "v", "v": false } } } ] }
+  },
+  "expectedCanonicalOutput": { "samples": [ { "seq": 1, "networkState": "Ok", "isOutage": false } ], "sessionVerdictKind": "Stable" },
+  "allowedDivergences": [],
+  "pathWhitelist": []
+}

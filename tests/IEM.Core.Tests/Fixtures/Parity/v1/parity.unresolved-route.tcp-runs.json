@@ -1,0 +1,16 @@
+{
+  "parityFixtureVersion": 1,
+  "fixtureId": "parity.unresolved-route.tcp-runs",
+  "scenario": "The route adapter cannot resolve a path while portable TCP still executes",
+  "intent": "Path attribution remains unproved, but real TCP reachability still counts",
+  "kind": "symmetric",
+  "tags": ["route", "fallback", "tcp"],
+  "semanticInput": { "session": { "plannedDuration": "PT2M", "medium": "Ethernet" }, "ticks": [ { "seq": 1, "link": { "status": "Up", "hasGateway": true }, "world": { "gatewayReachable": { "t": "v", "v": true }, "internetReachable": { "t": "v", "v": true } } } ] },
+  "platformFacts": {
+    "windows": { "ticks": [ { "seq": 1, "tcp": { "t": "v", "v": "Success" }, "path": { "resolved": { "t": "v", "v": false } } } ] },
+    "linux": { "ticks": [ { "seq": 1, "tcp": { "t": "v", "v": "Success" }, "path": { "resolved": { "t": "v", "v": false } } } ] }
+  },
+  "expectedCanonicalOutput": { "samples": [ { "seq": 1, "networkState": "Ok", "isOutage": false, "pathProvesLink": false } ], "sessionVerdictKind": "Stable" },
+  "allowedDivergences": [],
+  "pathWhitelist": []
+}

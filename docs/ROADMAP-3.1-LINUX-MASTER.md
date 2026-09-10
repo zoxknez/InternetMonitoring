@@ -1,6 +1,6 @@
 # Internet Evidence Monitor 3.1 — Linux Master Architecture & Implementation Plan
 
-> **Status (2026-09-09):** 3.1-0..3.1-9 implementirano. 3.1-10 (Avalonia shell + crash-isolation gate testovi) i 3.1-11 (`.deb`/`.rpm`, `iem-admin`, `ping_group_range` drop-in, SBOM) su na `main`; UI polish (Wayland/HiDPI/a11y/multi-monitor) ostaje otvoren u 3.1-10. 3.1-12 (cross-platform parity) u toku: fixture format + tagged-value parser + linter + `ParityProjection` (kroz pravi `StateClassifier`) + `CanonicalParityView` (RFC 8785 + SHA-256, uz incidente/session verdict/claims) + `ParityDiffer` + golden katalog (12 fixture-a) su sleteli; katalog se širi ka punom §25.12 skupu (suspend/reboot/DNS familije/VPN), a quality bandovi u view-u slede. 3.1-13..3.1-15 planirani.
+> **Status (2026-09-10):** 3.1-0..3.1-12 implementirano. 3.1-10 Avalonia shell i crash-isolation gate, 3.1-11 Linux pakovanje/SBOM i kompletan 3.1-12 cross-platform parity su na `main`; UI polish (Wayland/HiDPI/a11y/multi-monitor) ostaje za završni release rez. Parity sada pokriva svih 26 validnih §25.12 scenarija i zaseban namerno nevalidan stronger-Linux-claim fixture: uzorke, incidente, suspend-gap, session verdict, path quality, claims, DNS porodice, dual-stack, VPN i four-way mode. Dozvoljene divergencije se normalizuju placeholder-ima pre RFC 8785/SHA-256 poređenja. 3.1-13 (installation lifecycle) je sledeći; 3.1-14..3.1-15 planirani.
 > **Napomena o verifikaciji:** .NET SDK `10.0.111` je pinovan u `global.json` i lokalno prisutan; puna test-verifikacija se izvršava.
 > **Base release:** Internet Evidence Monitor `3.0.0-rc1`  
 > **Scope:** Linux enablement + Windows/Linux semantic parity  
@@ -3383,7 +3383,7 @@ Projekcija je u `IEM.Core.Tests`, ne u platform assembly. Time se parity ne vež
 
 Ako pravi adapter na Linux VM proizvede drugačiji `SsidVisible` od fixture pretpostavke, to je adapter test, ne tiha izmena golden-a.
 
-## 25.14 Invarijante 255–260 (draft, ovaj sloj)
+## 25.14 Invarijante 255–260 (zaključane u 3.1-12)
 
 ## 255
 

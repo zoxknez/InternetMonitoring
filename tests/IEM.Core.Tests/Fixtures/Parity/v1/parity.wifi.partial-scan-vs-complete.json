@@ -1,0 +1,16 @@
+{
+  "parityFixtureVersion": 1,
+  "fixtureId": "parity.wifi.partial-scan-vs-complete",
+  "scenario": "Windows has a complete scan and Linux a partial scan, both containing the SSID",
+  "intent": "A positive sighting is valid in a partial scan and produces identical connectivity meaning",
+  "kind": "symmetric",
+  "tags": ["wifi", "scan", "partial"],
+  "semanticInput": { "session": { "plannedDuration": "PT2M", "medium": "Wireless" }, "ticks": [ { "seq": 1, "link": { "status": "Up", "hasGateway": true, "medium": "Wireless" }, "world": { "gatewayReachable": { "t": "v", "v": true }, "internetReachable": { "t": "v", "v": true }, "radioSwitch": { "t": "v", "v": "on" }, "ssidOnAir": { "t": "v", "v": true } } } ] },
+  "platformFacts": {
+    "windows": { "ticks": [ { "seq": 1, "radioOn": { "t": "v", "v": true }, "ssidVisibleInScan": { "t": "v", "v": true }, "scan": { "completeness": "Complete", "ageMs": 1000 }, "path": { "resolved": { "t": "v", "v": true }, "bound": { "t": "v", "v": true } } } ] },
+    "linux": { "ticks": [ { "seq": 1, "radioOn": { "t": "v", "v": true }, "ssidVisibleInScan": { "t": "v", "v": true }, "scan": { "completeness": "Partial", "ageMs": 1000 }, "path": { "resolved": { "t": "v", "v": true }, "bound": { "t": "v", "v": true } } } ] }
+  },
+  "expectedCanonicalOutput": { "samples": [ { "seq": 1, "networkState": "Ok", "isOutage": false } ], "sessionVerdictKind": "Stable" },
+  "allowedDivergences": [],
+  "pathWhitelist": []
+}

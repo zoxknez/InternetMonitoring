@@ -10,6 +10,12 @@ public enum ParityPlatform
     Linux,
 }
 
+public sealed record ParityGap(long BeforeSequence, TimeSpan StartedAt);
+
+public sealed record ParityProjectedRun(
+    IReadOnlyList<ProbeCycle> Cycles,
+    IReadOnlyList<ParityGap> Gaps);
+
 /// <summary>
 /// Turns a fixture's one true story (<c>semanticInput</c>) plus one platform's observed facts
 /// (<c>platformFacts.windows</c> / <c>.linux</c>) into the <see cref="ProbeCycle"/> list the
@@ -20,12 +26,16 @@ public enum ParityPlatform
 public static class ParityProjection
 {
     private static readonly string[] ExternalIcmpTargets = ["1.1.1.1", "8.8.8.8", "9.9.9.9"];
+    private static readonly string[] ExternalIcmpV6Targets = ["2606:4700:4700::1111", "2001:4860:4860::8888", "2620:fe::fe"];
     private static readonly string[] ExternalTcpTargets = ["1.1.1.1:443", "8.8.8.8:443"];
     private const string GatewayIp = "192.168.1.1";
     private const string SourceAddress = "192.168.1.50";
     private const string InterfaceAlias = "if:monitored";
 
     public static IReadOnlyList<ProbeCycle> Project(ParityFixture fixture, ParityPlatform platform)
+        => ProjectRun(fixture, platform).Cycles;
+
+    public static ParityProjectedRun ProjectRun(ParityFixture fixture, ParityPlatform platform)
     {
         ArgumentNullException.ThrowIfNull(fixture);
 
@@ -39,15 +49,31 @@ public static class ParityProjection
 
         var sessionMedium = ReadMedium(fixture.SemanticInput);
         var cycles = new List<ProbeCycle>();
+        var gaps = new List<ParityGap>();
+        TimeSpan? pendingGapStartedAt = null;
 
         foreach (var tick in ticks.EnumerateArray())
         {
             var seq = tick.GetProperty("seq").GetInt32();
+            if (IsHostAsleep(tick))
+            {
+                pendingGapStartedAt ??= cycles.Count == 0
+                    ? ReadMonotonic(tick, seq)
+                    : TimeSpan.FromTicks(cycles[^1].MonotonicTicks);
+                continue;
+            }
+
+            if (pendingGapStartedAt is { } gapStartedAt)
+            {
+                gaps.Add(new ParityGap(seq, gapStartedAt));
+                pendingGapStartedAt = null;
+            }
+
             var platformTick = platformTicks.TryGetValue(seq, out var pt) ? pt : default;
             cycles.Add(ProjectTick(fixture.FixtureId, seq, tick, platformTick, sessionMedium, platform));
         }
 
-        return cycles;
+        return new ParityProjectedRun(cycles, gaps);
     }
 
     private static ProbeCycle ProjectTick(
@@ -75,6 +101,17 @@ public static class ParityProjection
 
         var gatewayReachable = TaggedValue.Parse(world, "gatewayReachable");
         var internetReachable = TaggedValue.Parse(world, "internetReachable");
+        var internetReachableV4 = TaggedValue.Parse(world, "internetReachableV4");
+        var internetReachableV6 = TaggedValue.Parse(world, "internetReachableV6");
+        if (internetReachableV4.Tag == TaggedValueTag.Absent)
+        {
+            internetReachableV4 = internetReachable;
+        }
+
+        if (internetReachableV6.Tag == TaggedValueTag.Absent)
+        {
+            internetReachableV6 = internetReachable;
+        }
 
         var snapshot = new LinkSnapshot("Parity Adapter", InterfaceAlias, status, medium)
         {
@@ -83,7 +120,10 @@ public static class ParityProjection
             Wireless = medium == LinkMedium.Wireless ? ProjectWireless(platformTick) : null,
         };
 
-        var path = ProjectPath(platformTick);
+        var pathAlias = link.ValueKind == JsonValueKind.Object && link.TryGetProperty("pathAlias", out var alias)
+            ? alias.GetString() ?? InterfaceAlias
+            : InterfaceAlias;
+        var path = ProjectPath(platformTick, pathAlias);
         var results = new List<ProbeResult>();
 
         if (hasGateway)
@@ -91,15 +131,23 @@ public static class ParityProjection
             results.Add(Probe(ProbeKind.Icmp, ProbeScope.Gateway, GatewayIp, Reaches(gatewayReachable), path));
         }
 
-        AddExternalIcmp(results, platformTick, internetReachable, path);
+        AddExternalIcmp(results, platformTick, internetReachableV4, path);
+        AddExternalIcmpV6(results, platformTick, internetReachableV6, path);
         AddExternalTcp(results, platformTick, internetReachable, path);
         results.Add(Probe(ProbeKind.TlsHandshake, ProbeScope.External, "one.one.one.one:443", Reaches(internetReachable), path));
         results.Add(Probe(ProbeKind.Http, ProbeScope.External, "http://connectivitycheck/", Reaches(internetReachable), path));
-        AddDns(results, internetReachable, path);
+        AddDns(results, platformTick, internetReachable, path);
 
-        var monotonic = tick.TryGetProperty("monotonicMs", out var monotonicElement)
-            ? TimeSpan.FromMilliseconds(monotonicElement.GetInt64())
-            : TimeSpan.FromSeconds(seq);
+        var continuity = ReadPathContinuity(platformTick);
+        for (var index = 0; index < results.Count; index++)
+        {
+            if (results[index].WasAttempted)
+            {
+                results[index] = results[index] with { PathContinuity = continuity };
+            }
+        }
+
+        var monotonic = ReadMonotonic(tick, seq);
         var wall = tick.TryGetProperty("wallUtc", out var wallElement)
             ? DateTimeOffset.Parse(wallElement.GetString()!, System.Globalization.CultureInfo.InvariantCulture)
             : new DateTimeOffset(2026, 8, 19, 10, 0, 0, TimeSpan.Zero).Add(monotonic);
@@ -140,13 +188,13 @@ public static class ParityProjection
         };
     }
 
-    private static ProbePath ProjectPath(JsonElement platformTick)
+    private static ProbePath ProjectPath(JsonElement platformTick, string pathAlias)
     {
         if (platformTick.ValueKind != JsonValueKind.Object ||
             !platformTick.TryGetProperty("path", out var pathElement) ||
             pathElement.ValueKind != JsonValueKind.Object)
         {
-            return new ProbePath(InterfaceAlias, SourceAddress, Resolved: true, Bound: true);
+            return new ProbePath(pathAlias, SourceAddress, Resolved: true, Bound: true);
         }
 
         var resolved = ToNullableBool(TaggedValue.Parse(pathElement, "resolved"));
@@ -156,7 +204,27 @@ public static class ParityProjection
         }
 
         var bound = ToNullableBool(TaggedValue.Parse(pathElement, "bound")) == true;
-        return new ProbePath(InterfaceAlias, SourceAddress, Resolved: true, Bound: bound);
+        return new ProbePath(pathAlias, SourceAddress, Resolved: true, Bound: bound);
+    }
+
+    private static PathContinuity ReadPathContinuity(JsonElement platformTick)
+    {
+        if (platformTick.ValueKind != JsonValueKind.Object ||
+            !platformTick.TryGetProperty("path", out var path) ||
+            path.ValueKind != JsonValueKind.Object)
+        {
+            return PathContinuity.Unknown;
+        }
+
+        var continuity = TaggedValue.Parse(path, "continuity");
+        if (continuity.IsValueEqualTo("Held"))
+        {
+            return PathContinuity.Held;
+        }
+
+        return continuity.IsValueEqualTo("ChangedDuringExecution")
+            ? PathContinuity.ChangedDuringExecution
+            : PathContinuity.Unknown;
     }
 
     private static void AddExternalIcmp(
@@ -210,12 +278,73 @@ public static class ParityProjection
         }
     }
 
-    private static void AddDns(List<ProbeResult> results, TaggedValue internetReachable, ProbePath path)
+    private static void AddExternalIcmpV6(
+        List<ProbeResult> results,
+        JsonElement platformTick,
+        TaggedValue internetReachable,
+        ProbePath path)
     {
-        var reaches = Reaches(internetReachable);
-        results.Add(Probe(ProbeKind.Dns, ProbeScope.External, GatewayIp, reaches, path) with { DnsRole = DnsResolverRole.IspAssigned });
-        results.Add(Probe(ProbeKind.Dns, ProbeScope.External, "1.1.1.1", reaches, path) with { DnsRole = DnsResolverRole.Public });
-        results.Add(Probe(ProbeKind.Dns, ProbeScope.External, "system", reaches, path) with { DnsRole = DnsResolverRole.System });
+        var icmp = TaggedValue.Parse(platformTick, "icmpV6");
+        if (icmp.Tag == TaggedValueTag.Absent)
+        {
+            return;
+        }
+
+        if (icmp.Tag is TaggedValueTag.Skipped or TaggedValueTag.Unavailable)
+        {
+            foreach (var target in ExternalIcmpV6Targets)
+            {
+                results.Add(ProbeResult.Skip(ProbeKind.Icmp, ProbeScope.External, target, "icmpV6 not executed"));
+            }
+
+            return;
+        }
+
+        var reaches = icmp.Tag == TaggedValueTag.Value ? icmp.IsValueEqualTo("Success") : Reaches(internetReachable);
+        foreach (var target in ExternalIcmpV6Targets)
+        {
+            results.Add(Probe(ProbeKind.Icmp, ProbeScope.External, target, reaches, path, AddressFamily.InterNetworkV6));
+        }
+    }
+
+    private static void AddDns(
+        List<ProbeResult> results,
+        JsonElement platformTick,
+        TaggedValue internetReachable,
+        ProbePath path)
+    {
+        AddDnsProbe(results, platformTick, "dnsIspV4", GatewayIp, DnsResolverRole.IspAssigned, internetReachable, path);
+        AddDnsProbe(results, platformTick, "dnsPublicV4", "1.1.1.1", DnsResolverRole.Public, internetReachable, path);
+        AddDnsProbe(results, platformTick, "dnsSystem", "system", DnsResolverRole.System, internetReachable, path);
+    }
+
+    private static void AddDnsProbe(
+        List<ProbeResult> results,
+        JsonElement platformTick,
+        string factName,
+        string target,
+        DnsResolverRole role,
+        TaggedValue internetReachable,
+        ProbePath path)
+    {
+        var fact = TaggedValue.Parse(platformTick, factName);
+        if (fact.Tag is TaggedValueTag.Skipped or TaggedValueTag.Unavailable)
+        {
+            results.Add(ProbeResult.Skip(ProbeKind.Dns, ProbeScope.External, target, $"{factName} not executed") with
+            {
+                DnsRole = role,
+                Family = AddressFamily.InterNetwork,
+            });
+            return;
+        }
+
+        var reaches = fact.Tag == TaggedValueTag.Value
+            ? fact.IsValueEqualTo("Success")
+            : Reaches(internetReachable);
+        results.Add(Probe(ProbeKind.Dns, ProbeScope.External, target, reaches, path, AddressFamily.InterNetwork) with
+        {
+            DnsRole = role,
+        });
     }
 
     private static ProbeResult Probe(
@@ -280,4 +409,13 @@ public static class ParityProjection
         link.ValueKind == JsonValueKind.Object && link.TryGetProperty("status", out var status)
             ? status.GetString() == "Down" ? LinkStatus.Down : LinkStatus.Up
             : LinkStatus.Up;
+
+    private static bool IsHostAsleep(JsonElement tick) =>
+        tick.TryGetProperty("world", out var world) &&
+        TaggedValue.Parse(world, "hostObservability").IsValueEqualTo("asleep");
+
+    private static TimeSpan ReadMonotonic(JsonElement tick, int seq) =>
+        tick.TryGetProperty("monotonicMs", out var monotonicElement)
+            ? TimeSpan.FromMilliseconds(monotonicElement.GetInt64())
+            : TimeSpan.FromSeconds(seq);
 }

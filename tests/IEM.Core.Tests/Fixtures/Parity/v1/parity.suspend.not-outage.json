@@ -1,0 +1,33 @@
+{
+  "parityFixtureVersion": 1,
+  "fixtureId": "parity.suspend.not-outage",
+  "scenario": "A failing segment is interrupted by a fifty-minute host suspend",
+  "intent": "Suspend closes the first segment at the observation boundary and never becomes fifty minutes of downtime",
+  "kind": "symmetric",
+  "tags": ["suspend", "gap", "incident"],
+  "semanticInput": {
+    "session": { "plannedDuration": "PT1H", "medium": "Ethernet" },
+    "ticks": [
+      { "seq": 1, "monotonicMs": 0, "link": { "status": "Up", "hasGateway": true }, "world": { "gatewayReachable": { "t": "v", "v": true }, "internetReachable": { "t": "v", "v": true }, "hostObservability": { "t": "v", "v": "awake" } } },
+      { "seq": 2, "monotonicMs": 1000, "link": { "status": "Up", "hasGateway": true }, "world": { "gatewayReachable": { "t": "v", "v": false }, "internetReachable": { "t": "v", "v": false }, "hostObservability": { "t": "v", "v": "awake" } } },
+      { "seq": 3, "monotonicMs": 2000, "link": { "status": "Up", "hasGateway": true }, "world": { "gatewayReachable": { "t": "unknown" }, "internetReachable": { "t": "unknown" }, "hostObservability": { "t": "v", "v": "asleep" } } },
+      { "seq": 4, "monotonicMs": 3002000, "link": { "status": "Up", "hasGateway": true }, "world": { "gatewayReachable": { "t": "v", "v": false }, "internetReachable": { "t": "v", "v": false }, "hostObservability": { "t": "v", "v": "awake" } } },
+      { "seq": 5, "monotonicMs": 3003000, "link": { "status": "Up", "hasGateway": true }, "world": { "gatewayReachable": { "t": "v", "v": true }, "internetReachable": { "t": "v", "v": true }, "hostObservability": { "t": "v", "v": "awake" } } }
+    ]
+  },
+  "platformFacts": {
+    "windows": { "ticks": [ { "seq": 1, "path": { "resolved": { "t": "v", "v": true }, "bound": { "t": "v", "v": true } } }, { "seq": 2, "path": { "resolved": { "t": "v", "v": true }, "bound": { "t": "v", "v": true } } }, { "seq": 4, "path": { "resolved": { "t": "v", "v": true }, "bound": { "t": "v", "v": true } } }, { "seq": 5, "path": { "resolved": { "t": "v", "v": true }, "bound": { "t": "v", "v": true } } } ] },
+    "linux": { "ticks": [ { "seq": 1, "path": { "resolved": { "t": "v", "v": true }, "bound": { "t": "v", "v": true } } }, { "seq": 2, "path": { "resolved": { "t": "v", "v": true }, "bound": { "t": "v", "v": true } } }, { "seq": 4, "path": { "resolved": { "t": "v", "v": true }, "bound": { "t": "v", "v": true } } }, { "seq": 5, "path": { "resolved": { "t": "v", "v": true }, "bound": { "t": "v", "v": true } } } ] }
+  },
+  "expectedCanonicalOutput": {
+    "samples": [ { "seq": 1, "networkState": "Ok", "isOutage": false } ],
+    "incidents": [
+      { "worstState": "GatewayDown", "endedByGap": true },
+      { "worstState": "GatewayDown", "endedByGap": false }
+    ],
+    "sessionVerdictKind": "LocalFault",
+    "claims": { "supportsComplaint": false, "namesOperatorAsFault": false, "wifiRadioBlamed": false }
+  },
+  "allowedDivergences": [],
+  "pathWhitelist": []
+}

@@ -1,0 +1,37 @@
+{
+  "parityFixtureVersion": 1,
+  "fixtureId": "parity.icmp.v4-denied.v6-ok",
+  "scenario": "Linux cannot open IPv4 ICMP but both platforms reach IPv6 targets",
+  "intent": "Skipped IPv4 probes stay out of Linux tallies and IPv6 reachability prevents an outage",
+  "kind": "asymmetric-observability",
+  "tags": ["icmp", "ipv4", "ipv6", "capability"],
+  "semanticInput": {
+    "session": { "plannedDuration": "PT2M", "medium": "Ethernet" },
+    "ticks": [
+      {
+        "seq": 1,
+        "link": { "status": "Up", "hasGateway": true, "medium": "Ethernet" },
+        "world": {
+          "gatewayReachable": { "t": "v", "v": true },
+          "internetReachable": { "t": "v", "v": true },
+          "internetReachableV4": { "t": "v", "v": true },
+          "internetReachableV6": { "t": "v", "v": true }
+        }
+      }
+    ]
+  },
+  "platformFacts": {
+    "windows": { "ticks": [ { "seq": 1, "icmpV4": { "t": "v", "v": "Success" }, "icmpV6": { "t": "v", "v": "Success" }, "tcp": { "t": "v", "v": "Success" }, "path": { "resolved": { "t": "v", "v": true }, "bound": { "t": "v", "v": true } } } ] },
+    "linux": { "ticks": [ { "seq": 1, "icmpV4": { "t": "skipped" }, "icmpV6": { "t": "v", "v": "Success" }, "tcp": { "t": "v", "v": "Success" }, "path": { "resolved": { "t": "v", "v": true }, "bound": { "t": "v", "v": true } } } ] }
+  },
+  "expectedCanonicalOutput": {
+    "samples": [ { "seq": 1, "networkState": "Ok", "isOutage": false } ],
+    "sessionVerdictKind": "Stable",
+    "claims": { "supportsComplaint": false, "namesOperatorAsFault": false, "wifiRadioBlamed": false }
+  },
+  "allowedDivergences": [
+    { "path": "$.samples[0].tallies.externalIcmp.attempted", "windows": 6, "linux": 3, "reason": "Linux IPv4 ICMP is skipped and therefore absent from the attempt denominator." },
+    { "path": "$.samples[0].tallies.externalIcmp.succeeded", "windows": 6, "linux": 3, "reason": "Only the three executed IPv6 ICMP probes contribute to the Linux success tally." }
+  ],
+  "pathWhitelist": []
+}

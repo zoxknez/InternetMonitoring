@@ -1,0 +1,36 @@
+{
+  "parityFixtureVersion": 1,
+  "fixtureId": "parity.path.tocou-route-change",
+  "scenario": "A route event occurs while the Linux probe is in flight",
+  "intent": "TOCTOU provenance reduces path attribution quality without changing connectivity meaning",
+  "kind": "asymmetric-observability",
+  "tags": ["path", "rtnetlink", "tocou"],
+  "semanticInput": {
+    "session": { "plannedDuration": "PT2M", "medium": "Ethernet" },
+    "ticks": [
+      {
+        "seq": 1,
+        "monotonicMs": 0,
+        "link": { "status": "Up", "hasGateway": true, "medium": "Ethernet" },
+        "world": {
+          "gatewayReachable": { "t": "v", "v": true },
+          "internetReachable": { "t": "v", "v": true }
+        }
+      }
+    ]
+  },
+  "platformFacts": {
+    "windows": { "ticks": [ { "seq": 1, "path": { "resolved": { "t": "v", "v": true }, "bound": { "t": "v", "v": true }, "continuity": { "t": "unknown" } } } ] },
+    "linux": { "ticks": [ { "seq": 1, "path": { "resolved": { "t": "v", "v": true }, "bound": { "t": "v", "v": true }, "continuity": { "t": "v", "v": "ChangedDuringExecution" } } } ] }
+  },
+  "expectedCanonicalOutput": {
+    "samples": [ { "seq": 1, "networkState": "Ok", "isOutage": false } ],
+    "sessionVerdictKind": "Stable",
+    "quality": { "pathAttribution": "Unknown" },
+    "claims": { "supportsComplaint": false, "namesOperatorAsFault": false, "wifiRadioBlamed": false }
+  },
+  "allowedDivergences": [
+    { "path": "$.quality.pathAttribution", "windows": "Unknown", "linux": "Reduced", "reason": "Linux observed a matching route event inside the probe execution window." }
+  ],
+  "pathWhitelist": []
+}

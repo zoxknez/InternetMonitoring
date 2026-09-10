@@ -1,0 +1,32 @@
+{
+  "parityFixtureVersion": 1,
+  "fixtureId": "parity.dns.isp-fail-same-family",
+  "scenario": "Assigned IPv4 DNS fails while a public IPv4 resolver answers over the same path",
+  "intent": "Both platforms classify the resolver-specific failure without calling the internet down",
+  "kind": "symmetric",
+  "tags": ["dns", "ipv4"],
+  "semanticInput": {
+    "session": { "plannedDuration": "PT2M", "medium": "Ethernet" },
+    "ticks": [
+      {
+        "seq": 1,
+        "link": { "status": "Up", "hasGateway": true, "medium": "Ethernet" },
+        "world": {
+          "gatewayReachable": { "t": "v", "v": true },
+          "internetReachable": { "t": "v", "v": true }
+        }
+      }
+    ]
+  },
+  "platformFacts": {
+    "windows": { "ticks": [ { "seq": 1, "dnsIspV4": { "t": "v", "v": "TimedOut" }, "dnsPublicV4": { "t": "v", "v": "Success" }, "dnsSystem": { "t": "v", "v": "Success" }, "path": { "resolved": { "t": "v", "v": true }, "bound": { "t": "v", "v": true } } } ] },
+    "linux": { "ticks": [ { "seq": 1, "dnsIspV4": { "t": "v", "v": "TimedOut" }, "dnsPublicV4": { "t": "v", "v": "Success" }, "dnsSystem": { "t": "v", "v": "Success" }, "path": { "resolved": { "t": "v", "v": true }, "bound": { "t": "v", "v": true } } } ] }
+  },
+  "expectedCanonicalOutput": {
+    "samples": [ { "seq": 1, "networkState": "DnsIspFailure", "isOutage": false } ],
+    "sessionVerdictKind": "Stable",
+    "claims": { "supportsComplaint": false, "namesOperatorAsFault": false, "wifiRadioBlamed": false }
+  },
+  "allowedDivergences": [],
+  "pathWhitelist": []
+}

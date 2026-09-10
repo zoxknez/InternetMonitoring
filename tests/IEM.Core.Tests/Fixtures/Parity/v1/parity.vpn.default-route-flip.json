@@ -1,0 +1,31 @@
+{
+  "parityFixtureVersion": 1,
+  "fixtureId": "parity.vpn.default-route-flip",
+  "scenario": "An upstream interruption overlaps a default-route transition from Wi-Fi to WireGuard",
+  "intent": "Both platforms keep the same outage meaning and mark the incident route change; Linux TOCTOU only reduces path quality",
+  "kind": "asymmetric-observability",
+  "tags": ["vpn", "route", "tocou"],
+  "semanticInput": {
+    "session": { "plannedDuration": "PT2M", "medium": "Wireless" },
+    "ticks": [
+      { "seq": 1, "monotonicMs": 0, "link": { "status": "Up", "hasGateway": true, "medium": "Wireless", "pathAlias": "if:wifi" }, "world": { "gatewayReachable": { "t": "v", "v": true }, "internetReachable": { "t": "v", "v": true }, "radioSwitch": { "t": "v", "v": "on" }, "ssidOnAir": { "t": "v", "v": true } } },
+      { "seq": 2, "monotonicMs": 1000, "link": { "status": "Up", "hasGateway": true, "medium": "Wireless", "pathAlias": "if:wifi" }, "world": { "gatewayReachable": { "t": "v", "v": true }, "internetReachable": { "t": "v", "v": false }, "radioSwitch": { "t": "v", "v": "on" }, "ssidOnAir": { "t": "v", "v": true } } },
+      { "seq": 3, "monotonicMs": 2000, "link": { "status": "Up", "hasGateway": true, "medium": "Wireless", "pathAlias": "if:wireguard" }, "world": { "gatewayReachable": { "t": "v", "v": true }, "internetReachable": { "t": "v", "v": true }, "radioSwitch": { "t": "v", "v": "on" }, "ssidOnAir": { "t": "v", "v": true } } }
+    ]
+  },
+  "platformFacts": {
+    "windows": { "ticks": [ { "seq": 1, "radioOn": { "t": "v", "v": true }, "ssidVisibleInScan": { "t": "v", "v": true }, "path": { "resolved": { "t": "v", "v": true }, "bound": { "t": "v", "v": true }, "continuity": { "t": "unknown" } } }, { "seq": 2, "radioOn": { "t": "v", "v": true }, "ssidVisibleInScan": { "t": "v", "v": true }, "path": { "resolved": { "t": "v", "v": true }, "bound": { "t": "v", "v": true }, "continuity": { "t": "unknown" } } }, { "seq": 3, "radioOn": { "t": "v", "v": true }, "ssidVisibleInScan": { "t": "v", "v": true }, "path": { "resolved": { "t": "v", "v": true }, "bound": { "t": "v", "v": true }, "continuity": { "t": "unknown" } } } ] },
+    "linux": { "ticks": [ { "seq": 1, "radioOn": { "t": "v", "v": true }, "ssidVisibleInScan": { "t": "v", "v": true }, "path": { "resolved": { "t": "v", "v": true }, "bound": { "t": "v", "v": true }, "continuity": { "t": "v", "v": "Held" } } }, { "seq": 2, "radioOn": { "t": "v", "v": true }, "ssidVisibleInScan": { "t": "v", "v": true }, "path": { "resolved": { "t": "v", "v": true }, "bound": { "t": "v", "v": true }, "continuity": { "t": "v", "v": "ChangedDuringExecution" } } }, { "seq": 3, "radioOn": { "t": "v", "v": true }, "ssidVisibleInScan": { "t": "v", "v": true }, "path": { "resolved": { "t": "v", "v": true }, "bound": { "t": "v", "v": true }, "continuity": { "t": "v", "v": "Held" } } } ] }
+  },
+  "expectedCanonicalOutput": {
+    "samples": [ { "seq": 2, "networkState": "CpeUpstreamUnreachable", "isOutage": true } ],
+    "incidents": [ { "worstState": "CpeUpstreamUnreachable", "endedByGap": false } ],
+    "sessionVerdictKind": "UpstreamFault",
+    "quality": { "pathAttribution": "Unknown" },
+    "claims": { "supportsComplaint": true, "namesOperatorAsFault": false, "wifiRadioBlamed": false }
+  },
+  "allowedDivergences": [
+    { "path": "$.quality.pathAttribution", "windows": "Unknown", "linux": "Reduced", "reason": "Linux observed the route event inside the in-flight probe window." }
+  ],
+  "pathWhitelist": []
+}

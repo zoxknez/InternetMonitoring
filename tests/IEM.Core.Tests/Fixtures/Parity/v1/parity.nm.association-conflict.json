@@ -1,0 +1,16 @@
+{
+  "parityFixtureVersion": 1,
+  "fixtureId": "parity.nm.association-conflict",
+  "scenario": "NetworkManager profile metadata disagrees with the native associated BSSID",
+  "intent": "Native adapter facts remain authoritative; NetworkManager metadata never changes canonical meaning",
+  "kind": "symmetric",
+  "tags": ["wifi", "networkmanager", "provenance"],
+  "semanticInput": { "session": { "plannedDuration": "PT2M", "medium": "Wireless" }, "ticks": [ { "seq": 1, "link": { "status": "Up", "hasGateway": true, "medium": "Wireless" }, "world": { "gatewayReachable": { "t": "v", "v": true }, "internetReachable": { "t": "v", "v": true }, "radioSwitch": { "t": "v", "v": "on" }, "ssidOnAir": { "t": "v", "v": true } } } ] },
+  "platformFacts": {
+    "windows": { "ticks": [ { "seq": 1, "radioOn": { "t": "v", "v": true }, "ssidVisibleInScan": { "t": "v", "v": true }, "associatedBssid": { "t": "v", "v": "AA:BB:CC:DD:EE:01" }, "path": { "resolved": { "t": "v", "v": true }, "bound": { "t": "v", "v": true } } } ] },
+    "linux": { "ticks": [ { "seq": 1, "radioOn": { "t": "v", "v": true }, "ssidVisibleInScan": { "t": "v", "v": true }, "associatedBssid": { "t": "v", "v": "AA:BB:CC:DD:EE:01" }, "networkManagerProfileBssid": { "t": "v", "v": "AA:BB:CC:DD:EE:99" }, "path": { "resolved": { "t": "v", "v": true }, "bound": { "t": "v", "v": true } } } ] }
+  },
+  "expectedCanonicalOutput": { "samples": [ { "seq": 1, "networkState": "Ok", "isOutage": false } ], "sessionVerdictKind": "Stable" },
+  "allowedDivergences": [],
+  "pathWhitelist": []
+}

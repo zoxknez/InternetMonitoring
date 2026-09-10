@@ -1,0 +1,34 @@
+{
+  "parityFixtureVersion": 1,
+  "fixtureId": "parity.dual-stack.v4-down-v6-up",
+  "scenario": "IPv4 ICMP targets fail while IPv6 and TCP remain reachable",
+  "intent": "A working address family prevents an internet-down claim; partial reachability remains visible",
+  "kind": "symmetric",
+  "tags": ["dual-stack", "ipv4", "ipv6"],
+  "semanticInput": {
+    "session": { "plannedDuration": "PT2M", "medium": "Ethernet" },
+    "ticks": [
+      {
+        "seq": 1,
+        "link": { "status": "Up", "hasGateway": true, "medium": "Ethernet" },
+        "world": {
+          "gatewayReachable": { "t": "v", "v": true },
+          "internetReachable": { "t": "v", "v": true },
+          "internetReachableV4": { "t": "v", "v": false },
+          "internetReachableV6": { "t": "v", "v": true }
+        }
+      }
+    ]
+  },
+  "platformFacts": {
+    "windows": { "ticks": [ { "seq": 1, "icmpV4": { "t": "v", "v": "TimedOut" }, "icmpV6": { "t": "v", "v": "Success" }, "tcp": { "t": "v", "v": "Success" }, "path": { "resolved": { "t": "v", "v": true }, "bound": { "t": "v", "v": true } } } ] },
+    "linux": { "ticks": [ { "seq": 1, "icmpV4": { "t": "v", "v": "TimedOut" }, "icmpV6": { "t": "v", "v": "Success" }, "tcp": { "t": "v", "v": "Success" }, "path": { "resolved": { "t": "v", "v": true }, "bound": { "t": "v", "v": true } } } ] }
+  },
+  "expectedCanonicalOutput": {
+    "samples": [ { "seq": 1, "networkState": "PacketLoss", "isOutage": false } ],
+    "sessionVerdictKind": "Stable",
+    "claims": { "supportsComplaint": false, "namesOperatorAsFault": false, "wifiRadioBlamed": false }
+  },
+  "allowedDivergences": [],
+  "pathWhitelist": []
+}

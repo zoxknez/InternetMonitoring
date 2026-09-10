@@ -1,0 +1,34 @@
+{
+  "parityFixtureVersion": 1,
+  "fixtureId": "parity.path.observer-polling",
+  "scenario": "Neither platform has a live event observer for the probe window",
+  "intent": "Polling cannot synthesize Held; both path attribution results remain Unknown",
+  "kind": "symmetric",
+  "tags": ["path", "polling"],
+  "semanticInput": {
+    "session": { "plannedDuration": "PT2M", "medium": "Ethernet" },
+    "ticks": [
+      {
+        "seq": 1,
+        "monotonicMs": 0,
+        "link": { "status": "Up", "hasGateway": true, "medium": "Ethernet" },
+        "world": {
+          "gatewayReachable": { "t": "v", "v": true },
+          "internetReachable": { "t": "v", "v": true }
+        }
+      }
+    ]
+  },
+  "platformFacts": {
+    "windows": { "ticks": [ { "seq": 1, "path": { "resolved": { "t": "v", "v": true }, "bound": { "t": "v", "v": true }, "continuity": { "t": "unknown" } } } ] },
+    "linux": { "ticks": [ { "seq": 1, "path": { "resolved": { "t": "v", "v": true }, "bound": { "t": "v", "v": true }, "continuity": { "t": "unknown" } } } ] }
+  },
+  "expectedCanonicalOutput": {
+    "samples": [ { "seq": 1, "networkState": "Ok", "isOutage": false } ],
+    "sessionVerdictKind": "Stable",
+    "quality": { "pathAttribution": "Unknown" },
+    "claims": { "supportsComplaint": false, "namesOperatorAsFault": false, "wifiRadioBlamed": false }
+  },
+  "allowedDivergences": [],
+  "pathWhitelist": []
+}

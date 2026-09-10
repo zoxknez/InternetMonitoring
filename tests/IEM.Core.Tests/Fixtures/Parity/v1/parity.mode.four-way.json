@@ -1,0 +1,16 @@
+{
+  "parityFixtureVersion": 1,
+  "fixtureId": "parity.mode.four-way",
+  "scenario": "Windows service, Windows portable, Linux service and Linux portable observe the same healthy world",
+  "intent": "Execution and storage authority are provenance; canonical connectivity meaning is identical in all four modes",
+  "kind": "symmetric",
+  "tags": ["mode", "service", "portable"],
+  "semanticInput": { "session": { "plannedDuration": "PT2M", "medium": "Ethernet" }, "ticks": [ { "seq": 1, "link": { "status": "Up", "hasGateway": true }, "world": { "gatewayReachable": { "t": "v", "v": true }, "internetReachable": { "t": "v", "v": true } } } ] },
+  "platformFacts": {
+    "windows": { "executionModes": ["SystemService", "Portable"], "ticks": [ { "seq": 1, "path": { "resolved": { "t": "v", "v": true }, "bound": { "t": "v", "v": true } } } ] },
+    "linux": { "executionModes": ["SystemService", "Portable"], "ticks": [ { "seq": 1, "path": { "resolved": { "t": "v", "v": true }, "bound": { "t": "v", "v": true } } } ] }
+  },
+  "expectedCanonicalOutput": { "samples": [ { "seq": 1, "networkState": "Ok", "isOutage": false } ], "sessionVerdictKind": "Stable" },
+  "allowedDivergences": [],
+  "pathWhitelist": []
+}

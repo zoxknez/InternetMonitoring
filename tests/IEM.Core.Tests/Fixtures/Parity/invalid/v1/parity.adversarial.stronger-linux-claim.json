@@ -1,0 +1,21 @@
+{
+  "parityFixtureVersion": 1,
+  "fixtureId": "parity.adversarial.stronger-linux-claim",
+  "scenario": "Linux claims the SSID is absent although the shared world says visibility is unknown",
+  "intent": "The fixture is intentionally malformed and must fail before projection or parity diff",
+  "kind": "adversarial",
+  "tags": ["wifi", "adversarial", "invalid"],
+  "semanticInput": {
+    "session": { "plannedDuration": "PT2M", "medium": "Wireless" },
+    "ticks": [
+      { "seq": 1, "link": { "status": "Down", "hasGateway": false, "medium": "Wireless" }, "world": { "gatewayReachable": { "t": "v", "v": false }, "internetReachable": { "t": "v", "v": false }, "radioSwitch": { "t": "v", "v": "on" }, "ssidOnAir": { "t": "unknown" } } }
+    ]
+  },
+  "platformFacts": {
+    "windows": { "ticks": [ { "seq": 1, "radioOn": { "t": "v", "v": true }, "ssidVisibleInScan": { "t": "null" }, "path": { "resolved": { "t": "v", "v": false } } } ] },
+    "linux": { "ticks": [ { "seq": 1, "radioOn": { "t": "v", "v": true }, "ssidVisibleInScan": { "t": "v", "v": false }, "scan": { "completeness": "Complete", "ageMs": 1000 }, "path": { "resolved": { "t": "v", "v": false } } } ] }
+  },
+  "expectedCanonicalOutput": {},
+  "allowedDivergences": [],
+  "pathWhitelist": []
+}

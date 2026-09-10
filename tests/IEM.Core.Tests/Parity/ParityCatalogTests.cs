@@ -25,11 +25,14 @@ public sealed class ParityCatalogTests
         ParityFixtureLinter.Validate(fixture);
 
         var monitoredTime = ReadPlannedDuration(fixture);
-        var windows = CanonicalParityView.From(ParityProjection.Project(fixture, ParityPlatform.Windows), monitoredTime: monitoredTime);
-        var linux = CanonicalParityView.From(ParityProjection.Project(fixture, ParityPlatform.Linux), monitoredTime: monitoredTime);
+        var windows = CanonicalParityView.From(ParityProjection.ProjectRun(fixture, ParityPlatform.Windows), monitoredTime: monitoredTime);
+        var linux = CanonicalParityView.From(ParityProjection.ProjectRun(fixture, ParityPlatform.Linux), monitoredTime: monitoredTime);
         var diff = ParityDiffer.Diff(windows, linux, fixture);
 
         Assert.False(diff.HasForbidden, diff.Report());
+        Assert.Equal(
+            ParityHashNormalizer.Sha256(windows, fixture),
+            ParityHashNormalizer.Sha256(linux, fixture));
 
         switch (fixture.Kind)
         {
@@ -55,16 +58,34 @@ public sealed class ParityCatalogTests
             return;
         }
 
-        var first = samples[0];
-        if (!first.TryGetProperty("networkState", out var expectedState))
-        {
-            return;
-        }
-
         var windows = CanonicalParityView.From(
-            ParityProjection.Project(fixture, ParityPlatform.Windows),
+            ParityProjection.ProjectRun(fixture, ParityPlatform.Windows),
             monitoredTime: ReadPlannedDuration(fixture));
-        Assert.Equal(expectedState.GetString(), windows.Samples[0].NetworkState);
+        foreach (var expectedSample in samples.EnumerateArray())
+        {
+            var seq = expectedSample.GetProperty("seq").GetInt64();
+            var actual = Assert.Single(windows.Samples, sample => sample.Seq == seq);
+
+            if (expectedSample.TryGetProperty("networkState", out var expectedState))
+            {
+                Assert.Equal(expectedState.GetString(), actual.NetworkState);
+            }
+
+            if (expectedSample.TryGetProperty("isOutage", out var expectedOutage))
+            {
+                Assert.Equal(expectedOutage.GetBoolean(), actual.IsOutage);
+            }
+
+            if (expectedSample.TryGetProperty("pathProvesLink", out var expectedPath))
+            {
+                Assert.Equal(expectedPath.GetBoolean(), actual.PathProvesLink);
+            }
+
+            if (expectedSample.TryGetProperty("anyExternalReachability", out var expectedReachability))
+            {
+                Assert.Equal(expectedReachability.GetBoolean(), actual.AnyExternalReachability);
+            }
+        }
 
         if (fixture.ExpectedCanonicalOutput.TryGetProperty("sessionVerdictKind", out var expectedVerdict))
         {
@@ -86,6 +107,32 @@ public sealed class ParityCatalogTests
             if (claims.TryGetProperty("wifiRadioBlamed", out var wifiBlamed))
             {
                 Assert.Equal(wifiBlamed.GetBoolean(), windows.Claims.WifiRadioBlamed);
+            }
+        }
+
+        if (fixture.ExpectedCanonicalOutput.TryGetProperty("quality", out var quality) &&
+            quality.TryGetProperty("pathAttribution", out var expectedPathQuality))
+        {
+            Assert.Equal(expectedPathQuality.GetString(), windows.Quality.PathAttribution);
+        }
+
+
+        if (fixture.ExpectedCanonicalOutput.TryGetProperty("incidents", out var expectedIncidents))
+        {
+            Assert.Equal(expectedIncidents.GetArrayLength(), windows.Incidents.Count);
+            for (var index = 0; index < expectedIncidents.GetArrayLength(); index++)
+            {
+                var expectedIncident = expectedIncidents[index];
+                var actual = windows.Incidents[index];
+                if (expectedIncident.TryGetProperty("worstState", out var worstState))
+                {
+                    Assert.Equal(worstState.GetString(), actual.WorstState);
+                }
+
+                if (expectedIncident.TryGetProperty("endedByGap", out var endedByGap))
+                {
+                    Assert.Equal(endedByGap.GetBoolean(), actual.EndedByGap);
+                }
             }
         }
     }
@@ -111,5 +158,48 @@ public sealed class ParityCatalogTests
         Assert.Contains("parity.wifi.ssid-gone.asymmetric-scan", ids);
         Assert.Contains("parity.adversarial.null-as-ssid-gone", ids);
         Assert.Contains("parity.adversarial.unknown-radio-as-off", ids);
+        Assert.Contains("parity.path.tocou-route-change", ids);
+        Assert.Contains("parity.path.observer-polling", ids);
+        Assert.Contains("parity.dns.isp-fail-same-family", ids);
+        Assert.Contains("parity.dual-stack.v4-down-v6-up", ids);
+        Assert.Contains("parity.icmp.v4-denied.v6-ok", ids);
+        Assert.Contains("parity.suspend.not-outage", ids);
+        Assert.Contains("parity.reboot.not-outage", ids);
+        Assert.Contains("parity.adversarial.suspend-as-outage", ids);
+        Assert.Contains("parity.unresolved-route.tcp-runs", ids);
+        Assert.Contains("parity.bind-fail.tcp-skipped", ids);
+        Assert.Contains("parity.wifi.partial-scan-vs-complete", ids);
+        Assert.Contains("parity.nm.association-conflict", ids);
+        Assert.Contains("parity.vpn.default-route-flip", ids);
+        Assert.Contains("parity.mode.four-way", ids);
+    }
+
+    [Fact]
+    public void Four_way_mode_fixture_keeps_canonical_meaning_identical()
+    {
+        var fixture = ParityFixture.Parse(File.ReadAllText(Path.Combine(CatalogRoot, "parity.mode.four-way.json")));
+        var monitoredTime = ReadPlannedDuration(fixture);
+
+        var windowsService = CanonicalParityView.From(ParityProjection.ProjectRun(fixture, ParityPlatform.Windows), monitoredTime: monitoredTime);
+        var windowsPortable = CanonicalParityView.From(ParityProjection.ProjectRun(fixture, ParityPlatform.Windows), monitoredTime: monitoredTime);
+        var linuxService = CanonicalParityView.From(ParityProjection.ProjectRun(fixture, ParityPlatform.Linux), monitoredTime: monitoredTime);
+        var linuxPortable = CanonicalParityView.From(ParityProjection.ProjectRun(fixture, ParityPlatform.Linux), monitoredTime: monitoredTime);
+
+        Assert.Equal(windowsService.Sha256, windowsPortable.Sha256);
+        Assert.Equal(windowsService.Sha256, linuxService.Sha256);
+        Assert.Equal(windowsService.Sha256, linuxPortable.Sha256);
+    }
+
+    [Fact]
+    public void Stronger_linux_claim_fixture_is_rejected_before_projection()
+    {
+        var path = Path.Combine(AppContext.BaseDirectory, "Fixtures", "Parity", "invalid", "v1",
+            "parity.adversarial.stronger-linux-claim.json");
+        var fixture = ParityFixture.Parse(File.ReadAllText(path));
+
+        var error = Assert.Throws<ParityFixtureFormatException>(() => ParityFixtureLinter.Validate(fixture));
+
+        Assert.Contains("linux.tick[1].ssidVisibleInScan", error.Message, StringComparison.Ordinal);
+        Assert.Contains("stronger than world", error.Message, StringComparison.Ordinal);
     }
 }

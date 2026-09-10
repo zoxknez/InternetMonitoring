@@ -43,6 +43,8 @@ public sealed record CanonicalClaimsView(
     bool NamesOperatorAsFault,
     bool WifiRadioBlamed);
 
+public sealed record CanonicalQualityView(string PathAttribution);
+
 /// <summary>
 /// The comparable form of a Core run. Two projections of the same fixture (Windows, Linux)
 /// must produce the same <see cref="Sha256"/> after RFC 8785 canonicalization for a symmetric
@@ -52,13 +54,16 @@ public sealed record CanonicalParityView(
     IReadOnlyList<CanonicalSampleView> Samples,
     IReadOnlyList<CanonicalIncidentView> Incidents,
     string SessionVerdictKind,
+    CanonicalQualityView Quality,
     CanonicalClaimsView Claims)
 {
     private static readonly JsonSerializerOptions SerializerOptions = new(JsonSerializerDefaults.Web);
 
     public string CanonicalJson =>
         Encoding.UTF8.GetString(JsonCanonicalizer.Canonicalize(
-            JsonSerializer.Serialize(new { Samples }, SerializerOptions)));
+            JsonSerializer.Serialize(
+                new { Samples, Incidents, SessionVerdictKind, Quality, Claims },
+                SerializerOptions)));
 
     public string Sha256 => Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(CanonicalJson)));
 
@@ -66,15 +71,32 @@ public sealed record CanonicalParityView(
         IReadOnlyList<ProbeCycle> cycles,
         StateClassifier? classifier = null,
         TimeSpan? monitoredTime = null)
+        => From(new ParityProjectedRun(cycles, []), classifier, monitoredTime);
+
+    public static CanonicalParityView From(
+        ParityProjectedRun run,
+        StateClassifier? classifier = null,
+        TimeSpan? monitoredTime = null)
     {
-        ArgumentNullException.ThrowIfNull(cycles);
+        ArgumentNullException.ThrowIfNull(run);
+        var cycles = run.Cycles;
         classifier ??= new StateClassifier();
 
         var samples = new List<CanonicalSampleView>(cycles.Count);
         var incidents = new List<IncidentRecord>();
         var detector = new IncidentDetector();
+        var gaps = run.Gaps.ToDictionary(gap => gap.BeforeSequence);
         foreach (var cycle in cycles)
         {
+            if (gaps.TryGetValue(cycle.Sequence, out var gap))
+            {
+                var cut = detector.ObserveGap(gap.StartedAt);
+                if (cut is not null)
+                {
+                    incidents.Add(cut);
+                }
+            }
+
             var verdict = classifier.Classify(cycle);
             samples.Add(new CanonicalSampleView(
                 cycle.Sequence,
@@ -115,6 +137,7 @@ public sealed record CanonicalParityView(
 
         var observedDuration = monitoredTime ?? DeriveObservedDuration(cycles);
         var sessionVerdict = SessionVerdict.Evaluate(observedDuration, upstreamCount, localDowntime);
+        var pathAttribution = PathAttributionQuality(cycles);
         var incidentViews = incidents.Select(incident => new CanonicalIncidentView(
             incident.Number,
             incident.WorstState.ToString(),
@@ -129,6 +152,7 @@ public sealed record CanonicalParityView(
             samples,
             incidentViews,
             sessionVerdict.Kind.ToString(),
+            new CanonicalQualityView(pathAttribution),
             new CanonicalClaimsView(
                 sessionVerdict.SupportsComplaint,
                 NamesOperatorAsFault: false,
@@ -142,4 +166,15 @@ public sealed record CanonicalParityView(
         : TimeSpan.FromTicks(Math.Max(0, cycles[^1].MonotonicTicks - cycles[0].MonotonicTicks));
 
     private static long ToMilliseconds(TimeSpan value) => checked((long)value.TotalMilliseconds);
+
+    private static string PathAttributionQuality(IReadOnlyList<ProbeCycle> cycles)
+    {
+        var attempted = cycles.SelectMany(cycle => cycle.Results).Where(result => result.WasAttempted).ToArray();
+        if (attempted.Any(result => result.PathContinuity == PathContinuity.ChangedDuringExecution))
+        {
+            return "Reduced";
+        }
+
+        return attempted.Any(result => result.PathContinuity == PathContinuity.Held) ? "Full" : "Unknown";
+    }
 }

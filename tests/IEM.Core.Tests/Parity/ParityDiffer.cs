@@ -75,6 +75,7 @@ public static class ParityDiffer
 
         CompareIncidents(windows.Incidents, linux.Incidents, fixture, lines);
         Compare("$.sessionVerdictKind", windows.SessionVerdictKind, linux.SessionVerdictKind, fixture, lines);
+        Compare("$.quality.pathAttribution", windows.Quality.PathAttribution, linux.Quality.PathAttribution, fixture, lines);
         Compare("$.claims.supportsComplaint", windows.Claims.SupportsComplaint, linux.Claims.SupportsComplaint, fixture, lines);
         Compare("$.claims.namesOperatorAsFault", windows.Claims.NamesOperatorAsFault, linux.Claims.NamesOperatorAsFault, fixture, lines);
         Compare("$.claims.wifiRadioBlamed", windows.Claims.WifiRadioBlamed, linux.Claims.WifiRadioBlamed, fixture, lines);

@@ -1,0 +1,27 @@
+{
+  "parityFixtureVersion": 1,
+  "fixtureId": "parity.reboot.not-outage",
+  "scenario": "The boot identity changes while all network observations remain healthy",
+  "intent": "A host reboot is lifecycle provenance and never fabricates a network outage",
+  "kind": "symmetric",
+  "tags": ["reboot", "boot-identity"],
+  "semanticInput": {
+    "session": { "plannedDuration": "PT2M", "medium": "Ethernet" },
+    "ticks": [
+      { "seq": 1, "monotonicMs": 0, "link": { "status": "Up", "hasGateway": true }, "world": { "gatewayReachable": { "t": "v", "v": true }, "internetReachable": { "t": "v", "v": true } } },
+      { "seq": 2, "monotonicMs": 1000, "link": { "status": "Up", "hasGateway": true }, "world": { "gatewayReachable": { "t": "v", "v": true }, "internetReachable": { "t": "v", "v": true } } }
+    ]
+  },
+  "platformFacts": {
+    "windows": { "ticks": [ { "seq": 1, "bootIdentity": { "t": "v", "v": "win-boot-a" }, "path": { "resolved": { "t": "v", "v": true }, "bound": { "t": "v", "v": true } } }, { "seq": 2, "bootIdentity": { "t": "v", "v": "win-boot-b" }, "path": { "resolved": { "t": "v", "v": true }, "bound": { "t": "v", "v": true } } } ] },
+    "linux": { "ticks": [ { "seq": 1, "bootIdentity": { "t": "v", "v": "linux-boot-a" }, "path": { "resolved": { "t": "v", "v": true }, "bound": { "t": "v", "v": true } } }, { "seq": 2, "bootIdentity": { "t": "v", "v": "linux-boot-b" }, "path": { "resolved": { "t": "v", "v": true }, "bound": { "t": "v", "v": true } } } ] }
+  },
+  "expectedCanonicalOutput": {
+    "samples": [ { "seq": 1, "networkState": "Ok", "isOutage": false } ],
+    "incidents": [],
+    "sessionVerdictKind": "Stable",
+    "claims": { "supportsComplaint": false, "namesOperatorAsFault": false, "wifiRadioBlamed": false }
+  },
+  "allowedDivergences": [],
+  "pathWhitelist": []
+}
