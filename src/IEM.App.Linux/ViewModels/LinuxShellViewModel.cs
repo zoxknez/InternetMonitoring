@@ -29,6 +29,9 @@ internal sealed partial class LinuxShellViewModel : ObservableObject, IAsyncDisp
     public LinuxShellViewModel(IMonitorHost host)
     {
         _host = host ?? throw new ArgumentNullException(nameof(host));
+        serviceStatus = host.Kind == HostKind.Service
+            ? ServiceConnectionStatus.Connecting
+            : ServiceConnectionStatus.ServiceUnavailable;
         selectedDuration = ShellPresentationState.DefaultDurations[3];
         state = ShellPresentationState.Initial;
         _host.Updated += OnHostUpdated;
@@ -41,6 +44,15 @@ internal sealed partial class LinuxShellViewModel : ObservableObject, IAsyncDisp
     public string ModeLabel => _host.Kind == HostKind.Service
         ? "Sistemski servis · nadzor ostaje aktivan kada zatvorite prozor"
         : "Prenosivi režim · nadzor traje samo dok je aplikacija otvorena";
+
+    public string ServiceStatusLabel => _host.Kind != HostKind.Service
+        ? "Prenosivi režim · sistemski servis se ne koristi"
+        : ServiceStatus switch
+        {
+            ServiceConnectionStatus.Connected => "Servis je dostupan",
+            ServiceConnectionStatus.Connecting => "Povezivanje sa servisom…",
+            _ => "Sistemski servis nije dostupan",
+        };
 
     public bool CanStart => !IsRunning;
     public bool CanStop => IsRunning;
@@ -62,6 +74,10 @@ internal sealed partial class LinuxShellViewModel : ObservableObject, IAsyncDisp
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasFault))]
     private string? fault;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ServiceStatusLabel))]
+    private ServiceConnectionStatus serviceStatus;
 
     [ObservableProperty]
     private string operatorName = string.Empty;
@@ -145,9 +161,16 @@ internal sealed partial class LinuxShellViewModel : ObservableObject, IAsyncDisp
     partial void OnContractNumberChanged(string value) => Reproject();
     partial void OnUserContactChanged(string value) => Reproject();
 
-    private void OnHostUpdated(MonitorSnapshot snapshot) => Dispatcher.UIThread.Post(() =>
+    private void OnHostUpdated(MonitorSnapshot snapshot) =>
+        Dispatcher.UIThread.Post(() => ApplyHostSnapshot(snapshot));
+
+    internal void ApplyHostSnapshot(MonitorSnapshot snapshot)
     {
         _live = snapshot;
+        if (_host.Kind == HostKind.Service)
+        {
+            ServiceStatus = ServiceConnectionStatus.Connected;
+        }
         IsRunning = _host.IsRunning;
 
         if (snapshot.SampleCount > 0)
@@ -160,13 +183,22 @@ internal sealed partial class LinuxShellViewModel : ObservableObject, IAsyncDisp
         }
 
         Reproject();
-    });
+    }
 
-    private void OnHostFaultChanged(string? value) => Dispatcher.UIThread.Post(() =>
+    private void OnHostFaultChanged(string? value) =>
+        Dispatcher.UIThread.Post(() => ApplyHostFault(value));
+
+    internal void ApplyHostFault(string? value)
     {
         Fault = value;
+        if (_host.Kind == HostKind.Service)
+        {
+            ServiceStatus = string.IsNullOrWhiteSpace(value)
+                ? ServiceConnectionStatus.Connected
+                : ServiceConnectionStatus.ServiceUnavailable;
+        }
         Reproject();
-    });
+    }
 
     private void Reproject()
     {
@@ -178,9 +210,7 @@ internal sealed partial class LinuxShellViewModel : ObservableObject, IAsyncDisp
             AnalysisRevision: _revision,
             CapturedAtUtc: now,
             RuntimeState: runtimeState,
-            ServiceStatus: _host.Kind == HostKind.Service
-                ? ServiceConnectionStatus.Connected
-                : ServiceConnectionStatus.ServiceUnavailable,
+            ServiceStatus: ServiceStatus,
             Analysis: null,
             CanonicalReport: null,
             SourceRefs: Array.Empty<string>());

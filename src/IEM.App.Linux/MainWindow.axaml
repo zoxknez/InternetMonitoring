@@ -46,6 +46,11 @@
                      Foreground="#C7D7FE"
                      TextWrapping="Wrap"
                      AutomationProperties.Name="Režim rada aplikacije" />
+          <TextBlock Text="{Binding ServiceStatusLabel}"
+                     Foreground="#D1E9FF"
+                     TextWrapping="Wrap"
+                     AutomationProperties.Name="Dostupnost sistemskog servisa"
+                     AutomationProperties.LiveSetting="Polite" />
         </StackPanel>
         <Button Grid.Column="1"
                 Content="Otvori dokazni folder"
