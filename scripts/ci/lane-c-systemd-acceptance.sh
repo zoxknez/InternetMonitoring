@@ -318,8 +318,18 @@ INSTALL_DIR="/usr/lib/internet-evidence-monitor"
 SERVICE_DIR="${INSTALL_DIR}/service"
 mkdir -p "${SERVICE_DIR}"
 
-if dotnet publish src/IEM.Service.Linux/IEM.Service.Linux.csproj -c Release -r linux-x64 --self-contained true -p:PublishSingleFile=true -o "${SERVICE_DIR}" && \
-   dotnet publish tools/IEM.TimeRunner/IEM.TimeRunner.csproj -c Release -r linux-x64 --self-contained true -p:PublishSingleFile=true -o "${INSTALL_DIR}/tools"; then
+# Published exactly the way the package publishes: locked restore, no single-file. The
+# gate exists to grade the artifact users actually receive, and the .deb ships a plain
+# self-contained directory - grading a single-file binary tested a shape nobody installs.
+# VerifyLockedDependencies also stops the run from rewriting committed packages.lock.json:
+# single-file pulled in Microsoft.NET.ILLink.Tasks, so every acceptance run silently
+# changed the dependency graph that the next release build would read.
+if dotnet restore src/IEM.Service.Linux/IEM.Service.Linux.csproj -p:VerifyLockedDependencies=true --nologo && \
+   dotnet restore tools/IEM.TimeRunner/IEM.TimeRunner.csproj -p:VerifyLockedDependencies=true --nologo && \
+   dotnet publish src/IEM.Service.Linux/IEM.Service.Linux.csproj -c Release -r linux-x64 --self-contained true \
+       --no-restore --nologo -p:PublishSingleFile=false -p:DebugType=None -p:DebugSymbols=false -o "${SERVICE_DIR}" && \
+   dotnet publish tools/IEM.TimeRunner/IEM.TimeRunner.csproj -c Release -r linux-x64 --self-contained true \
+       --no-restore --nologo -p:PublishSingleFile=false -p:DebugType=None -p:DebugSymbols=false -o "${INSTALL_DIR}/tools"; then
     chmod 0755 "${SERVICE_DIR}/IEM.Service.Linux"
     chmod 0755 "${INSTALL_DIR}/tools/IEM.TimeRunner"
     STATUS_BUILD="PASS"

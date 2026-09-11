@@ -120,7 +120,7 @@
     </Border>
 
     <TabControl Grid.Row="3" Margin="20" AutomationProperties.Name="Glavne oblasti aplikacije">
-      <TabItem Header="MONITOR">
+      <TabItem Header="NADZOR">
         <ScrollViewer>
           <StackPanel Margin="4,16" Spacing="16">
             <Grid ColumnDefinitions="2*,*" ColumnSpacing="16">
@@ -196,7 +196,7 @@
         </ScrollViewer>
       </TabItem>
 
-      <TabItem Header="EVIDENCE">
+      <TabItem Header="DOKAZI">
         <ScrollViewer>
           <StackPanel Margin="4,16" Spacing="16">
             <Grid ColumnDefinitions="*,*,*" ColumnSpacing="16">
@@ -232,7 +232,7 @@
         </ScrollViewer>
       </TabItem>
 
-      <TabItem Header="CASE">
+      <TabItem Header="PREDMET">
         <ScrollViewer>
           <Grid Margin="4,16" ColumnDefinitions="320,*" ColumnSpacing="16">
             <Border Classes="card">
@@ -271,7 +271,7 @@
         </ScrollViewer>
       </TabItem>
 
-      <TabItem Header="SPEED">
+      <TabItem Header="BRZINA">
         <ScrollViewer>
           <StackPanel Margin="4,16" Spacing="16">
             <Border Classes="card">
