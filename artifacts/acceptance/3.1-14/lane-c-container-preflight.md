@@ -20,11 +20,52 @@ release-blocking defect in the shipped unit (see below).
 
 ## Gate frontier
 
-| | Before the layout fix | After |
-|---|---|---|
-| Gates PASS | 4 | 9 |
-| First failure | gate 5, `Type=notify` readiness (`203/EXEC`) | gate 10, Unix IPC identity matrix |
-| Gates `NOT_TESTED` | 18 | 13 |
+| | Before any fix | After layout fix | After all fixes |
+|---|---|---|---|
+| Gates PASS | 4 | 9 | 9 |
+| First failure | gate 5, `Type=notify` (`203/EXEC`) | gate 10, IPC matrix | gate 10, sub-test 6 only |
+| IPC sub-tests passing | 0 of 6 | 2 of 6 | **5 of 6** |
+
+Within gate 10, outsider denial, `GetServiceStatus`, `StartSession`, the spoofed cross-user
+stop denial and the owner's own `StopSession` all pass. Only the admin-override
+`FinalizeSession` still fails; it is characterised below.
+
+Two runner defects were fixed on the way, both of which made the runner blame the product
+for its own problems:
+
+- It published the service flat into `${INSTALL_DIR}` while the canonical unit starts
+  `${INSTALL_DIR}/service/…`, so the service died with `203/EXEC` at gate 5.
+- It calls `jq` in eleven places and nothing checked for it. Without `jq`,
+  `read_active_session_id` returns an empty string, `wait_for_active_session` times out, and
+  the run reports `StartSession failed` while quoting a response that plainly says
+  `"Accepted": true`. A prerequisite check now fails loudly and names the missing tool.
+
+It also published with `PublishSingleFile=true` and an unlocked restore, so it graded a
+binary shape the package never ships and silently rewrote committed `packages.lock.json`
+files on every run. It now publishes exactly as `publish-linux.sh` does.
+
+## Open: admin override FinalizeSession (gate 10, sub-test 6)
+
+Reproducible against the shipped `3.1.0~alpha5` `.deb`, not a timing race and not a
+container artifact:
+
+```
+StartSession demo-1   -> Accepted: true;  GetServiceStatus -> SessionId demo-1
+StopSession  demo-1   -> Accepted: true   (pause)
+StartSession demo-1   -> Accepted: true   (resume)
+FinalizeSession demo-1 -> status 8 SESSION_NOT_FOUND
+                          "Nema aktivne sesije kojom se moze upravljati."
+```
+
+At that point `GetServiceStatus` still names `demo-1`, but reports `State: 3`
+(`SessionState.Interrupted`) with `Resumed: false` and `FinalizeStep: 5 "Zavrseno."`. It
+fails identically for the session owner and for an `iem-admin` member, so it is not an
+authorization problem. A subsequent `StartSession` with a new id is accepted but does not
+become the current session.
+
+Whether the defect is in the resume path or in Lane C's expectation depends on the intended
+pause/resume semantics, which is a design question about evidence continuity rather than an
+obvious coding slip. Left open deliberately rather than patched by guesswork.
 
 ## The defect gate 10 found
 

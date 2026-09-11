@@ -16,6 +16,7 @@ FROM iem-ubuntu24-builder:10.0.111
 RUN apt-get update -o Acquire::Retries=3 \
     && apt-get install -y --no-install-recommends \
         systemd systemd-sysv dbus iproute2 iputils-ping procps sudo \
+        jq python3 \
     && rm -rf /var/lib/apt/lists/*
 
 # Units that cannot work in a container and would only add noise to the journal.

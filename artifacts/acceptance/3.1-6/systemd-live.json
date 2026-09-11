@@ -1,0 +1,69 @@
+{
+  "acceptanceVersion": "3.1.6-live",
+  "timestampUtc": "2026-09-11T12:25:58Z",
+  "commitSha": "UNKNOWN",
+  "distro": "ubuntu",
+  "distroVersion": "24.04",
+  "architecture": "x86_64",
+  "kernel": "6.6.87.2-microsoft-standard-WSL2",
+  "systemdVersion": "systemd 255 (255.4-1ubuntu8.17)",
+  "dotnetVersion": "10.0.111",
+  "failedStage": "STAGE_9_5_UNIX_IPC_IDENTITY: Unix IPC control.sock authorization matrix failed",
+  "gates": {
+    "pid1Strictness": "PASS",
+    "buildAndPublish": "PASS",
+    "accountProvisioning": "PASS",
+    "unitInstallation": "PASS",
+    "typeNotify": "PASS",
+    "processIdentity": "PASS",
+    "capabilities": "PASS",
+    "stateDirectory": "PASS",
+    "runtimeDirectory": "PASS",
+    "stopLifecycle": "NOT_TESTED",
+    "restartLifecycle": "NOT_TESTED",
+    "protectSystemStrict": "NOT_TESTED",
+    "unixIpcIdentity": "FAIL",
+    "netlinkRouting": "NOT_TESTED",
+    "nl80211Generic": "NOT_TESTED",
+    "datagramIcmp": "NOT_TESTED",
+    "sourceBindingParity": "NOT_TESTED",
+    "coreProtocolParity": "NOT_TESTED",
+    "gatewayFibIntegration": "NOT_TESTED",
+    "rtnetlinkObserver": "NOT_TESTED",
+    "netnsProbeMatrix": "NOT_TESTED",
+    "timeKernelProvenance": "NOT_TESTED",
+    "logindDbusAvailability": "NOT_TESTED",
+    "suspendResumeContinuity": "NOT_TESTED",
+    "failureRestart": "NOT_TESTED",
+    "fatalExitCode3": "NOT_TESTED",
+    "startWithoutNetwork": "NOT_TESTED"
+  },
+  "processEvidence": {
+    "mainPid": 1991,
+    "user": "iem",
+    "group": "iem",
+    "uid": "997",
+    "gid": "996",
+    "supplementaryGids": "	996 997 ",
+    "capEff": "0000000000000000",
+    "capAmb": "0000000000000000",
+    "execMainCode": "",
+    "execMainStatus": ""
+  },
+  "directoryEvidence": {
+    "stateDirectoryStat": "iem:iem 700",
+    "runtimeDirectoryStat": "iem:iem-users 750"
+  },
+  "lifecycleEvidence": {
+    "expectedSessionId": "",
+    "afterStartSessionId": "",
+    "afterRestartSessionId": "",
+    "afterCrashSessionId": ""
+  },
+  "summary": {
+    "passCount": 9,
+    "failCount": 1,
+    "notTestedCount": 0,
+    "finalVerdict": "FAIL"
+  }
+}

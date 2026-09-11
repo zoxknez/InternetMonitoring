@@ -304,6 +304,22 @@ else
     exit 2
 fi
 
+# Every helper this runner leans on, checked before anything is graded. jq parses the
+# control.sock responses in eleven places; without it read_active_session_id returns an
+# empty string, wait_for_active_session times out, and the IPC gate reports the product as
+# broken when the only thing missing was a command-line tool. A gate that blames the
+# software for its own absent dependencies is worse than no gate.
+MISSING_TOOLS=""
+for tool in jq python3 sudo su install stat getent systemctl systemd-analyze ip; do
+    command -v "${tool}" >/dev/null 2>&1 || MISSING_TOOLS="${MISSING_TOOLS} ${tool}"
+done
+if [ -n "${MISSING_TOOLS}" ]; then
+    record_fail "Required tools missing from this host:${MISSING_TOOLS}"
+    echo "Install them and re-run; this is a runner prerequisite, not a product failure." >&2
+    exit 2
+fi
+echo "Runner prerequisites present."
+
 echo "=============================================================================="
 echo "2. BUILD AND PUBLISH IEM.Service.Linux"
 echo "=============================================================================="
