@@ -58,7 +58,14 @@ def nuget_components(repo_root: str) -> list[dict]:
     seen: set[str] = set()
     components: list[dict] = []
     src = os.path.join(repo_root, "src")
-    for base, _dirs, files in os.walk(src):
+    for base, dirs, files in os.walk(src):
+        # `bin/` and `obj/` carry copies of packages.lock.json from whatever was last
+        # built in this tree - including other RIDs and other operating systems. Those
+        # are not inputs to the Linux payload, and honouring them makes the SBOM depend
+        # on uncommitted build detritus: a tree with a stale Windows arm64 build under
+        # src/IEM.Service/bin emits a component the release does not contain, and a
+        # clean clone emits a different document for the same commit (invariant 201).
+        dirs[:] = [d for d in dirs if d not in ("bin", "obj")]
         if "packages.lock.json" not in files:
             continue
         with open(os.path.join(base, "packages.lock.json"), encoding="utf-8") as handle:
@@ -115,27 +122,42 @@ def payload_components(payload_root: str) -> list[dict]:
 def resolve_git_commit(repo_root: str) -> str:
     """Resolve the commit this payload was built from.
 
-    GITHUB_SHA is authoritative on CI. Off CI - a maintainer cutting a build
-    locally, or the reproducible Ubuntu builder container - it is unset, and an
-    SBOM that records "unknown" cannot tie the distributed bytes back to a
-    revision. That defeats invariant 200 for exactly the builds nobody else can
-    reproduce, so fall back to asking git directly.
+    Resolution order, most explicit first:
+
+      1. IEM_GIT_COMMIT - the build environment stating the revision outright.
+         Required whenever the payload is built somewhere `git` cannot answer:
+         the release containers bind-mount a git *worktree*, whose `.git` is a
+         file pointing at a host path that does not exist inside the container,
+         so git fails there no matter how the repo is mounted.
+      2. GITHUB_SHA - set by GitHub Actions.
+      3. Asking git directly, for a maintainer cutting a build from a normal
+         checkout.
+
+    An SBOM recording "unknown" cannot tie the distributed bytes back to a
+    revision, which defeats invariant 200 for exactly the builds nobody else can
+    reproduce. Falling back that far is therefore worth a warning, not silence.
 
     `safe.directory` is set because the container runs as root over a bind mount
     owned by another uid, where git otherwise refuses the repository outright.
     """
-    env_sha = os.environ.get("GITHUB_SHA")
-    if env_sha:
-        return env_sha
+    for var in ("IEM_GIT_COMMIT", "GITHUB_SHA"):
+        value = os.environ.get(var)
+        if value:
+            return value.strip()
     try:
         result = subprocess.run(
             ["git", "-c", "safe.directory=*", "-C", repo_root, "rev-parse", "HEAD"],
             capture_output=True, text=True, timeout=15, check=False,
         )
     except (OSError, subprocess.SubprocessError):
-        return "unknown"
-    commit = result.stdout.strip()
-    if result.returncode != 0 or not commit:
+        result = None
+    commit = result.stdout.strip() if result is not None else ""
+    if result is None or result.returncode != 0 or not commit:
+        print(
+            "WARNING: no commit could be resolved for this SBOM; set IEM_GIT_COMMIT to "
+            "record one. The release is not traceable to a revision without it.",
+            file=sys.stderr,
+        )
         return "unknown"
     return commit
 

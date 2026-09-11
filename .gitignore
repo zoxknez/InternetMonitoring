@@ -9,6 +9,10 @@ TestResults/
 # izdanju nemaju šta da traže u istoriji koda. Gotove arhive idu u GitHub Releases.
 artifacts/*
 !artifacts/3.1-0/
+# Acceptance records are evidence, not build output: they are the only durable
+# proof a gate was actually run somewhere. The 3.1-6 reports had to be force-added
+# past this rule; un-ignore the directory so the next one is not quietly dropped.
+!artifacts/acceptance/
 
 # Radna okruženja
 .vs/
