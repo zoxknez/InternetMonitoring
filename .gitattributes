@@ -30,3 +30,16 @@
 *.tsq       binary
 *.tsr       binary
 tests/**/Fixtures/** -text
+
+# Everything Linux executes must be checked out LF, whatever the contributor's platform.
+# A CRLF shebang makes dpkg fail the maintainer script with "bad interpreter", and the
+# .deb would only break on the tester's machine, never on an LF-native CI runner.
+*.sh        text eol=lf
+*.py        text eol=lf
+*.service   text eol=lf
+*.desktop   text eol=lf
+*.spec      text eol=lf
+packaging/linux/debian/postinst     text eol=lf
+packaging/linux/debian/prerm        text eol=lf
+packaging/linux/debian/postrm       text eol=lf
+packaging/linux/internet-evidence-monitor text eol=lf
