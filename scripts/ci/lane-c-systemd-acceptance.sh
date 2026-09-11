@@ -310,14 +310,20 @@ echo "==========================================================================
 CURRENT_STAGE="STAGE_2_BUILD"
 
 INSTALL_DIR="/usr/lib/internet-evidence-monitor"
-mkdir -p "${INSTALL_DIR}"
+# The canonical unit starts ${INSTALL_DIR}/service/IEM.Service.Linux. 3.1-11 moved the
+# package payload into app/ and service/ subdirectories, but this runner still published
+# flat into ${INSTALL_DIR}, so ExecStart pointed at a path that was never created and the
+# service died with 203/EXEC before any gate downstream of it could be graded. The gate
+# exists to test the shipped unit unmodified, so the layout moves here, not the unit.
+SERVICE_DIR="${INSTALL_DIR}/service"
+mkdir -p "${SERVICE_DIR}"
 
-if dotnet publish src/IEM.Service.Linux/IEM.Service.Linux.csproj -c Release -r linux-x64 --self-contained true -p:PublishSingleFile=true -o "${INSTALL_DIR}" && \
+if dotnet publish src/IEM.Service.Linux/IEM.Service.Linux.csproj -c Release -r linux-x64 --self-contained true -p:PublishSingleFile=true -o "${SERVICE_DIR}" && \
    dotnet publish tools/IEM.TimeRunner/IEM.TimeRunner.csproj -c Release -r linux-x64 --self-contained true -p:PublishSingleFile=true -o "${INSTALL_DIR}/tools"; then
-    chmod 0755 "${INSTALL_DIR}/IEM.Service.Linux"
+    chmod 0755 "${SERVICE_DIR}/IEM.Service.Linux"
     chmod 0755 "${INSTALL_DIR}/tools/IEM.TimeRunner"
     STATUS_BUILD="PASS"
-    record_pass "Published binaries to ${INSTALL_DIR}"
+    record_pass "Published binaries to ${SERVICE_DIR} (matching the canonical unit ExecStart)"
 else
     STATUS_BUILD="FAIL"
     record_fail "Failed to build/publish binaries"
@@ -1526,7 +1532,7 @@ rm -rf /run/internet-evidence-monitor
 touch /run/internet-evidence-monitor # Invalid: file instead of directory
 
 set +e
-sudo -u iem NOTIFY_SOCKET=/tmp/test_notify.sock "${INSTALL_DIR}/IEM.Service.Linux" 2>/dev/null
+sudo -u iem NOTIFY_SOCKET=/tmp/test_notify.sock "${SERVICE_DIR}/IEM.Service.Linux" 2>/dev/null
 CLI_EXIT=$?
 set -e
 
@@ -1601,7 +1607,7 @@ ip netns add "${NO_NET_NS}"
 
 # Launch service inside no-network namespace (no external interface, only down lo)
 set +e
-ip netns exec "${NO_NET_NS}" su -s /bin/bash iem -c "timeout 2 ${INSTALL_DIR}/IEM.Service.Linux" >/dev/null 2>&1
+ip netns exec "${NO_NET_NS}" su -s /bin/bash iem -c "timeout 2 ${SERVICE_DIR}/IEM.Service.Linux" >/dev/null 2>&1
 NO_NET_EXIT=$?
 set -e
 

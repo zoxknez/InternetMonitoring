@@ -397,20 +397,21 @@ public sealed class LinuxHostSystemdTests312
             ["ProtectKernelTunables=yes"] = ("Mounts /proc/sys, /sys read-only", "CANDIDATE"),
             ["ProtectKernelModules=yes"] = ("Denies kernel module loading/unloading", "CANDIDATE"),
             ["ProtectControlGroups=yes"] = ("Mounts /sys/fs/cgroup read-only", "CANDIDATE"),
-            ["RestrictSUIDSGID=yes"] = ("Denies creation/execution of setuid/setgid files", "CANDIDATE"),
+            ["RestrictSUIDSGID=no"] = ("Disabled (OFF): systemd blocks openat2 wholesale under this directive, because seccomp cannot inspect the mode inside struct open_how, and the storage boundary resolves every evidence path through openat2", "CONFIRMED_OFF"),
             ["RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK"] = ("Restricts socket address families to necessary protocols", "CANDIDATE"),
             ["PrivateDevices=yes"] = ("Hides physical device nodes in /dev", "CANDIDATE"),
             ["LockPersonality=yes"] = ("Locks execution domain personality", "CANDIDATE"),
             ["MemoryDenyWriteExecute=no"] = ("Disabled (OFF) for .NET JIT / Tiered Compilation compatibility", "CONFIRMED_OFF"),
         };
 
-        // Assert MemoryDenyWriteExecute is strictly OFF
+        // Both directives that were proven incompatible with this service are strictly OFF.
         Assert.Equal("CONFIRMED_OFF", candidates["MemoryDenyWriteExecute=no"].Status);
+        Assert.Equal("CONFIRMED_OFF", candidates["RestrictSUIDSGID=no"].Status);
 
-        // All other candidate directives remain explicitly CANDIDATE
+        // Everything still under evaluation remains explicitly CANDIDATE.
         foreach (var (directive, (cap, status)) in candidates)
         {
-            if (directive.StartsWith("MemoryDenyWriteExecute")) continue;
+            if (status == "CONFIRMED_OFF") continue;
             Assert.Equal("CANDIDATE", status);
         }
     }

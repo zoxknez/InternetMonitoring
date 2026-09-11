@@ -24,7 +24,18 @@ ProtectHome=yes
 ProtectKernelTunables=yes
 ProtectKernelModules=yes
 ProtectControlGroups=yes
-RestrictSUIDSGID=yes
+# RestrictSUIDSGID is OFF, like MemoryDenyWriteExecute, and for the same kind of
+# reason: it is incompatible with how this service works. seccomp cannot dereference
+# the struct open_how that openat2(2) takes, so it cannot inspect the mode argument,
+# and systemd therefore blocks openat2 outright rather than filtering it. The storage
+# boundary resolves every evidence path through openat2 with RESOLVE_BENEATH,
+# RESOLVE_NO_SYMLINKS, RESOLVE_NO_XDEV and RESOLVE_NO_MAGICLINKS, so with this
+# directive on, the service starts, answers IPC, and then dies with exit code 3 the
+# moment a session provisions storage - it can never record evidence.
+# NoNewPrivileges=yes already denies privilege escalation through setuid/setgid
+# binaries, which is the half of this directive that actually matters here; the
+# service only ever writes inside its own 0700 StateDirectory under UMask=0077.
+RestrictSUIDSGID=no
 LockPersonality=yes
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
 MemoryDenyWriteExecute=no
