@@ -1,0 +1,30 @@
+# Lane C acceptance host: the reproducible Ubuntu 24.04 builder, plus a real systemd
+# so the container can boot with PID 1 == systemd. The acceptance runner refuses to
+# grade a host where PID 1 is anything else, which is the whole point of Lane C.
+#
+# Run it as:
+#   docker run -d --privileged --cgroupns=host \
+#       -v /sys/fs/cgroup:/sys/fs/cgroup:rw \
+#       -v "$PWD:/src" -w /src iem-ubuntu24-systemd:10.0.111
+#   docker exec <id> bash scripts/ci/lane-c-systemd-acceptance.sh
+#
+# This is not a substitute for a Tier-A distro VM on real hardware: a container
+# shares the host kernel, so machine-reboot continuity and suspend/resume still
+# have to be graded on a physical or virtual machine.
+FROM iem-ubuntu24-builder:10.0.111
+
+RUN apt-get update -o Acquire::Retries=3 \
+    && apt-get install -y --no-install-recommends \
+        systemd systemd-sysv dbus iproute2 iputils-ping procps sudo \
+    && rm -rf /var/lib/apt/lists/*
+
+# Units that cannot work in a container and would only add noise to the journal.
+RUN systemctl mask \
+        systemd-udevd.service systemd-udev-trigger.service \
+        systemd-modules-load.service sys-kernel-debug.mount \
+        sys-kernel-config.mount dev-hugepages.mount
+
+STOPSIGNAL SIGRTMIN+3
+
+WORKDIR /src
+CMD ["/sbin/init"]

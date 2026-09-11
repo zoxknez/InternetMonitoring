@@ -17,6 +17,7 @@ import datetime as _dt
 import hashlib
 import json
 import os
+import subprocess
 import sys
 
 REPO_PROJECTS = [
@@ -111,15 +112,44 @@ def payload_components(payload_root: str) -> list[dict]:
     return components
 
 
+def resolve_git_commit(repo_root: str) -> str:
+    """Resolve the commit this payload was built from.
+
+    GITHUB_SHA is authoritative on CI. Off CI - a maintainer cutting a build
+    locally, or the reproducible Ubuntu builder container - it is unset, and an
+    SBOM that records "unknown" cannot tie the distributed bytes back to a
+    revision. That defeats invariant 200 for exactly the builds nobody else can
+    reproduce, so fall back to asking git directly.
+
+    `safe.directory` is set because the container runs as root over a bind mount
+    owned by another uid, where git otherwise refuses the repository outright.
+    """
+    env_sha = os.environ.get("GITHUB_SHA")
+    if env_sha:
+        return env_sha
+    try:
+        result = subprocess.run(
+            ["git", "-c", "safe.directory=*", "-C", repo_root, "rev-parse", "HEAD"],
+            capture_output=True, text=True, timeout=15, check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return "unknown"
+    commit = result.stdout.strip()
+    if result.returncode != 0 or not commit:
+        return "unknown"
+    return commit
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--repo-root", required=True)
     parser.add_argument("--payload-root", required=True)
     parser.add_argument("--version", required=True)
     parser.add_argument("--rid", required=True)
-    parser.add_argument("--git-commit", default=os.environ.get("GITHUB_SHA", "unknown"))
+    parser.add_argument("--git-commit", default=None)
     parser.add_argument("--output", required=True)
     args = parser.parse_args()
+    git_commit = args.git_commit or resolve_git_commit(args.repo_root)
 
     components = (
         project_components(args.repo_root, args.version)
@@ -133,7 +163,7 @@ def main() -> int:
             f"https://github.com/zoxknez/InternetMonitoring/sbom/{args.version}/{args.rid}",
         "Release": {
             "ProductVersion": args.version,
-            "GitCommit": args.git_commit,
+            "GitCommit": git_commit,
             "BuildTimestampUtc": _dt.datetime.now(_dt.timezone.utc).isoformat(),
             "ReleaseChannel": "Preview",
             "RuntimeIdentifiers": [args.rid],

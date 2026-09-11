@@ -1,0 +1,24 @@
+FROM mcr.microsoft.com/dotnet/sdk:10.0-noble
+
+ARG DOTNET_SDK_VERSION=10.0.111
+
+RUN apt-get update -o Acquire::Retries=3 \
+    && apt-get install -y --no-install-recommends python3-minimal \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN curl -fsSL https://dot.net/v1/dotnet-install.sh -o /tmp/dotnet-install.sh \
+    && bash /tmp/dotnet-install.sh \
+        --version "${DOTNET_SDK_VERSION}" \
+        --install-dir /opt/dotnet \
+    && rm /tmp/dotnet-install.sh
+
+ENV PATH="/opt/dotnet:${PATH}"
+
+RUN test "$(dotnet --version)" = "${DOTNET_SDK_VERSION}"
+
+# The SBOM generator uses the Python standard library (json, hashlib, pathlib).
+RUN apt-get update -o Acquire::Retries=3 \
+    && apt-get install -y --no-install-recommends libpython3.12-stdlib \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /src
