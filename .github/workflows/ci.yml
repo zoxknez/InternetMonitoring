@@ -95,6 +95,15 @@ jobs:
           chmod +x scripts/ci/verify-linux-install.sh
           sudo bash scripts/ci/verify-linux-install.sh artifacts/linux/linux-x64/internet-evidence-monitor_3.1.0~alpha1_amd64.deb
 
+      # Install-level provere ne pokrecu sesiju, pa servis koji se digne i onda
+      # padne na prvom provisioning-u storage-a njima izgleda ispravno. Tako je
+      # RestrictSUIDSGID=yes i prosao: openat2 blokiran, crash petlja na prvom
+      # StartSession, a svaka install provera zelena.
+      - name: Proveri da paket zaista snima sesiju
+        run: |
+          chmod +x scripts/ci/verify-linux-session-smoke.sh
+          sudo bash scripts/ci/verify-linux-session-smoke.sh artifacts/linux/linux-x64/internet-evidence-monitor_3.1.0~alpha1_amd64.deb
+
       - name: Sacuvaj Linux artefakte
         uses: actions/upload-artifact@v4
         with:
